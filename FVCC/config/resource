@@ -1,0 +1,28 @@
+{
+    "data-share":
+    {
+        "shares":
+        [
+            {
+                "name": "fvcc",
+                "permission":
+                {
+                    "rw":
+                    [
+                        "fvcc"
+                    ]
+                }
+            },
+            {
+                "name": "fvcc/data",
+                "permission":
+                {
+                    "rw":
+                        [
+                            "fvcc"
+                        ]
+                }
+            }
+        ]
+    }
+}
