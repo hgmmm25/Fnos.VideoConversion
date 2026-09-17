@@ -29,6 +29,7 @@ type LogEntry struct {
 	Level   LogLevel
 	Module  string
 	Message string
+	TraceID string `json:"traceId,omitempty"`
 }
 
 var (
@@ -211,27 +212,45 @@ func AddUILogHook(hook func(entry LogEntry)) {
 }
 
 func Debug(module, format string, args ...interface{}) {
-	log(DEBUG, module, fmt.Sprintf(format, args...))
+	log(DEBUG, module, "", fmt.Sprintf(format, args...))
 }
 
 func Info(module, format string, args ...interface{}) {
-	log(INFO, module, fmt.Sprintf(format, args...))
+	log(INFO, module, "", fmt.Sprintf(format, args...))
 }
 
 func Warn(module, format string, args ...interface{}) {
-	log(WARN, module, fmt.Sprintf(format, args...))
+	log(WARN, module, "", fmt.Sprintf(format, args...))
 }
 
 func Error(module, format string, args ...interface{}) {
-	log(ERROR, module, fmt.Sprintf(format, args...))
+	log(ERROR, module, "", fmt.Sprintf(format, args...))
 }
 
 func Fatal(module, format string, args ...interface{}) {
-	log(FATAL, module, fmt.Sprintf(format, args...))
+	log(FATAL, module, "", fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
 
-func log(level LogLevel, module, message string) {
+// DebugT / InfoT / WarnT / ErrorT 带 trace ID 的日志入口（P2-1 可观测性）：
+// traceID 由 FVCC 下发时透传，贯穿任务从下发到完成的全生命周期。
+func DebugT(module, traceID, format string, args ...interface{}) {
+	log(DEBUG, module, traceID, fmt.Sprintf(format, args...))
+}
+
+func InfoT(module, traceID, format string, args ...interface{}) {
+	log(INFO, module, traceID, fmt.Sprintf(format, args...))
+}
+
+func WarnT(module, traceID, format string, args ...interface{}) {
+	log(WARN, module, traceID, fmt.Sprintf(format, args...))
+}
+
+func ErrorT(module, traceID, format string, args ...interface{}) {
+	log(ERROR, module, traceID, fmt.Sprintf(format, args...))
+}
+
+func log(level LogLevel, module, traceID, message string) {
 	logMutex.RLock()
 	currentLevel := logLevel
 	logMutex.RUnlock()
@@ -247,6 +266,7 @@ func log(level LogLevel, module, message string) {
 		Level:   level,
 		Module:  module,
 		Message: message,
+		TraceID: traceID,
 	}
 
 	logMutex.Lock()
@@ -262,10 +282,11 @@ func log(level LogLevel, module, message string) {
 	}
 
 	if fileWriter != nil {
-		logLine := fmt.Sprintf("[%s] [%s] [%s] %s\n",
+		logLine := fmt.Sprintf("[%s] [%s] [%s]%s %s\n",
 			entry.Time.Format("2006-01-02 15:04:05"),
 			levelNames[level],
 			module,
+			traceSegment(traceID),
 			message)
 		if _, err := fileWriter.WriteString(logLine); err != nil {
 			fileWriter.Close()
@@ -298,6 +319,14 @@ func sanitize(message string) string {
 	return message
 }
 
+// traceSegment 生成日志行中的 trace 段：非空时输出 " [trace=xxx]"，为空时输出空串。
+func traceSegment(traceID string) string {
+	if traceID == "" {
+		return ""
+	}
+	return " [trace=" + traceID + "]"
+}
+
 func GetRecentLogs(count int) []LogEntry {
 	logMutex.RLock()
 	defer logMutex.RUnlock()
@@ -315,10 +344,11 @@ func ExportLogs(w io.Writer) error {
 	defer logMutex.RUnlock()
 
 	for _, entry := range logBuffer {
-		line := fmt.Sprintf("[%s] [%s] [%s] %s\n",
+		line := fmt.Sprintf("[%s] [%s] [%s]%s %s\n",
 			entry.Time.Format("2006-01-02 15:04:05"),
 			levelNames[entry.Level],
 			entry.Module,
+			traceSegment(entry.TraceID),
 			entry.Message)
 		if _, err := w.Write([]byte(line)); err != nil {
 			return err

@@ -629,15 +629,15 @@ func (c *ClientConnection) handleCreateSMBTask(req *protocol.WebSocketRequest) e
 		// 07 §5.3 前置拒绝：目标越出 Scope 时不建任务
 		if err := precheckCredentialTarget(credID, req.SMBPath); err != nil {
 			raw, code := buildPayloadErrorResponse(err)
-			logger.Error("server", "CreateSMBTask rejected: taskID=%s, code=%s", taskID, code)
+			logger.ErrorT("server", req.TraceId, "CreateSMBTask rejected: taskID=%s, code=%s", taskID, code)
 			c.safeSend(raw)
 			return nil
 		}
 		// 07 §5.3 M1 支路：只下发 credentialId，明文口令不落库
-		logger.Info("server", "CreateSMBTask via credential archive: taskID=%s, credentialId=%s", taskID, credID)
-		newTask = task.CreateSMBTaskWithCredential(taskID, req.SourceFileName, req.OutputName, c.ConnID, req.FFmpegArgs, req.SMBPath, credID)
+		logger.InfoT("server", req.TraceId, "CreateSMBTask via credential archive: taskID=%s, credentialId=%s", taskID, credID)
+		newTask = task.CreateSMBTaskExWithTrace(taskID, req.SourceFileName, req.OutputName, c.ConnID, req.FFmpegArgs, req.SMBPath, "", "", credID, req.TraceId)
 	} else {
-		newTask = task.CreateSMBTask(taskID, req.SourceFileName, req.OutputName, c.ConnID, req.FFmpegArgs, req.SMBPath, req.SMBUser, req.SMBPassword)
+		newTask = task.CreateSMBTaskExWithTrace(taskID, req.SourceFileName, req.OutputName, c.ConnID, req.FFmpegArgs, req.SMBPath, req.SMBUser, req.SMBPassword, "", req.TraceId)
 	}
 	newTask.Priority = priority
 	task.MarkUploadComplete(taskID)
@@ -648,7 +648,7 @@ func (c *ClientConnection) handleCreateSMBTask(req *protocol.WebSocketRequest) e
 	resp, _ := protocol.BuildSuccessResponse(respData)
 	c.safeSend(resp)
 
-	logger.Info("server", "SMB Task created: %s, FFmpegArgs=%s", taskID, req.FFmpegArgs)
+	logger.InfoT("server", req.TraceId, "SMB Task created: %s, FFmpegArgs=%s", taskID, req.FFmpegArgs)
 	auditSecurity(c.remoteIP(), actionTaskSubmit, taskID, "ok", "type=smb_transcode")
 	return nil
 }
@@ -727,10 +727,11 @@ func (c *ClientConnection) handleCreateRenderEDL(req *protocol.WebSocketRequest)
 		SMBPassword:   req.SMBPassword,
 		CredentialID:  req.CredentialID,
 		SMBOutputPath: req.SMBOutputPath,
+		TraceID:       req.TraceId,
 	})
 	if err != nil {
 		raw, code := buildPayloadErrorResponse(err)
-		logger.Error("server", "CreateRenderEDL rejected: taskID=%s, code=%s, err=%v", taskID, code, err)
+		logger.ErrorT("server", req.TraceId, "CreateRenderEDL rejected: taskID=%s, code=%s, err=%v", taskID, code, err)
 		auditReject(c.remoteIP(), taskID, code, "CreateRenderEDL")
 		c.safeSend(raw)
 		return nil
@@ -753,7 +754,7 @@ func (c *ClientConnection) handleCreateRenderEDL(req *protocol.WebSocketRequest)
 	resp, _ := protocol.BuildSuccessResponse(respData)
 	c.safeSend(resp)
 
-	logger.Info("server", "RenderEDL task created: %s, fastCopy=%v, preset=%s",
+	logger.InfoT("server", req.TraceId, "RenderEDL task created: %s, fastCopy=%v, preset=%s",
 		taskID, created.FastCopyAllowed, created.Task.ProfileKey)
 	auditSecurity(c.remoteIP(), actionRenderSubmit, taskID, "ok",
 		fmt.Sprintf("project=%s rev=%d fastCopy=%v", created.ProjectID, created.ProjectRev, created.FastCopyAllowed))
@@ -810,7 +811,7 @@ func (c *ClientConnection) handleCreateGenProxy(req *protocol.WebSocketRequest) 
 	resp, _ := protocol.BuildSuccessResponse(respData)
 	c.safeSend(resp)
 
-	logger.Info("server", "GenProxy task created: %s, proxyFile=%s", taskID, created.ProxyFile)
+	logger.InfoT("server", req.TraceId, "GenProxy task created: %s, proxyFile=%s", taskID, created.ProxyFile)
 	auditSecurity(c.remoteIP(), actionProxySubmit, taskID, "ok", fmt.Sprintf("preset=%s", created.Template))
 	return nil
 }

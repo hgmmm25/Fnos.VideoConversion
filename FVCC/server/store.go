@@ -16,15 +16,22 @@ import (
 // MVP 实现：读多写少场景，内存缓存优先，变更时异步落地。
 // TODO(P1): 定时备份、配置迁移、快照回滚。
 type Store struct {
-	mu           sync.RWMutex
-	dataDir      string
-	tasks        []Task
-	history      []Task
-	servers      []Server
-	profiles     []Profile
-	locks        []Lock
-	settings     Settings
-	videoCache   []VideoInfoCache
+	mu         sync.RWMutex
+	dataDir    string
+	tasks      []Task
+	history    []Task
+	servers    []Server
+	profiles   []Profile
+	locks      []Lock
+	settings   Settings
+	videoCache []VideoInfoCache
+	// ===== B-01：调度与持久化扩展（06 §2）=====
+	projects      []Project          // EDL 项目
+	nodeCaps      []NodeCaps         // 渲染节点能力快照
+	healthSamples []NodeHealthSample // 节点健康采样
+	auditLog      []AuditEntry       // 审计日志
+	// ===== M4：代理映射（04 §4.2）=====
+	assetProxies []AssetProxy // 素材代理映射（asset_proxies.json）
 	loaded       bool
 	orderCounter int64 // 任务顺序号计数器，保证任务按创建顺序处理
 }
@@ -43,13 +50,31 @@ func (s *Store) Load() error {
 		return err
 	}
 
-	s.tasks = loadJSON[TasksFile](s.path("tasks.json"), TasksFile{Version: 1, Tasks: []Task{}}).Tasks
+	// tasks.json 采用严格加载 + 列迁移（06 §2.2）：解析失败或版本过高直接拒绝启动，
+	// 禁止静默降级为"空任务列表"而丢失用户任务。
+	if err := s.loadTasksLocked(); err != nil {
+		return err
+	}
 	s.history = loadJSON[HistoryFile](s.path("history_tasks.json"), HistoryFile{Version: 1, Tasks: []Task{}}).Tasks
 	s.servers = loadJSON[ServersFile](s.path("server.json"), ServersFile{Version: 1, Servers: []Server{}}).Servers
 	s.profiles = loadJSON[ProfilesFile](s.path("transcode_profile.json"), ProfilesFile{Version: 1, Profiles: []Profile{}}).Profiles
 	s.locks = loadJSON[LocksFile](s.path("locks.json"), LocksFile{Version: 1, Locks: []Lock{}}).Locks
 	s.settings = loadJSON[SettingsFile](s.path("settings.json"), SettingsFile{Version: 1, Settings: DefaultSettings()}).Settings
 	s.videoCache = loadJSON[VideoCacheFile](s.path("video_cache.json"), VideoCacheFile{Version: 1, Entries: []VideoInfoCache{}}).Entries
+	// B-01 新增集合（06 §2.1）：不存在时按空集合初始化，不阻断启动。
+	s.projects = loadJSON[ProjectsFile](s.path("projects.json"), ProjectsFile{Version: 1, Projects: []Project{}}).Projects
+	// 派生字段不落盘（03 §2.2）：加载后统一重算，并补齐 schema_ver 缺省（03 §7）。
+	for i := range s.projects {
+		if s.projects[i].SchemaVer == 0 {
+			s.projects[i].SchemaVer = 1
+		}
+		normalizeProject(&s.projects[i])
+	}
+	s.nodeCaps = loadJSON[NodeCapsFile](s.path("node_caps.json"), NodeCapsFile{Version: 1, Items: []NodeCaps{}}).Items
+	s.healthSamples = loadJSON[NodeHealthFile](s.path("node_health_samples.json"), NodeHealthFile{Version: 1, Samples: []NodeHealthSample{}}).Samples
+	s.auditLog = loadJSON[AuditLogFile](s.path("audit_log.json"), AuditLogFile{Version: 1, Entries: []AuditEntry{}}).Entries
+	// M4 新增集合（04 §4.2）：不存在时按空集合初始化，不阻断启动。
+	s.assetProxies = loadJSON[AssetProxiesFile](s.path("asset_proxies.json"), AssetProxiesFile{Version: 1, Items: []AssetProxy{}}).Items
 
 	// 启动崩溃恢复：非终态的中断任务重置为 QUEUE
 	for i := range s.tasks {
@@ -92,8 +117,9 @@ func (s *Store) Load() error {
 	}
 
 	s.loaded = true
-	logger.Info("store", "loaded: tasks=%d history=%d servers=%d profiles=%d locks=%d",
-		len(s.tasks), len(s.history), len(s.servers), len(s.profiles), len(s.locks))
+	logger.Info("store", "loaded: tasks=%d history=%d servers=%d profiles=%d locks=%d projects=%d nodeCaps=%d healthSamples=%d audit=%d proxies=%d",
+		len(s.tasks), len(s.history), len(s.servers), len(s.profiles), len(s.locks),
+		len(s.projects), len(s.nodeCaps), len(s.healthSamples), len(s.auditLog), len(s.assetProxies))
 	return nil
 }
 
@@ -157,6 +183,34 @@ func (s *Store) UpsertTask(t Task) {
 	s.tasks = append(s.tasks, t)
 	s.mu.Unlock()
 	s.persistTasks()
+}
+
+// SetTaskFinishedAt 记录任务终态时刻（P2-1：FinishedAt 由成功/失败终态写入）。
+func (s *Store) SetTaskFinishedAt(id string, ts time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.tasks {
+		if s.tasks[i].ID == id {
+			s.tasks[i].FinishedAt = &ts
+			s.tasks[i].UpdatedAt = time.Now()
+			s.persistTasks()
+			return
+		}
+	}
+}
+
+// SetTaskStartedAt 记录任务首次进入执行态时刻（P2-1：StartedAt 由派发/启动成功写入，nil=未开始）。
+func (s *Store) SetTaskStartedAt(id string, ts time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.tasks {
+		if s.tasks[i].ID == id && s.tasks[i].StartedAt == nil {
+			s.tasks[i].StartedAt = &ts
+			s.tasks[i].UpdatedAt = time.Now()
+			s.persistTasks()
+			return
+		}
+	}
 }
 
 // NextOrderID 获取下一个任务顺序号，保证任务按创建顺序处理。
@@ -551,7 +605,7 @@ func (s *Store) ReleaseAllLocks() {
 func (s *Store) path(name string) string { return filepath.Join(s.dataDir, name) }
 
 func (s *Store) persistTasks() {
-	saveJSON(s.path("tasks.json"), TasksFile{Version: 1, Tasks: s.tasks})
+	saveJSON(s.path("tasks.json"), TasksFile{Version: storeSchemaVersion, Tasks: s.tasks})
 }
 func (s *Store) persistHistory() {
 	saveJSON(s.path("history_tasks.json"), HistoryFile{Version: 1, Tasks: s.history})

@@ -127,5 +127,56 @@ AIGC:
 | P0-2 | JSON 文件存储迁 SQLite | 结构性重构，需独立里程碑（同第一轮） |
 | P1-1 完整版 | 1s ticker 改纯事件驱动调度 | 调度内核重构，与既有验收强耦合（同第一轮） |
 | P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策（同第一轮） |
-| P2-1 trace ID | 全链路 trace ID 注入 | logger 全局函数 40+ 调用点 context 化（同第一轮） |
+
+---
+
+## 七、第三轮（2026-09-18）：P2-1 可观测性补完——trace ID 全链路注入 + 耗时/失败率指标
+
+> 承接第一轮 P2-1 部分落实中遗留的"全链路 trace ID 注入"与指标增强（耗时直方图/失败率），补齐双端日志同一标识聚合能力。改动原则：**不透传 context、不破坏既有调用点**——采用「请求字段透传 + 包级带 trace 日志函数」的轻量方案，40+ 既有日志调用点零改动。
+
+### 7.1 FVCC（调度端）改动
+
+1. **日志结构化字段**：`FVCC/server/logger/logger.go` `LogEntry` 新增 `TraceID string`（JSON `traceId,omitempty`）；`Writer.Write` 同步写入该字段。
+2. **请求级透传载体**：`FVCC/server/remote.go` `wsCmd` 补 `TraceId string`（JSON `TraceId`）；`RenderDispatcher` 接口新增 `CreateRenderEDLWithTrace / CreateGenProxyWithTrace` 方法（内部转发，原方法保留兼容）。
+3. **TraceID 生成与落库**：`FVCC/server/handlers.go` 新增 `newTraceID(now)`（crypto/rand 8 字节 hex + 时间戳毫秒）；普通转码 / 代理 / 渲染三类任务创建处均写入 `Task.TraceID`。
+4. **启动点打点**：`FVCC/server/store.go` 新增 `SetTaskStartedAt(id, ts)`（仅 StartedAt 为空时写入并持久化）；`scheduler.go` SMB 等待转码、上传完成转等待、渲染派发成功、本地转码启动四处调用 `SetTaskStartedAt(time.Now())`，渲染派发日志升级为 `InfoT` 带 TraceID。
+5. **指标增强**：`handlers.go` `/metrics` 新增 `durationHistogram / avgDurationSec / failureRate`（基于历史任务 StartedAt→FinishedAt 计算）；`/metrics/prometheus` 新增 `fvcc_task_duration_seconds` 直方图（bucket/sum/count）与 `fvcc_task_failure_rate` gauge。
+
+### 7.2 FVCS（渲染端）改动
+
+1. `pkg/protocol/protocol.go` `CreateTaskRequest` 补 `TraceId`（P2-1 注释）；`wire_compat.go` 提供 `TraceId`↔`traceId` 新旧字段兼容归一。
+2. `pkg/task/task.go` `Task` 结构体补 `TraceID` 字段（创建/完成/失败日志携带）；`CreateSMBTaskExWithTrace` 透传。
+3. `pkg/task/render_edl.go` / `pkg/task/proxy.go` 创建点透传并 `InfoT` 打点；`pkg/server/server.go` SMB/RenderEDL/GenProxy 创建与拒绝路径全部 `logger.InfoT/ErrorT` 带 `req.TraceId`。
+4. `pkg/logger/logger.go` 新增 `DebugT/InfoT/WarnT/ErrorT` 系列（log 落库 `traceId` 字段 + 控制台 `[trace=xxx]` 段）。
+
+### 7.3 验证结果
+
+1. FVCC：`go vet ./...` ✅；全量 `go test ./...` ✅（含 handler_metrics_test、scheduler_edl_test 修复后的 fakeDispatcher 双 Trace 方法桩）
+2. FVCS：`go build ./pkg/... ./cmd/service/... ./cmd/fvcs-cli/... ./cmd/test_start/...` ✅；`go vet ./pkg/...` ✅；`go test ./pkg/task/...` ✅
+3. 环境说明：`FVCS/pkg/smb` 测试因本机 `CGO_ENABLED=0` 且无 gcc（go-sqlite3 需 cgo）失败，为既有环境限制，与本次改动无关；`cmd/settings`、`cmd/ui`（fyne GUI）需 GL 构建约束，非本改进范围。
+
+### 7.4 变更文件清单
+
+**修改**
+- `FVCC/server/logger/logger.go`（LogEntry.TraceID）
+- `FVCC/server/remote.go`（wsCmd.TraceId + RenderDispatcher WithTrace 接口）
+- `FVCC/server/handlers.go`（newTraceID + 三类任务 TraceID + metrics 直方图/失败率）
+- `FVCC/server/handlers_proxy.go` / `handlers_render.go`（任务 TraceID 写入）
+- `FVCC/server/store.go`（SetTaskStartedAt）
+- `FVCC/server/scheduler.go`（四处启动点打点 + InfoT）
+- `FVCC/server/scheduler_edl_test.go`（fakeDispatcher 补齐 WithTrace 桩）
+- `FVCS/pkg/protocol/protocol.go` / `wire_compat.go`（TraceId 字段与兼容归一）
+- `FVCS/pkg/task/task.go`（Task.TraceID + CreateSMBTaskExWithTrace）
+- `FVCS/pkg/task/render_edl.go` / `proxy.go`（透传 + InfoT）
+- `FVCS/pkg/server/server.go`（创建/拒绝路径 InfoT/ErrorT 带 trace）
+- `FVCS/pkg/logger/logger.go`（TraceID 字段 + T 系列函数）
+
+### 7.5 未落实项（延续至后续迭代）
+
+| 编号 | 未落实内容 | 原因 |
+|---|---|---|
+| P0-2 | JSON 文件存储迁 SQLite | 结构性重构，需独立里程碑（同第一轮） |
+| P1-1 完整版 | 1s ticker 改纯事件驱动调度 | 调度内核重构，与既有验收强耦合（同第一轮） |
+| P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策（同第一轮） |
+
 *（内容由AI生成，仅供参考）*

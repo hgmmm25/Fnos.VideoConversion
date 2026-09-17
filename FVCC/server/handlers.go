@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"fvcc/smbshare"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,14 +22,41 @@ import (
 	"fvcc/logger"
 )
 
+// newTraceID 生成任务链路追踪 ID（P2-1）：时间戳 + 4 字节随机，跨端日志聚合键。
+func newTraceID(now time.Time) string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("tr_%d", now.UnixNano())
+	}
+	return fmt.Sprintf("tr_%d_%x", now.UnixNano(), b)
+}
+
+// MediaProber 元数据探测通道：*FFprobe 满足，单测可注入桩以脱离 ffprobe。
+// 方法集覆盖调度侧 ProxyProber（子集），故同一实例可直接注入两者。
+type MediaProber interface {
+	Probe(path string) (VideoInfo, error)
+	Available() bool
+}
+
 // Handlers 持有所有依赖的处理器组。
 type Handlers struct {
 	store     *Store
-	probe     *FFprobe
+	probe     MediaProber
 	pv        *PathValidator
 	remote    *RemoteClient
 	hub       *Hub
 	scheduler *Scheduler
+
+	// ===== M4：预览网关运行时状态（04 §2）=====
+	// 以下三项按需惰性初始化（见 stream.go 的 getter），
+	// 使既有 &Handlers{...} 构造点（main.go / 单测）无需改动。
+	ticketsMu   sync.Mutex
+	tickets     *ticketStore // 预览票据（内存 LRU，进程重启即失效）
+	streamsMu   sync.Mutex
+	streams     *streamLimiter // 并发限制（单文件 4 / 全局 64）
+	thumbsMu    sync.Mutex
+	thumbs      *thumbCache // 缩略图缓存 + single-flight
+	thumbFFmpeg string      // 缩略图抽帧用的 ffmpeg 路径（空则运行时探测，单测可注入）
 }
 
 // ===== 通用 =====
@@ -48,7 +77,25 @@ func (h *Handlers) info(c *gin.Context) {
 // ===== 设置 =====
 
 func (h *Handlers) getSettings(c *gin.Context) {
-	c.JSON(200, gin.H{"settings": h.store.GetSettings()})
+	settings := h.store.GetSettings()
+	// merge authorized paths from PathValidator so frontend can use them as default scan roots
+	authorized := h.pv.AccessPaths()
+	for _, p := range authorized {
+		found := false
+		for _, s := range settings.AccessiblePaths {
+			if s == p {
+				found = true
+				break
+			}
+		}
+		if !found {
+			settings.AccessiblePaths = append(settings.AccessiblePaths, p)
+		}
+	}
+	c.JSON(200, gin.H{
+		"settings":        settings,
+		"authorizedPaths": authorized,
+	})
 }
 
 func (h *Handlers) saveSettings(c *gin.Context) {
@@ -71,6 +118,31 @@ func (h *Handlers) saveSettings(c *gin.Context) {
 	}
 	if s.LogLevel == "" {
 		s.LogLevel = "INFO"
+	}
+	// B-04：videoRoot/exportRoot 不在设置页表单内，为空时沿用既有值，避免被覆盖成空
+	old := h.store.GetSettings()
+	if strings.TrimSpace(s.VideoRoot) == "" || strings.TrimSpace(s.ExportRoot) == "" {
+		if strings.TrimSpace(s.VideoRoot) == "" {
+			s.VideoRoot = old.VideoRoot
+		}
+		if strings.TrimSpace(s.ExportRoot) == "" {
+			s.ExportRoot = old.ExportRoot
+		}
+	}
+	// 2026-09-16 修复⑤：playerMuted 未提交（旧前端/旧设置文件）时沿用既有值，缺省按 true
+	if s.PlayerMuted == nil {
+		if old.PlayerMuted != nil {
+			s.PlayerMuted = old.PlayerMuted
+		} else {
+			s.PlayerMuted = boolPtr(true)
+		}
+	}
+	// ProxyRoot/CacheRoot 同样不在表单内，为空时沿用既有值（为空时后端按 videoRoot 推导，不破坏兼容）
+	if strings.TrimSpace(s.ProxyRoot) == "" {
+		s.ProxyRoot = old.ProxyRoot
+	}
+	if strings.TrimSpace(s.CacheRoot) == "" {
+		s.CacheRoot = old.CacheRoot
 	}
 	h.store.SaveSettings(s)
 	h.pv.SetExtraPaths(s.AccessiblePaths)
@@ -137,6 +209,13 @@ func (h *Handlers) clearVideoCache(c *gin.Context) {
 
 // ===== 视频管理 =====
 
+// isReservedMediaName 判定网关保留名（04 §2.4 一致性约束）：`_` 前缀目录/文件
+// （`_proxy`、`_wve_cache`、`_exports`）属预览网关与代理工作流的内部产物，
+// 不得作为素材库内容展示——扫描时目录整棵 SkipDir、文件直接跳过。
+func isReservedMediaName(name string) bool {
+	return strings.HasPrefix(name, "_")
+}
+
 var videoExts = map[string]bool{
 	".mp4": true, ".mkv": true, ".avi": true, ".mov": true,
 	".flv": true, ".wmv": true, ".ts": true, ".m4v": true,
@@ -167,6 +246,9 @@ func (h *Handlers) scanDirectoryStream(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "路径不能为空"})
 		return
 	}
+	// 需求3：文件夹式阅览。recursive=false 时仅扫描当前目录（不进入子目录），
+	// 子目录由前端 browseDirs(/dirs) 另行列举；默认 true 保持旧行为兼容。
+	recursive := c.DefaultQuery("recursive", "true") != "false"
 
 	progressChan := make(chan []VideoInfo, 16)
 	doneChan := make(chan error, 1)
@@ -179,7 +261,7 @@ func (h *Handlers) scanDirectoryStream(c *gin.Context) {
 				return true
 			}
 			return false
-		})
+		}, recursive)
 		doneChan <- err
 	}()
 
@@ -220,7 +302,7 @@ func (h *Handlers) scanDirectoryOnce(path string) ([]VideoInfo, error) {
 	err := h.doScanDirectory(path, func(newVideos []VideoInfo) bool {
 		videos = append(videos, newVideos...)
 		return false
-	})
+	}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +312,7 @@ func (h *Handlers) scanDirectoryOnce(path string) ([]VideoInfo, error) {
 	return videos, nil
 }
 
-func (h *Handlers) doScanDirectory(path string, onProgress func([]VideoInfo) bool) error {
+func (h *Handlers) doScanDirectory(path string, onProgress func([]VideoInfo) bool, recursive bool) error {
 	if err := h.pv.Validate(path); err != nil {
 		return err
 	}
@@ -259,7 +341,19 @@ func (h *Handlers) doScanDirectory(path string, onProgress func([]VideoInfo) boo
 		if err != nil {
 			return nil
 		}
+		base := filepath.Base(p)
 		if fi.IsDir() {
+			// 保留目录（`_` 前缀：_proxy / _wve_cache / _exports）不作为素材库内容展示（04 §2.4）
+			if p != path && isReservedMediaName(base) {
+				return filepath.SkipDir
+			}
+			// 需求3：非递归扫描仅处理当前目录，子目录交给前端 browseDirs 逐级展开
+			if !recursive && p != path {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if isReservedMediaName(base) {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(p))
@@ -267,7 +361,6 @@ func (h *Handlers) doScanDirectory(path string, onProgress func([]VideoInfo) boo
 			return nil
 		}
 
-		base := filepath.Base(p)
 		format := strings.TrimPrefix(ext, ".")
 		size := fi.Size()
 
@@ -515,6 +608,10 @@ type browseEntry struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Size int64  `json:"size,omitempty"`
+	// Default 仅授权根列表使用（修复①）：标记该根为「缺省素材根」——
+	// 其代理产物位于全局代理根（Settings.proxyRoot，缺省 <素材根>/_proxy），
+	// 其他授权根的代理产物位于 <该根>/_proxy，前端据此选择预览请求的 root 参数。
+	Default bool `json:"default,omitempty"`
 }
 
 // browseDirs 列出指定目录下的子目录和视频文件。
@@ -528,6 +625,7 @@ func (h *Handlers) browseDirs(c *gin.Context) {
 	// 无 path：返回授权根目录（SMB 模式下过滤为已共享目录）
 	if pathParam == "" {
 		roots := h.pv.AccessPaths()
+		defLocal := h.resolveMediaRoots().SourceLocal
 		dirs := make([]browseEntry, 0, len(roots))
 		for _, p := range roots {
 			if isSMB {
@@ -536,7 +634,11 @@ func (h *Handlers) browseDirs(c *gin.Context) {
 					continue
 				}
 			}
-			dirs = append(dirs, browseEntry{Name: filepath.Base(p), Path: p})
+			dirs = append(dirs, browseEntry{
+				Name:    filepath.Base(p),
+				Path:    p,
+				Default: defLocal != "" && samePath(p, defLocal),
+			})
 		}
 		c.JSON(200, gin.H{
 			"authorized": len(roots) > 0,
@@ -684,10 +786,12 @@ func (h *Handlers) testServer(c *gin.Context) {
 	_, _, err := h.remote.Connect(sv)
 	if err != nil {
 		h.store.UpdateServerStatus(id, "offline")
+		h.hub.BroadcastNodeStatus(id, "offline", healthScoreUnknown, "连通性测试失败")
 		c.JSON(200, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 	h.store.UpdateServerStatus(id, "online")
+	h.hub.BroadcastNodeStatus(id, "online", healthScoreUnknown, "连通性测试通过")
 	c.JSON(200, gin.H{"ok": true, "status": "online"})
 }
 
@@ -1139,8 +1243,9 @@ func (h *Handlers) createTask(c *gin.Context) {
 		status = StatusPaused
 	}
 
+	now := time.Now()
 	task := Task{
-		ID:          "task_" + fmt.Sprintf("%d", time.Now().UnixNano()),
+		ID:          "task_" + fmt.Sprintf("%d", now.UnixNano()),
 		OrderID:     h.store.NextOrderID(),
 		SourceFile:  req.SourceFile,
 		OutputFile:  req.OutputFile,
@@ -1154,8 +1259,9 @@ func (h *Handlers) createTask(c *gin.Context) {
 		Status:      status,
 		Progress:    0,
 		RetryType:   Retryable,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		TraceID:     newTraceID(now),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	h.store.UpsertTask(task)
@@ -1347,20 +1453,39 @@ func (h *Handlers) deleteHistory(c *gin.Context) {
 
 // ===== 监控指标 =====
 
+// metrics 返回聚合统计（JSON）。P2-1 可观测性扩展：
+// 在原有 totalTasks/totalHistory/totalServers/onlineServers/byStatus 基础上，
+// 增加 activeTasks/queuedTasks/failedTasks/completedTotal/nodeCapsCount/offlineServers，
+// 前端 Metrics 类型已同步（ui-src/src/types.ts），Prometheus 采集走 /metrics/prometheus。
 func (h *Handlers) metrics(c *gin.Context) {
 	tasks := h.store.GetTasks()
 	history := h.store.GetHistory()
 	servers := h.store.GetServers()
 
-	stats := gin.H{
-		"totalTasks":   len(tasks),
-		"totalHistory": len(history),
-		"totalServers": len(servers),
-		"byStatus":     map[string]int{},
-	}
-	byStatus := stats["byStatus"].(map[string]int)
+	byStatus := map[string]int{}
+	activeTasks := 0
+	queuedTasks := 0
+	failedTasks := 0
 	for _, t := range tasks {
 		byStatus[string(t.Status)]++
+		if !t.Status.IsTerminal() {
+			activeTasks++
+		}
+		if t.Status == StatusQueue {
+			queuedTasks++
+		}
+		if t.Status == StatusError {
+			failedTasks++
+		}
+	}
+	completedTotal := 0
+	for _, t := range history {
+		if t.Status == StatusCompleted {
+			completedTotal++
+		}
+		if t.Status == StatusError {
+			failedTasks++
+		}
 	}
 
 	// 服务器在线数
@@ -1370,12 +1495,183 @@ func (h *Handlers) metrics(c *gin.Context) {
 			onlineServers++
 		}
 	}
-	stats["onlineServers"] = onlineServers
 
-	c.JSON(200, stats)
+	nodeCapsCount := 0
+	if h.store != nil {
+		nodeCapsCount = len(h.store.GetAllNodeCaps())
+	}
+
+	// P2-1：耗时直方图（秒）与累计失败率，基于历史任务 StartedAt→FinishedAt。
+	durBuckets := []float64{1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600}
+	durHist := make(map[string]int)
+	var durSum float64
+	var durCount int
+	doneCount, failCount := 0, 0
+	for _, t := range history {
+		if t.StartedAt == nil || t.FinishedAt == nil {
+			continue
+		}
+		if t.Status == StatusCompleted {
+			doneCount++
+		} else if t.Status == StatusError {
+			failCount++
+		}
+		secs := t.FinishedAt.Sub(*t.StartedAt).Seconds()
+		if secs < 0 {
+			continue
+		}
+		durSum += secs
+		durCount++
+		for _, b := range durBuckets {
+			if secs <= b {
+				durHist[fmt.Sprintf("%.0f", b)]++
+			}
+		}
+		durHist["+Inf"]++
+	}
+	failureRate := 0.0
+	if doneCount+failCount > 0 {
+		failureRate = float64(failCount) / float64(doneCount+failCount)
+	}
+	avgDurationSec := 0.0
+	if durCount > 0 {
+		avgDurationSec = durSum / float64(durCount)
+	}
+
+	c.JSON(200, gin.H{
+		"totalTasks":        len(tasks),
+		"totalHistory":      len(history),
+		"totalServers":      len(servers),
+		"onlineServers":     onlineServers,
+		"offlineServers":    len(servers) - onlineServers,
+		"byStatus":          byStatus,
+		"activeTasks":       activeTasks,
+		"queuedTasks":       queuedTasks,
+		"failedTasks":       failedTasks,
+		"completedTotal":    completedTotal,
+		"nodeCapsCount":     nodeCapsCount,
+		"durationHistogram": durHist,
+		"avgDurationSec":    avgDurationSec,
+		"failureRate":       failureRate,
+	})
+}
+
+// metricsPrometheus 输出 Prometheus 文本格式指标（P2-1 可观测性）：
+// 任务数（按状态）、活跃任务、队列深度、失败任务、历史完成数、节点在线/离线/能力快照数。
+// 手写文本格式，不引入 client_golang 依赖（保持 FVCC 无 CGO 交叉编译链路纯净）。
+func (h *Handlers) metricsPrometheus(c *gin.Context) {
+	tasks := h.store.GetTasks()
+	history := h.store.GetHistory()
+	servers := h.store.GetServers()
+
+	byStatus := map[string]int{}
+	activeTasks := 0
+	for _, t := range tasks {
+		byStatus[string(t.Status)]++
+		if !t.Status.IsTerminal() {
+			activeTasks++
+		}
+	}
+	completedTotal, failedTasks := 0, 0
+	for _, t := range history {
+		if t.Status == StatusCompleted {
+			completedTotal++
+		}
+		if t.Status == StatusError {
+			failedTasks++
+		}
+	}
+	for _, t := range tasks {
+		if t.Status == StatusError {
+			failedTasks++
+		}
+	}
+	onlineServers := 0
+	for _, sv := range servers {
+		if sv.Status == "online" {
+			onlineServers++
+		}
+	}
+	nodeCapsCount := 0
+	if h.store != nil {
+		nodeCapsCount = len(h.store.GetAllNodeCaps())
+	}
+
+	var b strings.Builder
+	b.WriteString("# HELP fvcc_tasks_total 当前任务数（按状态分桶）\n")
+	b.WriteString("# TYPE fvcc_tasks_total gauge\n")
+	for _, st := range []TaskStatus{StatusQueue, StatusTranscoding, StatusCompleted, StatusError, StatusPaused, StatusCancelled, StatusCooldown} {
+		b.WriteString(fmt.Sprintf("fvcc_tasks_total{status=%q} %d\n", st.WireName(), byStatus[string(st)]))
+	}
+	b.WriteString("# HELP fvcc_tasks_active 非终态活跃任务数\n")
+	b.WriteString("# TYPE fvcc_tasks_active gauge\n")
+	b.WriteString(fmt.Sprintf("fvcc_tasks_active %d\n", activeTasks))
+	b.WriteString("# HELP fvcc_tasks_failed 失败任务数（活跃失败 + 历史失败）\n")
+	b.WriteString("# TYPE fvcc_tasks_failed gauge\n")
+	b.WriteString(fmt.Sprintf("fvcc_tasks_failed %d\n", failedTasks))
+	b.WriteString("# HELP fvcc_tasks_completed_total 历史累计完成数\n")
+	b.WriteString("# TYPE fvcc_tasks_completed_total counter\n")
+	b.WriteString(fmt.Sprintf("fvcc_tasks_completed_total %d\n", completedTotal))
+	b.WriteString("# HELP fvcc_servers_total 渲染节点数（按在线状态分桶）\n")
+	b.WriteString("# TYPE fvcc_servers_total gauge\n")
+	b.WriteString(fmt.Sprintf("fvcc_servers_total{status=\"online\"} %d\n", onlineServers))
+	b.WriteString(fmt.Sprintf("fvcc_servers_total{status=\"offline\"} %d\n", len(servers)-onlineServers))
+	b.WriteString("# HELP fvcc_node_caps_count 节点能力快照数\n")
+	b.WriteString("# TYPE fvcc_node_caps_count gauge\n")
+	b.WriteString(fmt.Sprintf("fvcc_node_caps_count %d\n", nodeCapsCount))
+
+	// P2-1：耗时直方图与累计失败率（基于历史任务 StartedAt→FinishedAt）。
+	b.WriteString("# HELP fvcc_task_duration_seconds 任务执行耗时直方图（StartedAt→FinishedAt）\n")
+	b.WriteString("# TYPE fvcc_task_duration_seconds histogram\n")
+	durBuckets := []float64{1, 5, 15, 30, 60, 120, 300, 600, 1800, 3600}
+	durCounts := make(map[float64]int)
+	var durSum float64
+	var durCount int
+	doneCount, failCount := 0, 0
+	for _, t := range history {
+		if t.StartedAt == nil || t.FinishedAt == nil {
+			continue
+		}
+		if t.Status == StatusCompleted {
+			doneCount++
+		} else if t.Status == StatusError {
+			failCount++
+		}
+		secs := t.FinishedAt.Sub(*t.StartedAt).Seconds()
+		if secs < 0 {
+			continue
+		}
+		durSum += secs
+		durCount++
+		for _, b := range durBuckets {
+			if secs <= b {
+				durCounts[b]++
+			}
+		}
+	}
+	for _, bd := range durBuckets {
+		b.WriteString(fmt.Sprintf("fvcc_task_duration_seconds_bucket{le=%q} %d\n", fmt.Sprintf("%.0f", bd), durCounts[bd]))
+	}
+	b.WriteString(fmt.Sprintf("fvcc_task_duration_seconds_bucket{le=\"+Inf\"} %d\n", durCount))
+	b.WriteString(fmt.Sprintf("fvcc_task_duration_seconds_sum %v\n", durSum))
+	b.WriteString(fmt.Sprintf("fvcc_task_duration_seconds_count %d\n", durCount))
+	failureRate := 0.0
+	if doneCount+failCount > 0 {
+		failureRate = float64(failCount) / float64(doneCount+failCount)
+	}
+	b.WriteString("# HELP fvcc_task_failure_rate 历史累计失败率（失败/终态）\n")
+	b.WriteString("# TYPE fvcc_task_failure_rate gauge\n")
+	b.WriteString(fmt.Sprintf("fvcc_task_failure_rate %v\n", failureRate))
+
+	c.Data(200, "text/plain; version=0.0.4; charset=utf-8", []byte(b.String()))
 }
 
 // buildFFmpegArgs 将转码方案转换为 FFmpeg 命令行参数。
+// isNVENC 判断是否为 NVIDIA NVENC 硬件编码器（h264_nvenc/hevc_nvenc/av1_nvenc 等）
+func isNVENC(vcodec string) bool {
+	return strings.HasSuffix(vcodec, "_nvenc")
+}
+
 // audioBitrate 参数用于在 MKV 格式且音频 COPY 时写入 STATISTICS_TAGS 元数据
 func buildFFmpegArgs(p Profile, outputFormat string, audioBitrate string) string {
 	// 自定义 FFmpeg 参数模式：直接使用用户输入的参数
@@ -1460,7 +1756,7 @@ func buildFFmpegArgs(p Profile, outputFormat string, audioBitrate string) string
 				}
 				if qVal > 0 {
 					qParam := "-crf"
-					if p.Vcodec == "h264_nvenc" || p.Vcodec == "hevc_nvenc" || p.Vcodec == "h264_amf" || p.Vcodec == "hevc_amf" {
+					if isNVENC(p.Vcodec) || p.Vcodec == "h264_amf" || p.Vcodec == "hevc_amf" {
 						qParam = "-cq"
 					} else if p.Vcodec == "mpeg4" {
 						qParam = "-qp"
@@ -1478,8 +1774,13 @@ func buildFFmpegArgs(p Profile, outputFormat string, audioBitrate string) string
 				// 兼容旧数据：无 qualityControl 时使用 rateControl
 				switch p.RateControl {
 				case "crf":
-					if p.Crf > 0 && crfCapable {
-						args = append(args, "-crf", fmt.Sprintf("%d", p.Crf))
+					if p.Crf > 0 {
+						if crfCapable {
+							args = append(args, "-crf", fmt.Sprintf("%d", p.Crf))
+						} else if isNVENC(p.Vcodec) {
+							// 旧数据兼容：NVENC 编码器使用 -cq 而不是 -crf
+							args = append(args, "-cq", fmt.Sprintf("%d", p.Crf))
+						}
 					}
 				case "cbr", "vbr":
 					if p.Bitrate != "" {
@@ -1571,8 +1872,8 @@ func buildFFmpegArgs(p Profile, outputFormat string, audioBitrate string) string
 				}
 			}
 
-			// NVENC 专属
-			if p.Vcodec == "h264_nvenc" || p.Vcodec == "hevc_nvenc" {
+			// NVENC 专属（h264_nvenc/hevc_nvenc/av1_nvenc 共用）
+			if isNVENC(p.Vcodec) {
 				if p.NvencSpatialAQ {
 					args = append(args, "-rc-lookahead", "1")
 				}

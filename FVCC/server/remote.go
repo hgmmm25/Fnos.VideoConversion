@@ -90,6 +90,7 @@ type wsCmd struct {
 	Payload       json.RawMessage `json:"Payload,omitempty"`
 	SMBOutputPath string          `json:"SMBOutputPath,omitempty"`
 	CredentialID  string          `json:"CredentialId,omitempty"`
+	TraceId       string          `json:"TraceId,omitempty"` // P2-1：跨端链路追踪 ID
 }
 
 type wsResp struct {
@@ -568,6 +569,11 @@ func (wc *wsConn) roundTrip(cmd wsCmd, timeout time.Duration) (wsResp, error) {
 }
 
 func (rc *RemoteClient) CreateTask(server Server, sourceFileName, outputName, ffmpegArgs string) (string, error) {
+	return rc.CreateTaskWithTrace(server, sourceFileName, outputName, ffmpegArgs, "")
+}
+
+// CreateTaskWithTrace 与 CreateTask 等价，额外透传任务链路追踪 ID（P2-1）。
+func (rc *RemoteClient) CreateTaskWithTrace(server Server, sourceFileName, outputName, ffmpegArgs, traceID string) (string, error) {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return "", err
@@ -579,6 +585,7 @@ func (rc *RemoteClient) CreateTask(server Server, sourceFileName, outputName, ff
 		SourceFileName: sourceFileName,
 		OutputName:     outputName,
 		FFmpegArgs:     ffmpegArgs,
+		TraceId:        traceID,
 	}
 	resp, err := wc.roundTrip(cmd, 60*time.Second)
 	if err != nil {
@@ -596,6 +603,11 @@ func (rc *RemoteClient) CreateTask(server Server, sourceFileName, outputName, ff
 }
 
 func (rc *RemoteClient) CreateSMBTask(server Server, sourceFileName, outputName, ffmpegArgs, smbPath, smbUser, smbPassword string) (string, error) {
+	return rc.CreateSMBTaskWithTrace(server, sourceFileName, outputName, ffmpegArgs, smbPath, smbUser, smbPassword, "")
+}
+
+// CreateSMBTaskWithTrace 与 CreateSMBTask 等价，额外透传任务链路追踪 ID（P2-1）。
+func (rc *RemoteClient) CreateSMBTaskWithTrace(server Server, sourceFileName, outputName, ffmpegArgs, smbPath, smbUser, smbPassword, traceID string) (string, error) {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return "", err
@@ -610,6 +622,7 @@ func (rc *RemoteClient) CreateSMBTask(server Server, sourceFileName, outputName,
 		SMBPath:        smbPath,
 		SMBUser:        smbUser,
 		SMBPassword:    smbPassword,
+		TraceId:        traceID,
 	}
 	resp, err := wc.roundTrip(cmd, 60*time.Second)
 	if err != nil {
@@ -654,18 +667,28 @@ type renderShareDirs struct {
 // 载荷仅携带 credentialId + 结构化 payload + 共享根，严禁携带 SMBUser/SMBPassword 明文
 // （07 §5.2/§5.5）；FVCS 侧凭 credentialId 自行解析挂载凭据。
 func (rc *RemoteClient) CreateRenderEDL(server Server, t Task) (string, error) {
-	return rc.dispatchRender(server, t, "CreateRenderEDL", TaskTypeRenderEDL)
+	return rc.dispatchRender(server, t, "CreateRenderEDL", TaskTypeRenderEDL, "")
+}
+
+// CreateRenderEDLWithTrace 与 CreateRenderEDL 等价，额外透传任务链路追踪 ID（P2-1）。
+func (rc *RemoteClient) CreateRenderEDLWithTrace(server Server, t Task, traceID string) (string, error) {
+	return rc.dispatchRender(server, t, "CreateRenderEDL", TaskTypeRenderEDL, traceID)
 }
 
 // CreateGenProxy 下发 GEN_PROXY 代理生成任务（04 §3.5），
 // 低优先级以 PriorityLevel=low 表达（06 §4.1，调度排序已保证不插队）。
 func (rc *RemoteClient) CreateGenProxy(server Server, t Task) (string, error) {
-	return rc.dispatchRender(server, t, "CreateGenProxy", TaskTypeGenProxy)
+	return rc.dispatchRender(server, t, "CreateGenProxy", TaskTypeGenProxy, "")
+}
+
+// CreateGenProxyWithTrace 与 CreateGenProxy 等价，额外透传任务链路追踪 ID（P2-1）。
+func (rc *RemoteClient) CreateGenProxyWithTrace(server Server, t Task, traceID string) (string, error) {
+	return rc.dispatchRender(server, t, "CreateGenProxy", TaskTypeGenProxy, traceID)
 }
 
 // dispatchRender 渲染类任务共用下发实现（06 §4.2）：
 // 载荷校验 → 共享根解析（UNC）→ WS 下发 → 返回 FVCS 侧任务 ID。
-func (rc *RemoteClient) dispatchRender(server Server, t Task, cmd string, want TaskType) (string, error) {
+func (rc *RemoteClient) dispatchRender(server Server, t Task, cmd string, want TaskType, traceID string) (string, error) {
 	payload := json.RawMessage(strings.TrimSpace(t.PayloadJSON))
 	if len(payload) == 0 {
 		return "", fmt.Errorf("%s: 任务载荷为空，无法下发 (task=%s)", errCodePayloadMissing, t.ID)
