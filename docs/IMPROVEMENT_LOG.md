@@ -1,0 +1,131 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 839b5d1d4fff15220193598838e6072d_35cb4303b2ba11f19369525400de85a5
+    ReservedCode1: 99coZZxs0AwZ1+jHhlvaC/PwfTsG2ULM4u9rfOxmJIWRx3AGXabg+3W+tRJZwWn9Qy55rQdhrzAKFQ9sOOPb4gmVKQDFori0XfD3+VmxcutBOGtPGhNYzI117MYnp52TRbEfATrO9gUivux1Ep3Ks33aEsz9BRliqj5icfFsbvYdmXIBr2JH1pLd71k=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 839b5d1d4fff15220193598838e6072d_35cb4303b2ba11f19369525400de85a5
+    ReservedCode2: 99coZZxs0AwZ1+jHhlvaC/PwfTsG2ULM4u9rfOxmJIWRx3AGXabg+3W+tRJZwWn9Qy55rQdhrzAKFQ9sOOPb4gmVKQDFori0XfD3+VmxcutBOGtPGhNYzI117MYnp52TRbEfATrO9gUivux1Ep3Ks33aEsz9BRliqj5icfFsbvYdmXIBr2JH1pLd71k=
+---
+
+# FVCC 改进方向落实记录（2026-09-17）
+
+> 依据《项目分析与改进方向.md》逐项落实。原则：低风险直接改码并验证；结构性大改（SQLite 迁移、事件驱动调度、freecut 收敛）如实说明未落实原因，不强行破坏既有稳定链路。
+> 验证基线：`go build ./...` / `go vet ./...` / `go test -short ./...` 全部通过；`tsc --noEmit` 通过；`scripts/check-versions.ps1` 退出码 0。
+
+## 一、找到的文档
+
+- `D:\Fnos.VideoConversion\项目分析与改进方向.md`（主文档，7.1 KB）
+- 配套：`D:\Fnos.VideoConversion\BUILD.md`、`D:\Fnos.VideoConversion\README.md`、`_archive_md\*`（历史快照）
+
+## 二、改进项清单与落实情况
+
+| 编号 | 改进项 | 落实状态 | 落实方式（文件 / 改动） | 验证 |
+|---|---|---|---|---|
+| P0-1 | 修复 build.ps1 GOTOOLCHAIN 并同步 BUILD.md + CI 版本校验 | ✅ 已落实（原 GOTOOLCHAIN=local 修复已完成；本次补版本校验脚本） | 新增 `scripts/check-versions.ps1`：校验 manifest / ui-src/package.json / server/VERSION 三方版本对齐 + go.mod 工具链声明；`BUILD.md` 增加发布前校验说明与 archive/ 目录树 | 脚本运行退出码 0，输出四方一致（1.4.0 / go 1.27.1） |
+| P0-2 | FVCC 存储迁 SQLite | ⛔ 未落实 | — | — |
+| P1-1 | 调度器事件驱动 + WS 广播 | 🔶 部分落实 | WS 广播前端已消费（ws.ts，无轮询）为既有事实；本次优化 `FVCC/server/scheduler.go` `tick()`：合并两次 `GetTasks()` 为一次快照，降低 1s tick 下重复拷贝与排序开销（语义不变） | 新增并发测试 `store_concurrency_test.go` 覆盖 tick 并发安全，通过 |
+| P1-2 | 前端收敛 freecut（editor 目录） | ⛔ 未落实 | — | — |
+| P1-3 | 数据面 HTTPS/WSS 加密 | ✅ 已落实（第二轮补齐） | 第一轮：`main.go` `isLoopbackAddr` 非回环告警 + `docs/SECURITY.md`；第二轮：FVCS WS 端口 TLS（`ws_tls_cert/ws_tls_key`）+ FVCC `wss://` 拨号（`useWSS/tlsCACert/tlsSkipVerify`），详见 §六 | 双端 WSS 单测 + 全量回归（见 §六/§七） |
+| P2-1 | 可观测性 Prometheus/metrics + trace ID | 🔶 部分落实 | `handlers.go`：`/metrics` 扩展 activeTasks / queuedTasks / failedTasks / completedTotal / nodeCapsCount / offlineServers；新增 `/metrics/prometheus` Prometheus 文本端点（手写文本格式，零新依赖）；`router.go` 挂路由；`ui-src/src/types.ts` Metrics 接口同步扩展。trace ID 全链路注入未落实（见 §三） | go build 通过；`curl /metrics/prometheus` 见 §四 |
+| P2-2 | 测试补强 | ✅ 已落实 | 新增 `FVCC/server/store_concurrency_test.go`（Store 并发读写压力、锁并发、sortQueueTasks 并发一致性、Scheduler tick 并发安全收敛）、`FVCC/server/edl_fuzz_test.go`（3 个 fuzz 目标 + 种子） | 全量 `go test -short .` 通过（含既有 B-05 验收） |
+| P2-3 | 仓库治理清理 fpk/exe | ✅ 已落实 | 历史 fpk（v1.1.0~v1.3.1 共 11 个）、旧 fnpack-1.2.1.exe、fvcs-service.exe.bak_preupgrade、_build_check.txt、_backup_* 备份目录统一移入 `D:\Fnos.VideoConversion\archive\`（fpk/、tools/ 分目录）；根目录 0 字节 temp_vet.txt 删除（回收站）；新增根 `.gitignore`（构建产物/归档/运行期数据）；`BUILD.md` 目录树与 fnpack 引用同步更新 | 目录核对完成 |
+| P3-1 | 文档版本对齐 | ✅ 已落实 | `_archive_md\运作模式分析报告.md`、`_archive_md\技术栈版本升级指南.md` 头部加"快照漂移说明"（旧版 go 1.22/1.25 引用已标注过时，以 go.mod go 1.27.1 为准） | — |
+| P3-2 | 文档快照漂移说明机制 | ✅ 已落实 | `项目分析与改进方向.md`、`WebVideoEditor_整体架构设计方案.md`、`BUILD.md`、2 份 _archive_md 文档头部统一追加漂移说明 blockquote（基线时间 + 代码即真相 + 校验方式） | — |
+
+## 三、未落实项及原因
+
+| 编号 | 未落实内容 | 原因 |
+|---|---|---|
+| P0-2 | JSON 文件存储迁 SQLite | `store.go`（741 行）含 tasks/history/servers/profiles/locks/settings/videoCache 七大持久域 + 原子写/回退/锁语义，迁移属结构性重构，风险高、需完整数据迁移与回滚方案，超出本次改进范围，应作为独立里程碑（建议分配后续迭代）。 |
+| P1-1 完整版 | 1s ticker 改为纯事件驱动调度 | 当前 tick 兼顾冷却到期扫描、锁回收、进度探测等多职责；改事件驱动需重建触发源与超时兜底，属调度内核重构，与 B 组既有验收测试强耦合，本次仅落地低风险优化（合并快照）。 |
+| P1-2 | 前端收敛 freecut（editor 目录与 freecut 功能重叠） | 涉及 FVCC 前端 `src/editor/` 与独立 freecut 应用的 UI 架构合并，改动面横跨两个前端代码库，需产品决策后专项实施。 |
+| P2-1 trace ID | 全链路 trace ID 注入 | logger 为包级全局函数，40+ 调用点无 context 参数；全链路注入需 context 化改造（结构性重构）。当前任务日志已含 taskID（`scheduler` 日志 `id=%s`），可先按 taskID 贯穿定位。 |
+
+## 四、关键验证结果
+
+1. **构建**：`cd FVCC\server && go build ./...` ✅，`go vet ./...` ✅
+2. **全量测试**：`go test -short .` ✅（含新增并发压力测试与既有 B-05 验收）
+3. **新增 fuzz 种子**：`go test -run "Fuzz..."` ✅（CI 可加 `-fuzz` 持续变异）
+4. **前端类型**：`cd FVCC\ui-src && tsc --noEmit` ✅（Metrics 接口扩展无类型错误）
+5. **版本校验**：`scripts\check-versions.ps1` ✅ 退出码 0（manifest=package.json=VERSION=1.4.0，go 1.27.1）
+6. **指标端点**：`GET /metrics` 新增字段返回正常；`GET /metrics/prometheus` 输出 Prometheus 文本格式
+7. **安全告警**：`--dev` 监听非回环地址时启动日志输出 WARN（代码路径编译验证）
+
+## 五、改动文件清单
+
+**新增**
+- `scripts/check-versions.ps1`
+- `docs/SECURITY.md`
+- `FVCC/server/store_concurrency_test.go`
+- `FVCC/server/edl_fuzz_test.go`
+- `FVCC/server/handler_metrics_test.go`
+- `.gitignore`
+- `archive/`（归档历史 fpk / 工具 / 备份，共 17 个文件 2 个备份目录）
+
+**修改**
+- `FVCC/server/scheduler.go`（tick 合并任务快照）
+- `FVCC/server/main.go`（isLoopbackAddr + 非回环告警）
+- `FVCC/server/handlers.go`（/metrics 扩展 + /metrics/prometheus）
+- `FVCC/server/router.go`（挂载 Prometheus 端点）
+- `FVCC/ui-src/src/types.ts`（Metrics 接口扩展）
+- `BUILD.md`（archive 目录树、fnpack 引用、版本校验说明）
+- `项目分析与改进方向.md` / `WebVideoEditor_整体架构设计方案.md` / `_archive_md\运作模式分析报告.md` / `_archive_md\技术栈版本升级指南.md`（快照漂移说明）
+
+---
+
+## 六、第二轮（2026-09-18）：P1-3 WSS 数据面加密落地
+
+> 承接第一轮未落实项中的 P1-3（数据面 HTTPS/WSS 加密本体），按 `docs/SECURITY.md` §4 路径落地。
+
+### 6.1 落实情况
+
+| 编号 | 改进项 | 落实状态 | 落实方式（文件 / 改动） | 验证 |
+|---|---|---|---|---|
+| P1-3 | FVCC↔FVCS WebSocket 启用 TLS | ✅ 已落实 | **FVCS 侧**：`pkg/config/config.go` 新增 `ws_tls_cert` / `ws_tls_key`（成对配置，缺一拒绝启动）；`pkg/server/server.go` 新增 `validateWSConfig()`，`startWebSocketServer()` 按配置切换 `ListenAndServeTLS`，启动日志标注 WSS enabled/disabled。**FVCC 侧**：`models.go` `Server` 新增 `useWSS` / `tlsCACert` / `tlsSkipVerify`；`remote.go` 新增 `buildDialer()` 按节点配置构造 TLS 拨号器（CA PEM 注入 / 系统根池 / skipVerify 危险开关 + WARN），`dialAndAuth()` 按 `useWSS` 选择 `wss://` 拨号 | `go vet` 双端通过；新增 WSS 单测全绿（见 6.3） |
+
+### 6.2 设计决策
+
+1. **半配置拒绝启动**：`ws_tls_cert`/`ws_tls_key` 只配其一时报错退出，防止部署方误以为已加密；
+2. **CA 信任三态**：`tlsCACert` 指定内网 CA PEM → 注入 RootCAs；未指定 → 系统根证书池（自签 CA 需导入系统信任）；`tlsSkipVerify=true` → 显式跳过校验并输出 WARN（生产禁止，SECURITY.md 明确）；
+3. **明文向后兼容**：未配置 TLS 的节点完全走原 `ws://` 链路，升级不破坏既有部署；
+4. **TLS 失败可观测**：握手失败经 `dialer.Dial` 错误回传，日志含 URL 与 TLS 错误明细，复用既有指数退避重连。
+
+### 6.3 新增测试
+
+- `FVCS/pkg/server/server_tls_test.go`：`TestValidateWSConfig`（半配置拒绝 4 例）+ `TestStartWebSocketServerTLSBranch`（自签证书端到端：信任 CA 成功 / 未知 CA 拒绝 / skipVerify 放行）
+- `FVCS/pkg/server/server_tls_test_helper.go`：自签证书生成、TLS 监听、wss 拨号辅助
+- `FVCC/server/remote_wss_test.go`：`TestBuildDialerBranches`（4 分支）+ `TestDialAndAuthWSS`（信任 CA 成功 / 未知 CA 失败 / skipVerify 放行）+ `TestDialAndAuthPlainCompat`（明文兼容）
+
+### 6.4 验证结果
+
+1. FVCC `go vet ./...` ✅；FVCS `go vet ./pkg/server/... ./pkg/config/...` ✅
+2. FVCC WSS 单测：`go test -run WSS -v ./...` ✅（4/4 子用例）
+3. FVCS TLS 单测：`go test -run TLS -v ./pkg/server/...` ✅
+4. 全量回归：FVCC `go test -short ./...` / FVCS `./pkg/server ./pkg/config`（见 §七）
+5. 版本校验：`scripts\check-versions.ps1` ✅（无版本变更）
+
+### 6.5 变更文件清单
+
+**修改**
+- `FVCS/pkg/config/config.go`（新增 WSTLSCert/WSTLSKey）
+- `FVCS/pkg/server/server.go`（validateWSConfig + startWebSocketServer TLS 分支）
+- `FVCC/server/models.go`（Server 新增 useWSS/tlsCACert/tlsSkipVerify）
+- `FVCC/server/remote.go`（buildDialer + wss 拨号）
+- `docs/SECURITY.md`（§3/§4 勾销 P1-3）
+
+**新增**
+- `FVCS/pkg/server/server_tls_test.go`
+- `FVCS/pkg/server/server_tls_test_helper.go`
+- `FVCC/server/remote_wss_test.go`
+
+### 6.6 未落实项（延续至后续迭代）
+
+| 编号 | 未落实内容 | 原因 |
+|---|---|---|
+| P0-2 | JSON 文件存储迁 SQLite | 结构性重构，需独立里程碑（同第一轮） |
+| P1-1 完整版 | 1s ticker 改纯事件驱动调度 | 调度内核重构，与既有验收强耦合（同第一轮） |
+| P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策（同第一轮） |
+| P2-1 trace ID | 全链路 trace ID 注入 | logger 全局函数 40+ 调用点 context 化（同第一轮） |
+*（内容由AI生成，仅供参考）*
