@@ -5,6 +5,8 @@ import { type Profile } from '../types'
 import { openDirBrowser } from './scanner'
 import { crudActions } from '../lib/crudActions'
 import { saveScrollPos, restoreScrollPos } from '../lib/scrollPos'
+import { formBuilder } from '../lib/formBuilder'
+import { useListPage } from '../lib/useListPage'
 
 export function renderProfiles(container: HTMLElement) {
   const wrap = el('div', { class: 'flex flex-col h-full p-4 gap-3' })
@@ -24,11 +26,6 @@ export function renderProfiles(container: HTMLElement) {
       wrap.appendChild(renderEdit(p))
     }
     restoreScrollPos(wrap.querySelector('.overflow-auto') as HTMLElement, 'profiles-list')
-  }
-
-  // 仅在列表视图响应 store 通知；编辑视图保持稳定，避免输入中途被重建
-  const onStoreChange = () => {
-    if (view === 'list') render()
   }
 
   // P2-2：列表卡片删除走公共 CRUD 四件套（确认弹窗 → api → toast → reload）
@@ -134,9 +131,19 @@ export function renderProfiles(container: HTMLElement) {
     return el('div', { class: 'flex flex-col flex-1 gap-3 overflow-hidden' }, [header, body])
   }
 
-  store.subscribe(onStoreChange)
-  render()
+  // P2-2：列表加载/订阅走 useListPage；编辑视图不响应 store 通知（保持原 onStoreChange 语义）
+  const page = useListPage({
+    load: async () => {
+      await store.loadProfiles()
+      return store.profiles
+    },
+    render: () => render(),
+    subscribe: (cb) => store.subscribe(() => { if (view === 'list') cb() }),
+    errorLabel: '方案列表',
+  })
+  page.mount()
   container.appendChild(wrap)
+  return page.dispose
 }
 
 function editForm(p: Profile | undefined, onBack: () => void): HTMLElement {
@@ -165,7 +172,13 @@ function editForm(p: Profile | undefined, onBack: () => void): HTMLElement {
   const row = (a: HTMLElement, b: HTMLElement) =>
     el('div', { class: 'grid grid-cols-1 sm:grid-cols-2 gap-3' }, [a, b])
 
-  const nameInput = el('input', { class: 'input', placeholder: '方案名称', value: p?.name ?? '' }) as HTMLInputElement
+  // P2-2：基础字段（方案名称/默认输出后缀）走 formBuilder；复杂编码联动区保持手写
+  const basicFb = formBuilder<{ name: string; outputSuffix: string }>([
+    { key: 'name', label: '方案名称 *', type: 'text', placeholder: '方案名称', required: true, validate: (v) => (v.trim() ? '' : '请填写方案名称') },
+    { key: 'outputSuffix', label: '默认输出后缀', type: 'text', placeholder: '_trans.mp4', help: '转码后文件名在原文件名基础上添加的后缀，如 _trans.mp4' },
+  ])
+  basicFb.fill({ name: p?.name ?? '', outputSuffix: p?.outputSuffix || '_trans.mp4' })
+  const nameInput = basicFb.get('name') as HTMLInputElement
 
   // 视频模块开关
   const videoAuto = el('input', { type: 'checkbox' }) as HTMLInputElement
@@ -793,10 +806,8 @@ function editForm(p: Profile | undefined, onBack: () => void): HTMLElement {
   acodec.addEventListener('change', updateAcodecDeps)
   updateAcodecDeps()
 
-  // 输出设置
-  const outputSuffixInput = el('input', {
-    class: 'input', value: p?.outputSuffix || '_trans.mp4', placeholder: '_trans.mp4',
-  }) as HTMLInputElement
+  // 输出设置（P2-2：后缀字段由 formBuilder 提供）
+  const outputSuffixInput = basicFb.get('outputSuffix') as HTMLInputElement
 
   const extraArgs = el('textarea', { class: 'input', rows: '2', placeholder: '额外 FFmpeg 参数' }) as HTMLTextAreaElement
   extraArgs.value = p?.extraArgs ?? ''
@@ -1112,7 +1123,7 @@ function editForm(p: Profile | undefined, onBack: () => void): HTMLElement {
 
   const outputSection = el('div', { class: 'border-t border-line my-3 pt-3' }, [
     el('div', { class: 'text-sm font-medium mb-2' }, ['输出设置']),
-    field('默认输出后缀', outputSuffixInput, '转码后文件名在原文件名基础上添加的后缀，如 _trans.mp4'),
+    basicFb.el('outputSuffix'),
     el('label', { class: 'flex items-center gap-2 text-sm mb-3' }, [outputPathCheck, el('span', {}, ['转换文件另存为'])]),
     outputPathGroup,
     deleteSourceWrap,
@@ -1127,7 +1138,7 @@ function editForm(p: Profile | undefined, onBack: () => void): HTMLElement {
   ])
 
   form.append(
-    field('方案名称 *', nameInput),
+    basicFb.el('name'),
     videoSection,
     audioSection,
     advancedSection,

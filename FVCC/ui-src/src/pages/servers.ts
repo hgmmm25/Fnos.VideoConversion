@@ -3,6 +3,7 @@ import { api } from '../api'
 import { el, toast, emptyState, formatTime, svgIcon } from '../ui'
 import { type Server } from '../types'
 import { crudActions } from '../lib/crudActions'
+import { useListPage } from '../lib/useListPage'
 
 export function renderServers(container: HTMLElement) {
   const wrap = el('div', { class: 'flex flex-col h-full p-4 gap-3' })
@@ -148,10 +149,20 @@ export function renderServers(container: HTMLElement) {
     return el('div', { class: 'flex flex-col flex-1 gap-3 overflow-hidden' }, [header, body])
   }
 
-  store.subscribe(render)
-  render()
+  // P2-2：列表加载/订阅走 useListPage 统一生命周期
+  const page = useListPage({
+    load: async () => {
+      await store.loadServers()
+      return store.servers
+    },
+    render: () => render(),
+    subscribe: (cb) => store.subscribe(cb),
+    errorLabel: '服务器列表',
+  })
+  page.mount()
   refreshServerStatus()
   container.appendChild(wrap)
+  return page.dispose
 }
 
 async function refreshServerStatus() {

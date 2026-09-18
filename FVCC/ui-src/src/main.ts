@@ -71,6 +71,8 @@ function parseRoute(): Route {
 let route: Route = { page: 'tasks' }
 /** 编辑器离开时的清理回调（释放 DOM 与 store.currentProjectId） */
 let editorCleanup: (() => void) | null = null
+/** 列表页（P2-2）卸载清理：调用各页 useListPage 返回的 dispose，防止订阅泄漏 */
+let pageCleanup: (() => void) | null = null
 /** 异步渲染令牌：防止慢请求回来后覆盖已切换的新路由 */
 let renderToken = 0
 
@@ -326,6 +328,10 @@ function renderPage() {
     editorCleanup()
     editorCleanup = null
   }
+  if (pageCleanup) {
+    pageCleanup()
+    pageCleanup = null
+  }
   content.innerHTML = ''
   switch (route.page) {
     case 'editor':
@@ -351,22 +357,22 @@ function renderPage() {
       }
       break
     case 'tasks':
-      renderTasks(content)
+      pageCleanup = renderTasks(content) ?? null
       break
     case 'scanner':
-      renderScanner(content)
+      pageCleanup = renderScanner(content) ?? null
       break
     case 'servers':
-      renderServers(content)
+      pageCleanup = renderServers(content) ?? null
       break
     case 'profiles':
-      renderProfiles(content)
+      pageCleanup = renderProfiles(content) ?? null
       break
     case 'history':
-      renderHistory(content)
+      pageCleanup = renderHistory(content) ?? null
       break
     case 'settings':
-      renderSettings(content)
+      pageCleanup = renderSettings(content) ?? null
       break
   }
 }

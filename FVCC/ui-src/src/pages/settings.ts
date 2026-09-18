@@ -3,6 +3,7 @@ import { store } from '../store'
 import { el, toast, svgIcon, confirmDialog, skeletonRows, setupDialogAccessibility } from '../ui'
 import { type Settings, type AppInfo, LOG_LEVELS } from '../types'
 import { themeOptions, getCurrentTheme, setTheme } from '../theme'
+import { formBuilder } from '../lib/formBuilder'
 
 export function renderSettings(container: HTMLElement) {
   const wrap = el('div', { class: 'flex flex-col h-full p-4 gap-3' })
@@ -63,21 +64,20 @@ export function renderSettings(container: HTMLElement) {
       toast('主题已切换', 'success')
     }
 
-    // 调度与传输
-    const intervalInput = el('input', {
-      type: 'number', class: 'input', min: '1', value: String(s.schedulerIntervalSec),
-    }) as HTMLInputElement
-    const chunkInput = el('input', {
-      type: 'number', class: 'input', min: '1', value: String(s.chunkSizeMB),
-    }) as HTMLInputElement
-    const retryInput = el('input', {
-      type: 'number', class: 'input', min: '0', value: String(s.maxRetry),
-    }) as HTMLInputElement
-    const historyInput = el('input', {
-      type: 'number', class: 'input', min: '100', value: String(s.historyLimit),
-    }) as HTMLInputElement
-
-    
+    // 调度与传输（P2-2：表单字段统一走 formBuilder）
+    const fb = formBuilder<Partial<Settings>>([
+      { key: 'schedulerIntervalSec', label: '调度轮询间隔（秒）', type: 'number', min: 1, help: '调度器检查任务状态的频率，1-2 秒为宜' },
+      { key: 'chunkSizeMB', label: '上传分片大小（MB）', type: 'number', min: 1, help: '断点续传分片大小，2-8 MB 为宜' },
+      { key: 'maxRetry', label: '最大重试次数', type: 'number', min: 0, help: '任务失败后自动重试的最大次数' },
+      { key: 'historyLimit', label: '历史记录保留条数', type: 'number', min: 100, help: '超过此条数时自动清理最早记录' },
+      { key: 'maxLocalTranscodeCount', label: '最大并发转码数', type: 'number', min: 1, max: 10, help: '同时进行本地转码的任务数量，建议不超过CPU核心数' },
+      { key: 'smbUser', label: 'SMB用户名', type: 'text', placeholder: 'SMB用户名', help: 'fnOS服务器上具有共享文件夹访问权限的用户名' },
+      { key: 'smbPassword', label: 'SMB密码', type: 'password', placeholder: '已保存，留空则不修改', help: '对应fnOS用户的密码，用于读取共享文件夹配置' },
+      { key: 'logLevel', label: '日志记录级别', type: 'select', options: LOG_LEVELS.map((l) => ({ label: l.label, value: l.value })), help: '选择记录的日志级别，低级别会包含高级别日志' },
+      { key: 'playerMuted', label: '打开剪辑页时预览器默认处于静音状态', type: 'checkbox', help: '取消勾选则预览器默认开启声音（浏览器可能限制自动播放带声视频，首次播放需手动点击播放按钮）' },
+    ])
+    // SMB 密码不回填真实值（留空则不修改）；playerMuted 未配置时默认静音
+    fb.fill({ ...s, smbPassword: '', playerMuted: s.playerMuted !== false })
 
     // 传输模式
     const transferModeGroup = el('div', { class: 'flex gap-4' })
@@ -91,17 +91,10 @@ export function renderSettings(container: HTMLElement) {
     ])
     transferModeGroup.append(httpModeBtn, smbModeBtn)
 
-    // SMB设置（SMB模式直接读取fnOS用户共享，无需输入共享路径）
-    const smbUserInput = el('input', {
-      class: 'input', value: s.smbUser || '', placeholder: 'SMB用户名',
-    }) as HTMLInputElement
-    const smbPasswordInput = el('input', {
-      type: 'password', class: 'input', value: '', placeholder: '已保存，留空则不修改',
-    }) as HTMLInputElement
-
+    // SMB设置（SMB模式直接读取fnOS用户共享，无需输入共享路径；P2-2：字段由 formBuilder 生成）
     const smbSettings = el('div', { class: 'mt-3 space-y-3' }, [
-      field('SMB用户名', smbUserInput, 'fnOS服务器上具有共享文件夹访问权限的用户名'),
-      field('SMB密码', smbPasswordInput, '对应fnOS用户的密码，用于读取共享文件夹配置'),
+      fb.el('smbUser'),
+      fb.el('smbPassword'),
     ])
 
     if (s.transferMode !== 'smb') {
@@ -115,11 +108,6 @@ export function renderSettings(container: HTMLElement) {
       smbSettings.style.display = 'block'
     }
 
-    // 本地转码设置
-    const maxLocalTranscodeInput = el('input', {
-      type: 'number', class: 'input', min: '1', max: '10', value: String(s.maxLocalTranscodeCount || 1),
-    }) as HTMLInputElement
-
     form.append(
       el('div', { class: 'bg-surface-alt rounded-lg p-3 my-3' }, [
         el('div', { class: 'text-sm font-medium mb-2' }, ['外观']),
@@ -127,15 +115,8 @@ export function renderSettings(container: HTMLElement) {
       ]),
       el('div', { class: 'bg-surface-alt rounded-lg p-3 my-3' }, [
         el('div', { class: 'text-sm font-medium mb-2' }, ['调度与传输']),
-        row(
-          field('调度轮询间隔（秒）', intervalInput, '调度器检查任务状态的频率，1-2 秒为宜'),
-          field('上传分片大小（MB）', chunkInput, '断点续传分片大小，2-8 MB 为宜'),
-        ),
-        row(
-          field('最大重试次数', retryInput, '任务失败后自动重试的最大次数'),
-          field('最大并发转码数', maxLocalTranscodeInput, '同时进行本地转码的任务数量，建议不超过CPU核心数'),
-          // field('历史记录保留条数', historyInput, '超过此条数时自动清理最早记录'),
-        ),
+        row(fb.el('schedulerIntervalSec'), fb.el('chunkSizeMB')),
+        row(fb.el('maxRetry'), fb.el('maxLocalTranscodeCount')),
       ]),
       // el('div', { class: 'border-t border-line my-3 pt-3' }, [
       //   el('div', { class: 'text-sm font-medium mb-2' }, ['本地转码设置']),
@@ -174,12 +155,6 @@ export function renderSettings(container: HTMLElement) {
     ])
     const logViewBtn = el('button', { class: 'btn btn-sm mt-2' }, ['查看日志'])
     const logClearBtn = el('button', { class: 'btn btn-sm btn-danger mt-2 ml-2' }, ['清空日志'])
-    const logLevelSel = el('select', { class: 'input' }) as HTMLSelectElement
-    for (const l of LOG_LEVELS) {
-      const opt = el('option', { value: l.value }, [l.label])
-      if (l.value === s.logLevel) (opt as HTMLOptionElement).selected = true
-      logLevelSel.appendChild(opt)
-    }
     logViewBtn.onclick = async () => {
       try {
         const r = await api.getLog()
@@ -203,10 +178,7 @@ export function renderSettings(container: HTMLElement) {
     form.append(
       el('div', { class: 'bg-surface-alt rounded-lg p-3 my-3' }, [
         el('div', { class: 'text-sm font-medium mb-2' }, ['运行日志']),
-        row(
-          field('日志记录级别', logLevelSel, '选择记录的日志级别，低级别会包含高级别日志'),
-          field('历史记录保留条数', historyInput, '超过此条数时自动清理最早记录'),
-        ),
+        row(fb.el('logLevel'), fb.el('historyLimit')),
         logSizeEl,
         el('div', {}, [logViewBtn, logClearBtn]),
       ]),
@@ -251,21 +223,11 @@ export function renderSettings(container: HTMLElement) {
       cacheInfoEl.textContent = '加载失败'
     })
 
-    // 播放设置（2026-09-16 修复⑤：剪辑页预览器默认静音改为可配置，不再硬编码）
-    const mutedChk = el('input', {
-      type: 'checkbox', class: 'w-4 h-4', checked: s.playerMuted !== false,
-    }) as HTMLInputElement
+    // 播放设置（2026-09-16 修复⑤：剪辑页预览器默认静音改为可配置，不再硬编码；P2-2：字段由 formBuilder 生成）
     form.append(
       el('div', { class: 'bg-surface-alt rounded-lg p-3 my-3' }, [
         el('div', { class: 'text-sm font-medium mb-2' }, ['播放']),
-        field(
-          '剪辑页预览器默认静音',
-          el('label', { class: 'flex items-center gap-2 cursor-pointer' }, [
-            mutedChk,
-            el('span', { class: 'text-sm' }, ['打开剪辑页时预览器默认处于静音状态']),
-          ]),
-          '取消勾选则预览器默认开启声音（浏览器可能限制自动播放带声视频，首次播放需手动点击播放按钮）',
-        ),
+        fb.el('playerMuted'),
       ]),
     )
 
@@ -283,19 +245,20 @@ export function renderSettings(container: HTMLElement) {
     save.onclick = async () => {
       if (!settings) return
       const transferMode = (form.querySelector('input[name="transferMode"]:checked') as HTMLInputElement)?.value || 'http'
+      const c = fb.collect()
       const body: Settings = {
-        schedulerIntervalSec: Number(intervalInput.value) || 1,
-        chunkSizeMB: Number(chunkInput.value) || 4,
-        maxRetry: Number(retryInput.value) || 0,
-        historyLimit: Number(historyInput.value) || 1000,
+        schedulerIntervalSec: Number(c.schedulerIntervalSec) || 1,
+        chunkSizeMB: Number(c.chunkSizeMB) || 4,
+        maxRetry: Number(c.maxRetry) || 0,
+        historyLimit: Number(c.historyLimit) || 1000,
         outputSuffix: settings.outputSuffix,
         accessiblePaths: settings.accessiblePaths || [],
         transferMode,
-        smbUser: smbUserInput.value.trim(),
-        smbPassword: smbPasswordInput.value,
-        logLevel: logLevelSel.value,
-        maxLocalTranscodeCount: Number(maxLocalTranscodeInput.value) || 1,
-        playerMuted: mutedChk.checked,
+        smbUser: String(c.smbUser ?? '').trim(),
+        smbPassword: String(c.smbPassword ?? ''),
+        logLevel: String(c.logLevel ?? ''),
+        maxLocalTranscodeCount: Number(c.maxLocalTranscodeCount) || 1,
+        playerMuted: Boolean(c.playerMuted),
       }
       try {
         const r = await api.saveSettings(body)

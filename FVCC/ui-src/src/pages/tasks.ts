@@ -3,6 +3,7 @@ import { api } from '../api'
 import { el, toast, formatTime, emptyState, svgIcon, showBatchResult } from '../ui'
 import { type Task, type TaskStatus, STATUS_LABEL, STATUS_CLASS } from '../types'
 import { crudActions } from '../lib/crudActions'
+import { useListPage } from '../lib/useListPage'
 // C-09：渲染/代理任务的阶段文案、进度文案、成品回看统一由 taskView 派生（06 §2.2 / §6）
 import {
   isProxyTask,
@@ -142,10 +143,18 @@ export function renderTasks(container: HTMLElement) {
     }
   }
 
-  // C-09：返回退订句柄（任务抽屉复用本列表，关闭抽屉不销毁，仅真正卸载时才退订，避免重复订阅）
-  const unsubscribe = store.subscribe(render)
-  render()
-  return unsubscribe
+  // C-09：返回退订句柄（任务抽屉复用本列表，关闭抽屉不销毁，仅真正卸载时才退订，避免重复订阅）；P2-2：改走 useListPage 统一生命周期
+  const page = useListPage({
+    load: async () => {
+      await store.loadTasks()
+      return store.tasks
+    },
+    render: () => render(),
+    subscribe: (cb) => store.subscribe(cb),
+    errorLabel: '任务列表',
+  })
+  page.mount()
+  return page.dispose
 }
 
 // 更新卡片中动态变化的部分（进度、选中态、错误信息），不触碰按钮

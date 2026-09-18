@@ -3,6 +3,7 @@ import { api } from '../api'
 import { el, toast, formatTime, emptyState, svgIcon } from '../ui'
 import { type TaskStatus, STATUS_LABEL, STATUS_CLASS } from '../types'
 import { crudActions } from '../lib/crudActions'
+import { useListPage } from '../lib/useListPage'
 
 // 排序状态
 type SortKey = 'fileName' | 'status' | 'serverId' | 'createdAt' | 'updatedAt'
@@ -187,8 +188,18 @@ export function renderHistory(container: HTMLElement) {
     successMsg: () => '已删除',
   })
 
-  store.subscribe(render)
-  loadHistoryPage()
+  // P2-2：store 通知直接重渲染本地已加载数据（不触发重新请求，避免分页加载内 notify 造成刷新循环）；首次加载/刷新走 useListPage
+  const unsubStore = store.subscribe(render)
+  const page = useListPage({
+    load: async () => {
+      await loadHistoryPage()
+      return []
+    },
+    render: () => render(),
+    errorLabel: '历史记录',
+  })
+  page.mount()
   filterSel.onchange = () => { currentPage = 1; render() }
   render()
+  return () => { unsubStore(); page.dispose() }
 }

@@ -2,6 +2,7 @@ import { store } from '../store'
 import { api } from '../api'
 import { el, toast, formatSize, formatDuration, emptyState, svgIcon, skeletonRows, setupDialogAccessibility, showBatchResult } from '../ui'
 import { type VideoInfo, type StreamInfo } from '../types'
+import { useListPage } from '../lib/useListPage'
 
 // 格式化码率：ffprobe 返回 bps 字符串，转换为人类可读
 function formatBitrate(bps: string | number): string {
@@ -978,9 +979,16 @@ async function doScan(path: string, scanBtn: HTMLButtonElement, onDone: () => vo
   }
 }
 
-  store.subscribe(render)
-  render()
+  // P2-2：扫描列表走 useListPage 统一生命周期（load 幂等返回内存数据，不重复扫描）
+  const page = useListPage({
+    load: async () => [...scannedVideos],
+    render: () => render(),
+    subscribe: (cb) => store.subscribe(cb),
+    errorLabel: '扫描结果',
+  })
+  page.mount()
   updateStats()
+  return page.dispose
 }
 
 // isSMBMode 判断当前是否为SMB传输模式
