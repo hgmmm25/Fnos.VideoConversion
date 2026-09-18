@@ -1,10 +1,11 @@
 import './style.css'
-// P1-3：IBM Plex 西文字体本地打包（NAS 离线可用；中文回退系统字体栈）
-import '@fontsource/ibm-plex-sans/400.css'
-import '@fontsource/ibm-plex-sans/500.css'
-import '@fontsource/ibm-plex-sans/600.css'
-import '@fontsource/ibm-plex-mono/400.css'
-import '@fontsource/ibm-plex-mono/500.css'
+// P1-3/P1-5：IBM Plex 西文字体本地打包（NAS 离线可用；中文回退系统字体栈）
+// P1-5：仅引入 latin 子集，避免全字符集（latin-ext/cyrillic/greek/vietnamese）进包
+import '@fontsource/ibm-plex-sans/latin-400.css'
+import '@fontsource/ibm-plex-sans/latin-500.css'
+import '@fontsource/ibm-plex-sans/latin-600.css'
+import '@fontsource/ibm-plex-mono/latin-400.css'
+import '@fontsource/ibm-plex-mono/latin-500.css'
 import { store } from './store'
 import { ws } from './ws'
 import { initCommandPalette } from './command'
