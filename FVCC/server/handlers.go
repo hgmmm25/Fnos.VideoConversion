@@ -213,6 +213,7 @@ func (h *Handlers) getVideoCacheInfo(c *gin.Context) {
 
 func (h *Handlers) clearVideoCache(c *gin.Context) {
 	h.store.ClearVideoCache()
+	auditDestructive(c, auditActionDestructiveClear, "video_cache", "ok")
 	c.JSON(200, gin.H{"ok": true})
 }
 
@@ -792,6 +793,7 @@ func (h *Handlers) deleteServer(c *gin.Context) {
 		return
 	}
 	h.remote.CloseConn(id)
+	auditDestructive(c, auditActionDestructiveDelete, "server:"+id, "ok")
 	c.JSON(200, gin.H{"ok": true})
 }
 
@@ -1179,6 +1181,7 @@ func (h *Handlers) deleteHistory(c *gin.Context) {
 		fail(c, 404, "历史记录不存在")
 		return
 	}
+	auditDestructive(c, auditActionDestructiveDelete, "history:"+id, "ok")
 	c.JSON(200, gin.H{"ok": true})
 }
 

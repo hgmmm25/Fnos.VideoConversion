@@ -381,3 +381,52 @@ AIGC:
 | P2-3 门槛 | 覆盖率 ≥60% 强制门槛 | 当前基线 56.1%（全包口径）/ 57.0%（主包口径）未达标，待决策（§11.5） |
 
 *（内容由AI生成，仅供参考）*
+
+---
+
+## 12. 第七轮（2026-09-18）—— P2-4 / P2-6 / P2-7 / P2-8 收口
+
+### 12.1 目标
+
+依据 `FVCC_混乱度评价报告_细化版.md` §4 P2 组计划项，对剩余未收口的四项逐项落地或验证，并同步更新报告状态行（复核日期 2026-09-18）。
+
+### 12.2 各项动作与结果
+
+| 编号 | 本轮动作 | 结果 |
+|---|---|---|
+| P2-4 | 复核存量 `{error}` 裸格式（grep 为 0，apierr.go + API_CONTRACT.md + api.ts 适配层已完成迁移）；remote.go 剩余 snake_case 结构体均为 FVCS 对等协议段，在 progressPush/helloPush 注释补 API_CONTRACT §3.2 分界引用 | ✅ 已收口，无剩余动作 |
+| P2-6 | 清除 5 份文档 AIGC frontmatter（ui-src/PRODUCT.md、docs/API_CONTRACT.md、根目录 项目分析与改进方向.md、WebVideoEditor_整体架构设计方案.md、混乱报告自身；README 侧上一轮已清）；version.go"发布约定 2026-09-16"注释语义化并指向 README 版本表 | ✅ 已收口 |
+| P2-7 | `genproxy_share_cred_126_test.go` → `genproxy_share_cred_test.go`、`handlers_edl_list_contract_test.go` → `handlers_edl_list_test.go`（git mv 保留历史），TASK_REFERENCE §3.6 同步 | ✅ 已落地 |
+| P2-8 | security_audit.go 新增 `auditDestructive`（destructive.delete / destructive.clear / destructive.empty_trash）并接入 8 处破坏性操作调用点（清日志 / 清视频缓存 / 删视频 / 删服务器 / 删方案 / 删任务 / 删历史 / 清空回收站）；配套单测 TestP28DestructiveOpsAudited | ✅ 已落地，go build / vet / test 全绿 |
+
+### 12.3 变更文件清单
+
+**新增**
+- 无（未新增文件，单测追加至既有 `security_audit_test.go`）
+
+**修改**
+- `FVCC/server/security_audit.go`（新增 auditDestructive + 3 个 destructive.* 动作常量）
+- `FVCC/server/handlers.go`（7 处破坏性操作接入审计）
+- `FVCC/server/trash.go`（emptyTrash 接入审计）
+- `FVCC/server/remote.go`（P2-4 协议段注释补 API_CONTRACT §3.2 引用 ×2）
+- `FVCC/server/version.go`（P2-6 编号注释语义化）
+- `FVCC/server/security_audit_test.go`（新增 TestP28DestructiveOpsAudited）
+- `FVCC/server/genproxy_share_cred_126_test.go` → `genproxy_share_cred_test.go`（git mv）
+- `FVCC/server/handlers_edl_list_contract_test.go` → `handlers_edl_list_test.go`（git mv）
+- `FVCC/ui-src/PRODUCT.md`、`FVCC/docs/API_CONTRACT.md`、`项目分析与改进方向.md`、`WebVideoEditor_整体架构设计方案.md`、`FVCC_混乱度评价报告_细化版.md`（P2-6 清 AIGC frontmatter + 状态行更新）
+- `FVCC/README.md`（新增 P2 组治理状态表）
+- `docs/TASK_REFERENCE.md`（§3.6 测试命名追溯更新）
+- `docs/IMPROVEMENT_LOG.md`（本轮）
+
+### 12.4 未落实项（延续至后续迭代）
+
+| 编号 | 未落实内容 | 原因 |
+|---|---|---|
+| P0-2 | JSON 文件存储迁 SQLite | 结构性重构，需独立里程碑 |
+| P1-1 完整版 | 1s ticker 改纯事件驱动调度 | 调度内核重构，与既有验收强耦合 |
+| P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策 |
+| P2-1 | 后端 internal 分层 | 大工程（handlers 1765 行等），1~2 月级 |
+| P2-2 | 前端组件化 | 大工程（profiles/scanner 1100+ 行），1~2 月级 |
+| P2-3 门槛 | 覆盖率 ≥60% 强制门槛 | 当前基线 56.1%（全包口径）/ 57.0%（主包口径）未达标，待决策（§11.5） |
+
+*（内容由AI生成，仅供参考）*

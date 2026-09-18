@@ -19,6 +19,11 @@ const (
 	auditActionValidateReject = "validate.reject"
 	auditActionSecurityAlert  = "security.alert"
 
+	// P2-8：破坏性操作审计动作（删除/清缓存/清日志/清空回收站统一记账）
+	auditActionDestructiveDelete = "destructive.delete"      // 删除（视频→回收站 / 服务器 / 方案 / 任务 / 历史）
+	auditActionDestructiveClear  = "destructive.clear"       // 清空日志 / 清空视频缓存
+	auditActionDestructiveEmpty  = "destructive.empty_trash" // 清空回收站
+
 	// 07 §7 告警阈值（5 分钟滑动窗口，按来源 IP 聚合）
 	alertAssetScanThreshold    = 3  // E_ASSET_NOT_IN_ROOT ≥ 3 → 越权扫描
 	alertPayloadProbeThreshold = 50 // E_EDL_INVALID / E_PAYLOAD_INVALID 突增 → 协议探测
@@ -69,6 +74,34 @@ func auditRejection(c *gin.Context, code string) {
 			Target: target,
 			Detail: reason + " | " + detail,
 			Result: code,
+		})
+	}
+}
+
+// auditDestructive 记账一次破坏性操作（删除/清缓存/清日志/清空回收站），
+// 与 auditRejection 共用 globalStore 审计通道。脱敏约定同拒绝类：Detail 只记录
+// 「方法 + 路径 + 来源 IP」；资源标识经调用方显式传入 Target（文件路径 / id）。
+func auditDestructive(c *gin.Context, action, target, result string) {
+	actor := "local"
+	detail := "-"
+	if c != nil && c.Request != nil {
+		if u := getGatewayUser(c); u.Username != "" {
+			actor = u.Username
+		}
+		method, path := c.Request.Method, c.Request.URL.Path
+		detail = method + " " + path
+		if ip := c.ClientIP(); ip != "" {
+			detail = fmt.Sprintf("%s ip=%s", detail, ip)
+		}
+	}
+	logger.Warn("audit", "破坏性操作 action=%s actor=%s target=%s detail=%s result=%s", action, actor, target, detail, result)
+	if globalStore != nil {
+		globalStore.AppendAudit(AuditEntry{
+			Actor:  actor,
+			Action: action,
+			Target: target,
+			Detail: detail,
+			Result: result,
 		})
 	}
 }

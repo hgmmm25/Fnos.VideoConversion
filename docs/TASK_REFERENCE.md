@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 839b5d1d4fff15220193598838e6072d_ca956a5cb31c11f19369525400de85a5
+    ReservedCode1: 8TMo0q7JeCf0vb8mo5MxD49pdodei70cvZmh7dCFWvSnAZVt8Ajk9YEu3mV99zck8lcy+mXukGkD6xRvxYdZNv+JSWlhj2tyKuwtkhVAl4EhDrlX1MQLJN5wsUDMXyzMZJmO/yj5eIg1svGKGaik0BFfU6qRq7LDtUwWEBxyohtxC/eG41mY8S0ZacM=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 839b5d1d4fff15220193598838e6072d_ca956a5cb31c11f19369525400de85a5
+    ReservedCode2: 8TMo0q7JeCf0vb8mo5MxD49pdodei70cvZmh7dCFWvSnAZVt8Ajk9YEu3mV99zck8lcy+mXukGkD6xRvxYdZNv+JSWlhj2tyKuwtkhVAl4EhDrlX1MQLJN5wsUDMXyzMZJmO/yj5eIg1svGKGaik0BFfU6qRq7LDtUwWEBxyohtxC/eG41mY8S0ZacM=
+---
+
 # FVCC 任务编号与章节引用对照表（TASK_REFERENCE）
 
 > 用途：混乱报告 P2-6「清理任务编号注释」的落地物。代码注释中散落的 `B-xx / C-xx / D-xx / M4 / Px-x / 修复①-⑤` 任务编号与 `03 §4.2` 式章节引用，在本表中统一登记为可读语义，供维护者追溯设计依据。
@@ -115,10 +126,10 @@
 
 | 测试文件 | 命名含义 | 追溯状态 |
 |---|---|---|
-| `genproxy_share_cred_126_test.go` | 代理生成 + 共享凭据（share_cred）场景测试，`126` 为任务票号 | 票号 126 的具体任务描述已不可考（代码内无台账对应） |
-| `handlers_edl_list_contract_test.go` | EDL 列表接口契约测试（contract 后缀表示按接口契约命名） | 契约语义可从 03 §4.2 追溯 |
+| `genproxy_share_cred_test.go` | 代理生成 + 共享凭据（share_cred）场景测试（原名 `genproxy_share_cred_126_test.go`，`126` 为任务票号，2026-09-18 git mv 去票号） | 票号 126 的具体任务描述已不可考（代码内无台账对应） |
+| `handlers_edl_list_test.go` | EDL 列表接口契约测试（原名 `handlers_edl_list_contract_test.go`，contract 后缀表示按接口契约命名，2026-09-18 git mv 去后缀） | 契约语义可从 03 §4.2 追溯 |
 
-> 结论：测试文件命名混用「被测对象 + 票号/契约后缀」，与实现文件对应关系不直观，属混乱报告 §2.8 扣分项③；本轮不做重命名（避免破坏既有引用），建议后续统一为 `handlers_<domain>_test.go` 风格。
+> 结论：测试文件命名混用「被测对象 + 票号/契约后缀」，与实现文件对应关系不直观，属混乱报告 §2.8 扣分项③；P2-7 已于 2026-09-18 落地，两文件统一为 `handlers_<domain>_test.go` 风格（git mv 保留历史），后续新测试沿用该风格。
 
 ---
 
@@ -147,3 +158,4 @@
 1. 新代码注释**禁止**再引入未登记的任务编号；确需溯源时按「可读语义（编号）」格式书写。
 2. 新规格文档引用一律写 `WebVideoEditor_Design/<文件名> §x.y` 全路径。
 3. 本表新增/修改编号映射时同步更新本节，避免再次漂移。
+*（内容由AI生成，仅供参考）*

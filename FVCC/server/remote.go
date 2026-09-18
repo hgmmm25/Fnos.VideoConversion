@@ -136,7 +136,7 @@ type progressPush struct {
 	Msg       string  `json:"msg,omitempty"`
 }
 
-// HelloPush FVCS Hello 报文的线上结构（B-08，06 §5.1）。
+// HelloPush FVCS Hello 报文的线上结构（B-08，06 §5.1；内部协议段，snake_case 边界见 API_CONTRACT §3.2）。
 // 兼容两种风格：camelCase（NodeCaps 直出）与 snake_case（节点侧习惯），
 // 并允许能力对象嵌套在 caps / nodeCaps 字段内。
 type helloPush struct {

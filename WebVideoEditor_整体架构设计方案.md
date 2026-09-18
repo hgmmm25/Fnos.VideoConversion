@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_8e078fd1ac2111f1af37525400826444
-    ReservedCode1: ROBE1dXi7c3Sy9Bw7nH8NUf4lP3BaOkG+F3S59lz47qfGCmsKvCSXNOgfXUCgiXOLwf5PSUjBpR4HZ2lg+Tx2zghQDYSbdix9w8m9jsK/yNR5sqMLBL2Kiz66nNGLKF9qEieTrF9/keWpsTG25IKFagzeVsunLSu3CnANicXyn0wWk3u31Hoh1yqZuM=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_8e078fd1ac2111f1af37525400826444
-    ReservedCode2: ROBE1dXi7c3Sy9Bw7nH8NUf4lP3BaOkG+F3S59lz47qfGCmsKvCSXNOgfXUCgiXOLwf5PSUjBpR4HZ2lg+Tx2zghQDYSbdix9w8m9jsK/yNR5sqMLBL2Kiz66nNGLKF9qEieTrF9/keWpsTG25IKFagzeVsunLSu3CnANicXyn0wWk3u31Hoh1yqZuM=
----
-
 # 基于 Fnos.VideoConversion 架构的 Web 剪辑软件设计方案
 
 > **文档快照漂移说明（P3-2）**：本文档为设计规格快照，描述的目标架构（含事件契约、模块边界）以 `FVCC/server` 与 `FVCS` 源码实际实现为准；"规格已声明但源码未消费"的接口/事件视为未落地，详见《项目分析与改进方向.md》的落实记录。

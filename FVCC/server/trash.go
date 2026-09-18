@@ -209,5 +209,6 @@ func (h *Handlers) emptyTrash(c *gin.Context) {
 			}
 		}
 	}
+	auditDestructive(c, auditActionDestructiveEmpty, "_trash", fmt.Sprintf("removed=%d", len(removed)))
 	c.JSON(200, gin.H{"ok": true, "removed": len(removed)})
 }

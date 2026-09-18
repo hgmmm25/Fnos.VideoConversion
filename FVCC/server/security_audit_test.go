@@ -157,3 +157,31 @@ func newAuditGinContext(t *testing.T, ip string) *gin.Context {
 	c.Request = req
 	return c
 }
+
+func TestP28DestructiveOpsAudited(t *testing.T) {
+	_, s := newEDLTestRouter(t, t.TempDir())
+	withGlobalStore(t, s)
+
+	c := newAuditGinContext(t, "203.0.113.99")
+	c.Request.Header.Set("X-Trim-User-Name", "ops")
+	auditDestructive(c, auditActionDestructiveDelete, "server:srv1", "ok")
+	auditDestructive(c, auditActionDestructiveClear, "video_cache", "ok")
+	auditDestructive(c, auditActionDestructiveEmpty, "_trash", "removed=3")
+
+	deletes := s.ListAudit(0, auditActionDestructiveDelete)
+	if len(deletes) != 1 || deletes[0].Target != "server:srv1" {
+		t.Fatalf("删除类应记 1 条 destructive.delete，实际 %+v", deletes)
+	}
+	if deletes[0].Actor != "ops" {
+		t.Fatalf("actor 应取网关用户名 ops，实际 %q", deletes[0].Actor)
+	}
+	if !strings.Contains(deletes[0].Detail, "/api/edl/projects") || !strings.Contains(deletes[0].Detail, "203.0.113.99") {
+		t.Fatalf("Detail 应脱敏记录方法+路径+IP，实际 %q", deletes[0].Detail)
+	}
+	if got := len(s.ListAudit(0, auditActionDestructiveClear)); got != 1 {
+		t.Fatalf("清空类应记 1 条 destructive.clear，实际 %d", got)
+	}
+	if got := len(s.ListAudit(0, auditActionDestructiveEmpty)); got != 1 {
+		t.Fatalf("清空回收站应记 1 条 destructive.empty_trash，实际 %d", got)
+	}
+}
