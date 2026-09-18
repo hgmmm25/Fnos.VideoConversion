@@ -306,4 +306,78 @@ AIGC:
 | P2-2 | 前端组件化 | 大工程（profiles/scanner 1100+ 行），1~2 月级 |
 | P2-4 | API 契约统一 | 78 处错误格式迁移 + 字段命名规范，需分批复核 |
 
+---
+
+## 十一、第六轮改进（2026-09-18）：P2-6 任务编号注释清理 + P2-3 覆盖率基线补完
+
+### 11.1 背景
+
+混乱报告 §2.2 证据 2 / §2.6 混乱点 1 / §2.8 扣分项：代码注释散落任务编号（B-xx/C-xx/D-xx/M4/修复①-⑤/Px-x）与悬空章节引用（03 §4.1 等），仓库内无 docs/ 追溯；CI 无覆盖率统计与阈值。另修正 §10.4 收口表误标：P2-6 此前标 ✅ 实际仅清理 AIGC frontmatter，任务编号注释清理未做；P2-4 此前标 🔶 待做，已在历史轮次实际落地（apierr.go + API_CONTRACT.md）。
+
+### 11.2 P2-6：任务编号注释清理
+
+1. **新增 `docs/TASK_REFERENCE.md`**（编号→可读语义权威对照表）：
+   - P 组按 **server 与 ui-src 两套独立清单**分离登记（后端 P0-1=凭据加密 ≠ 前端 P0-1=主题令牌，同名不同义已显式警示）；
+   - B-01~B-09（调度/EDL 业务批次）、C-01~C-10（前端剪辑页批次）、D-02/D-04（安全任务）、M4（预览网关+代理工作流）、修复①-⑤（剪辑页缺陷修复）逐项映射可读语义与代表位置；
+   - 章节引用 → `WebVideoEditor_Design/01~10` 文档全路径映射表（历史短写 `nn §x.y` 统一还原）；
+   - `FS.md 8.2`（security.go 引用的四层校验原始规格）仓库内无对应文件，如实标注**不可考**；
+   - 测试文件命名说明：`genproxy_share_cred_126_test.go` 的票号 126 已不可考、`handlers_edl_list_contract_test.go` 为契约后缀命名，建议后续统一 `handlers_<domain>_test.go` 风格（本轮不改名，避免破坏既有引用）。
+2. **改写 12 处高价值注释**为「可读语义（编号）：说明」自包含形式（编号保留作括号溯源）：
+   - `handlers.go`：B-04（渲染提交，videoRoot/exportRoot 保留逻辑）、P0-1 ×4（凭据不回显/保存旧密钥）；
+   - `handlers_proxy.go`：M4（预览网关/代理工作流提交侧，补充文档全路径）；
+   - `edl_validate.go`：D-02（EDL 白名单校验）；
+   - `remote.go`：P2-1（跨端链路追踪 ID）；
+   - `scheduler.go`：B-08 ×3（节点指标窗口/失败率分母/健康分熔断入账）；
+   - `security_audit.go`：D-04（审计与告警，补充文档全路径）。
+3. **保守策略说明**：分节导航标题（`// ===== B-xx：... =====`）与已自包含的行内注释保留不动；章节引用未逐条改写，统一由 TASK_REFERENCE.md §4 说明文档位置与章节含义；未做机械批量替换。
+
+### 11.3 P2-3：覆盖率基线补完（🔶 门槛待决策）
+
+1. **新增 `scripts/check-coverage.ps1`**（本地与 CI 复用）：
+   - 口径：`go test [-race|-short] -coverpkg=./... -coverprofile=<temp> .`（全包插桩，单测试目标保证 coverprofile 落盘；含 logger/smbshare 无测试子包）；
+   - 输出 `go tool cover -func` 全量明细 + 总覆盖率；低于阈值（默认 60%）打印 FAIL 并退出码 1。
+2. **`.github/workflows/fvcc-ci.yml`**：backend job 新增 `Coverage gate (>= 60%)` 步骤（`pwsh ../../scripts/check-coverage.ps1 -Race`）。
+3. **本机实测覆盖率：全包口径 56.1%、主包口径 57.0%，均低于 60% 目标**——按任务约定属结构性问题，**门槛提交已停止等待决策**（选项见 §11.5）。脚本/CI 配置已就绪，待决策后按所选阈值收口。
+
+### 11.4 验证结果
+
+1. `server`: `go build ./...` ✅、`go vet ./...` ✅、`go test -short ./...` ✅（经 check-coverage.ps1 -Short 运行验证，56.1% 输出 + FAIL 退出码 1 行为符合预期）
+2. `ui-src`: `npx tsc --noEmit` ✅
+3. 覆盖率基线数据：主包 `go test -short -coverprofile .` = **57.0%**；全包 `-coverpkg=./...` = **56.1%**（logger/smbshare 无测试文件拉低约 0.9pt）
+
+### 11.5 待决策事项（P2-3 覆盖率门槛）
+
+| 选项 | 内容 | 说明 |
+|---|---|---|
+| A | 阈值按当前基线下调（如 55%）先立门槛 | CI 立即可用；后续补测试后再逐步上调 |
+| B | 保持 60%，本轮/下轮补测试拉高覆盖率 | 需新增覆盖未测路径（ffprobe、若干 handlers 分支等） |
+| C | 暂不加门槛，仅保留统计汇总步骤 | CI 不因覆盖率失败 |
+
+### 11.6 变更文件清单
+
+**新增**
+- `docs/TASK_REFERENCE.md`（P2-6 对照表）
+- `scripts/check-coverage.ps1`（P2-3 覆盖率检查）
+
+**修改**
+- `FVCC/server/handlers.go`（B-04/P0-1 注释语义化 ×4）
+- `FVCC/server/handlers_proxy.go`（M4 注释语义化）
+- `FVCC/server/edl_validate.go`（D-02 注释语义化）
+- `FVCC/server/remote.go`（P2-1 注释语义化）
+- `FVCC/server/scheduler.go`（B-08 注释语义化 ×3）
+- `FVCC/server/security_audit.go`（D-04 注释语义化）
+- `.github/workflows/fvcc-ci.yml`（Coverage gate 步骤，P2-3）
+- `docs/IMPROVEMENT_LOG.md`（本轮）
+
+### 11.7 未落实项（延续至后续迭代）
+
+| 编号 | 未落实内容 | 原因 |
+|---|---|---|
+| P0-2 | JSON 文件存储迁 SQLite | 结构性重构，需独立里程碑 |
+| P1-1 完整版 | 1s ticker 改纯事件驱动调度 | 调度内核重构，与既有验收强耦合 |
+| P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策 |
+| P2-1 | 后端 internal 分层 | 大工程（handlers 1765 行等），1~2 月级 |
+| P2-2 | 前端组件化 | 大工程（profiles/scanner 1100+ 行），1~2 月级 |
+| P2-3 门槛 | 覆盖率 ≥60% 强制门槛 | 当前基线 56.1%（全包口径）/ 57.0%（主包口径）未达标，待决策（§11.5） |
+
 *（内容由AI生成，仅供参考）*
