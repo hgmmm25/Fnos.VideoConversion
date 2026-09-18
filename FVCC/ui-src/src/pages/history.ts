@@ -1,7 +1,8 @@
 import { store } from '../store'
 import { api } from '../api'
-import { el, toast, confirmDialog, formatTime, emptyState, svgIcon } from '../ui'
+import { el, toast, formatTime, emptyState, svgIcon } from '../ui'
 import { type TaskStatus, STATUS_LABEL, STATUS_CLASS } from '../types'
+import { crudActions } from '../lib/crudActions'
 
 // 排序状态
 type SortKey = 'fileName' | 'status' | 'serverId' | 'createdAt' | 'updatedAt'
@@ -129,16 +130,8 @@ export function renderHistory(container: HTMLElement) {
       tr.appendChild(el('td', { class: 'px-4 py-2 whitespace-nowrap text-xs' }, [formatTime(t.updatedAt)]))
       tr.appendChild(el('td', { class: 'px-4 py-2 truncate max-w-xs text-xs text-danger' }, [t.errorMsg || '-']))
       const del = el('button', { class: 'btn btn-sm btn-danger' }, ['删除'])
-      del.onclick = async () => {
-        if (!(await confirmDialog('确定删除该历史记录？'))) return
-        try {
-          await api.deleteHistory(t.id)
-          currentPage = 1
-          loadHistoryPage()
-          toast('已删除', 'success')
-        } catch (e) {
-          toast((e as Error).message, 'error')
-        }
+      del.onclick = () => {
+        historyActions.remove(t.id)
       }
       tr.appendChild(el('td', { class: 'px-4 py-2' }, [del]))
       tbody.appendChild(tr)
@@ -181,6 +174,18 @@ export function renderHistory(container: HTMLElement) {
       toast((e as Error).message, 'error')
     }
   }
+
+  // P2-2：删除历史记录走公共 CRUD 四件套；成功后重置分页并刷新
+  const historyActions = crudActions<string>({
+    confirmTitle: () => '确定删除该历史记录？',
+    danger: false,
+    apiCall: (_action, id) => api.deleteHistory(id),
+    reload: async () => {
+      currentPage = 1
+      await loadHistoryPage()
+    },
+    successMsg: () => '已删除',
+  })
 
   store.subscribe(render)
   loadHistoryPage()

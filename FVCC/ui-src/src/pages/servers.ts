@@ -1,7 +1,8 @@
 import { store } from '../store'
 import { api } from '../api'
-import { el, toast, confirmDialog, emptyState, formatTime, svgIcon } from '../ui'
+import { el, toast, emptyState, formatTime, svgIcon } from '../ui'
 import { type Server } from '../types'
+import { crudActions } from '../lib/crudActions'
 
 export function renderServers(container: HTMLElement) {
   const wrap = el('div', { class: 'flex flex-col h-full p-4 gap-3' })
@@ -19,6 +20,15 @@ export function renderServers(container: HTMLElement) {
       wrap.appendChild(renderEdit(s))
     }
   }
+
+  // P2-2：列表卡片删除走公共 CRUD 四件套（确认弹窗 → api → toast → reload）
+  const serverActions = crudActions<Server>({
+    confirmTitle: (x) => `确定删除服务器「${x.name}」？`,
+    danger: false,
+    apiCall: (_action, item) => api.deleteServer(item.id),
+    reload: () => store.loadServers(),
+    successMsg: () => '已删除',
+  })
 
   function renderList(): HTMLElement {
     const addBtn = el('button', { class: 'btn btn-primary ml-auto flex items-center gap-1.5' }, [])
@@ -85,17 +95,9 @@ export function renderServers(container: HTMLElement) {
           const delBtn = el('button', { class: 'btn btn-sm btn-danger' }, [])
           delBtn.append(svgIcon('trash', 14) as unknown as Node)
           delBtn.title = '删除'
-          delBtn.onclick = async (e) => {
+          delBtn.onclick = (e) => {
             e.stopPropagation()
-            if (!(await confirmDialog(`确定删除服务器「${s.name}」？`))) return
-            try {
-              await api.deleteServer(s.id)
-              await store.loadServers()
-              toast('已删除', 'success')
-              render()
-            } catch (err) {
-              toast((err as Error).message, 'error')
-            }
+            serverActions.remove(s)
           }
           return delBtn
         })(),
@@ -167,6 +169,21 @@ async function refreshServerStatus() {
 function editForm(s: Server | undefined, onBack: () => void): HTMLElement {
   const form = el('div', { class: 'card p-4 max-w-3xl mx-auto w-full' })
 
+  // P2-2：编辑页删除/保存走公共 CRUD 四件套；成功后刷新并返回清单
+  const editActions = crudActions<Partial<Server>>({
+    confirmTitle: (x) => `确定删除服务器「${x.name}」？`,
+    danger: false,
+    apiCall: (action, item) => {
+      if (action === 'delete') return api.deleteServer(item.id!)
+      return s ? api.updateServer(s.id, { ...s, ...item }) : api.createServer(item)
+    },
+    reload: async () => {
+      await store.loadServers()
+      onBack()
+    },
+    successMsg: () => '保存成功',
+  })
+
   const nameInput = el('input', { class: 'input', placeholder: '服务器名称', value: s?.name ?? '' }) as HTMLInputElement
   const ipInput = el('input', { class: 'input', placeholder: 'IP 地址，如 192.168.1.100', value: s?.ip ?? '' }) as HTMLInputElement
   const portInput = el('input', { type: 'number', class: 'input', placeholder: '端口', value: s ? String(s.port) : '8080' }) as HTMLInputElement
@@ -205,16 +222,8 @@ function editForm(s: Server | undefined, onBack: () => void): HTMLElement {
   if (s) {
     const del = el('button', { class: 'btn btn-danger mr-auto flex items-center gap-1.5' }, [])
     del.append(svgIcon('trash', 14) as unknown as Node, el('span', {}, ['删除']))
-    del.onclick = async () => {
-      if (!(await confirmDialog(`确定删除服务器「${s.name}」？`))) return
-      try {
-        await api.deleteServer(s.id)
-        await store.loadServers()
-        toast('已删除', 'success')
-        onBack()
-      } catch (e) {
-        toast((e as Error).message, 'error')
-      }
+    del.onclick = () => {
+      editActions.remove(s!)
     }
     btns.append(del)
   }
@@ -239,15 +248,8 @@ function editForm(s: Server | undefined, onBack: () => void): HTMLElement {
       toast('请填写 IP 地址')
       return
     }
-    try {
-      if (s) await api.updateServer(s.id, { ...s, ...body })
-      else await api.createServer(body)
-      await store.loadServers()
-      toast('保存成功', 'success')
-      onBack()
-    } catch (e) {
-      toast((e as Error).message, 'error')
-    }
+    if (s) await editActions.update({ ...s, ...body })
+    else await editActions.create(body)
   }
   btns.append(cancel, save)
   form.appendChild(btns)

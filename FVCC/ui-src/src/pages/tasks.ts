@@ -1,7 +1,8 @@
 import { store } from '../store'
 import { api } from '../api'
-import { el, toast, confirmDialog, formatTime, emptyState, svgIcon, showBatchResult } from '../ui'
+import { el, toast, formatTime, emptyState, svgIcon, showBatchResult } from '../ui'
 import { type Task, type TaskStatus, STATUS_LABEL, STATUS_CLASS } from '../types'
+import { crudActions } from '../lib/crudActions'
 // C-09：渲染/代理任务的阶段文案、进度文案、成品回看统一由 taskView 派生（06 §2.2 / §6）
 import {
   isProxyTask,
@@ -432,25 +433,31 @@ async function doRetry(id: string) {
     toast((e as Error).message, 'error')
   }
 }
-async function doCancel(id: string) {
-  if (!(await confirmDialog('确定取消该任务？'))) return
-  try {
-    await api.cancelTask(id)
-    toast('已取消', 'success')
-  } catch (e) {
-    toast((e as Error).message, 'error')
-  }
-}
-async function doDelete(id: string) {
-  if (!(await confirmDialog('确定删除该任务记录？'))) return
-  try {
+// P2-2：取消/删除任务走公共 CRUD 四件套（确认弹窗 → api → toast → reload）
+const taskCancelActions = crudActions<string>({
+  confirmTitle: () => '确定取消该任务？',
+  danger: false,
+  confirmFor: () => true,
+  apiCall: (_action, id) => api.cancelTask(id),
+  reload: () => store.loadTasks(),
+  successMsg: () => '已取消',
+})
+const taskDeleteActions = crudActions<string>({
+  confirmTitle: () => '确定删除该任务记录？',
+  danger: false,
+  apiCall: async (_action, id) => {
     await api.deleteTask(id)
     selected.delete(id)
-    store.loadTasks()
-    toast('已删除', 'success')
-  } catch (e) {
-    toast((e as Error).message, 'error')
-  }
+  },
+  reload: () => store.loadTasks(),
+  successMsg: () => '已删除',
+})
+
+async function doCancel(id: string) {
+  void taskCancelActions.update(id)
+}
+async function doDelete(id: string) {
+  void taskDeleteActions.remove(id)
 }
 
 async function batchOp(op: 'pause' | 'resume' | 'cancel') {

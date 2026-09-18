@@ -3,6 +3,8 @@ import { api } from '../api'
 import { el, toast, confirmDialog, emptyState, svgIcon } from '../ui'
 import { type Profile } from '../types'
 import { openDirBrowser } from './scanner'
+import { crudActions } from '../lib/crudActions'
+import { saveScrollPos, restoreScrollPos } from '../lib/scrollPos'
 
 export function renderProfiles(container: HTMLElement) {
   const wrap = el('div', { class: 'flex flex-col h-full p-4 gap-3' })
@@ -13,11 +15,7 @@ export function renderProfiles(container: HTMLElement) {
 
   // 编辑视图下不响应 store 通知，避免转码进度推送导致表单重建、丢失用户正在编辑的值
   const render = () => {
-    let scrollPos = 0
-    const scrollContainer = wrap.querySelector('.overflow-auto') as HTMLElement
-    if (scrollContainer) {
-      scrollPos = scrollContainer.scrollTop
-    }
+    saveScrollPos(wrap.querySelector('.overflow-auto') as HTMLElement, 'profiles-list')
     wrap.innerHTML = ''
     if (view === 'list') {
       wrap.appendChild(renderList())
@@ -25,16 +23,22 @@ export function renderProfiles(container: HTMLElement) {
       const p = store.profiles.find((x) => x.id === currentId)
       wrap.appendChild(renderEdit(p))
     }
-    const newScrollContainer = wrap.querySelector('.overflow-auto') as HTMLElement
-    if (newScrollContainer) {
-      newScrollContainer.scrollTop = scrollPos
-    }
+    restoreScrollPos(wrap.querySelector('.overflow-auto') as HTMLElement, 'profiles-list')
   }
 
   // 仅在列表视图响应 store 通知；编辑视图保持稳定，避免输入中途被重建
   const onStoreChange = () => {
     if (view === 'list') render()
   }
+
+  // P2-2：列表卡片删除走公共 CRUD 四件套（确认弹窗 → api → toast → reload）
+  const profileActions = crudActions<Profile>({
+    confirmTitle: (x) => `确定删除方案「${x.name}」？`,
+    danger: false,
+    apiCall: (_action, item) => api.deleteProfile(item.id),
+    reload: () => store.loadProfiles(),
+    successMsg: () => '已删除',
+  })
 
   function renderList(): HTMLElement {
     const addBtn = el('button', { class: 'btn btn-primary ml-auto flex items-center gap-1.5' }, [])
@@ -95,17 +99,9 @@ export function renderProfiles(container: HTMLElement) {
           const delBtn = el('button', { class: 'btn btn-sm btn-danger' }, [])
           delBtn.append(svgIcon('trash', 14) as unknown as Node)
           delBtn.title = '删除'
-          delBtn.onclick = async (e) => {
+          delBtn.onclick = (e) => {
             e.stopPropagation()
-            if (!(await confirmDialog(`确定删除方案「${p.name}」？`))) return
-            try {
-              await api.deleteProfile(p.id)
-              await store.loadProfiles()
-              toast('已删除', 'success')
-              render()
-            } catch (err) {
-              toast((err as Error).message, 'error')
-            }
+            profileActions.remove(p)
           }
           return delBtn
         })(),
@@ -145,6 +141,21 @@ export function renderProfiles(container: HTMLElement) {
 
 function editForm(p: Profile | undefined, onBack: () => void): HTMLElement {
   const form = el('div', { class: 'card p-4 max-w-4xl mx-auto w-full' })
+
+  // P2-2：编辑页删除/保存走公共 CRUD 四件套；成功后刷新并返回清单
+  const editActions = crudActions<Partial<Profile>>({
+    confirmTitle: (x) => `确定删除方案「${x.name}」？`,
+    danger: false,
+    apiCall: (action, item) => {
+      if (action === 'delete') return api.deleteProfile(item.id!)
+      return p ? api.updateProfile(p.id, { ...p, ...item }) : api.createProfile(item)
+    },
+    reload: async () => {
+      await store.loadProfiles()
+      onBack()
+    },
+    successMsg: () => '保存成功',
+  })
 
   const field = (label: string, control: HTMLElement, hint?: string) => {
     const children: Node[] = [el('label', { class: 'block text-sm mb-1' }, [label]), control]
@@ -1152,16 +1163,8 @@ function editForm(p: Profile | undefined, onBack: () => void): HTMLElement {
   if (p) {
     const del = el('button', { class: 'btn btn-danger mr-auto flex items-center gap-1.5' }, [])
     del.append(svgIcon('trash', 14) as unknown as Node, el('span', {}, ['删除']))
-    del.onclick = async () => {
-      if (!(await confirmDialog(`确定删除方案「${p.name}」？`))) return
-      try {
-        await api.deleteProfile(p.id)
-        await store.loadProfiles()
-        toast('已删除', 'success')
-        onBack()
-      } catch (e) {
-        toast((e as Error).message, 'error')
-      }
+    del.onclick = () => {
+      editActions.remove(p!)
     }
     btns.append(del)
   }
@@ -1260,15 +1263,8 @@ function editForm(p: Profile | undefined, onBack: () => void): HTMLElement {
     Object.assign(body, {
       outputSuffix: outputSuffixInput.value.trim() || '_trans.mp4',
     })
-    try {
-      if (p) await api.updateProfile(p.id, { ...p, ...body })
-      else await api.createProfile(body)
-      await store.loadProfiles()
-      toast('保存成功', 'success')
-      onBack()
-    } catch (e) {
-      toast((e as Error).message, 'error')
-    }
+    if (p) await editActions.update({ ...p, ...body })
+    else await editActions.create(body)
   }
   btns.append(cancel, save)
   form.appendChild(btns)
