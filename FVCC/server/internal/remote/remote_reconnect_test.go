@@ -6,7 +6,7 @@
 //  3) 主动关闭停止自愈：CloseConn 后不再自动重连；
 //  4) 优雅关闭：替换/关闭旧连接时先发 WS Close 帧，对端读到正常关闭而非 1006。
 
-package main
+package remote
 
 import (
 	"net"
@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"fvcc/internal/store/model"
 )
 
 // countingFVCS 统计接受次数的假 FVCS 节点。
@@ -77,7 +79,7 @@ func (f *countingFVCS) acceptCount() int32 {
 	return atomic.LoadInt32(&f.accepts)
 }
 
-func (f *countingFVCS) server(t *testing.T, id string) Server {
+func (f *countingFVCS) server(t *testing.T, id string) model.Server {
 	t.Helper()
 	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(f.srv.URL, "http://"))
 	if err != nil {
@@ -87,7 +89,7 @@ func (f *countingFVCS) server(t *testing.T, id string) Server {
 	if err != nil {
 		t.Fatalf("解析测试服务器端口失败: %v", err)
 	}
-	return Server{ID: id, Name: "Fake FVCS", IP: host, Port: port, AuthKey: "k_test", Status: "online"}
+	return model.Server{ID: id, Name: "Fake FVCS", IP: host, Port: port, AuthKey: "k_test", Status: "online"}
 }
 
 func waitFor(t *testing.T, timeout time.Duration, cond func() bool) bool {

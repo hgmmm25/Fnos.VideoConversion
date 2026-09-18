@@ -1,4 +1,4 @@
-package main
+package remote
 
 // v1.2.6 回归测试（代理生成 E_RENDER_FAILED 闭环）：
 //  1) GEN_PROXY 下发的素材共享根与转码同源——由 settings.videoRoot 推导，
@@ -10,24 +10,26 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"fvcc/internal/store/model"
 )
 
-func newGenProxyRemoteClient(t *testing.T, cfg Settings) *RemoteClient {
+func newGenProxyRemoteClient(t *testing.T, cfg model.Settings) *RemoteClient {
 	t.Helper()
 	rc := NewRemoteClient()
 	t.Cleanup(rc.CloseAll)
-	rc.SetSettingsProvider(func() Settings { return cfg })
+	rc.SetSettingsProvider(func() model.Settings { return cfg })
 	return rc
 }
 
 // GEN_PROXY 素材共享根必须跟随 videoRoot（与转码同源），而非已弃用的 smbSharePath。
 func TestGenProxyShareRootFollowsVideoRoot(t *testing.T) {
-	rc := newGenProxyRemoteClient(t, Settings{
+	rc := newGenProxyRemoteClient(t, model.Settings{
 		SMBSharePath: `\\192.168.1.106\T`,
 		VideoRoot:    `\\192.168.1.106\Test`,
 	})
 
-	src, dst, err := rc.resolveRenderSharePaths(TaskTypeGenProxy, []byte(`{"type":"GenProxy"}`))
+	src, dst, err := rc.resolveRenderSharePaths(model.TaskTypeGenProxy, []byte(`{"type":"GenProxy"}`))
 	if err != nil {
 		t.Fatalf("GEN_PROXY 共享根解析失败: %v", err)
 	}
@@ -41,9 +43,9 @@ func TestGenProxyShareRootFollowsVideoRoot(t *testing.T) {
 
 // 未配置 videoRoot 时保持既有语义（回退 smbSharePath），不破坏旧部署。
 func TestGenProxyShareRootFallsBackToSMBSharePath(t *testing.T) {
-	rc := newGenProxyRemoteClient(t, Settings{SMBSharePath: `\\192.168.1.106\media`})
+	rc := newGenProxyRemoteClient(t, model.Settings{SMBSharePath: `\\192.168.1.106\media`})
 
-	src, dst, err := rc.resolveRenderSharePaths(TaskTypeGenProxy, []byte(`{"type":"GenProxy"}`))
+	src, dst, err := rc.resolveRenderSharePaths(model.TaskTypeGenProxy, []byte(`{"type":"GenProxy"}`))
 	if err != nil {
 		t.Fatalf("回退解析失败: %v", err)
 	}
@@ -57,11 +59,11 @@ func TestGenProxyShareRootFallsBackToSMBSharePath(t *testing.T) {
 
 // 共享根缺失时必须下发前快速失败（可重试码），不静默下发空路径。
 func TestGenProxyMissingShareRootFailsFast(t *testing.T) {
-	rc := newGenProxyRemoteClient(t, Settings{})
+	rc := newGenProxyRemoteClient(t, model.Settings{})
 
-	_, _, err := rc.resolveRenderSharePaths(TaskTypeGenProxy, []byte(`{"type":"GenProxy"}`))
-	if err == nil || !strings.Contains(err.Error(), errCodeSMBMountFailed) {
-		t.Fatalf("缺少共享根应返回 %s，实际: %v", errCodeSMBMountFailed, err)
+	_, _, err := rc.resolveRenderSharePaths(model.TaskTypeGenProxy, []byte(`{"type":"GenProxy"}`))
+	if err == nil || !strings.Contains(err.Error(), ErrCodeSMBMountFailed) {
+		t.Fatalf("缺少共享根应返回 %s，实际: %v", ErrCodeSMBMountFailed, err)
 	}
 }
 
@@ -69,25 +71,25 @@ func TestGenProxyMissingShareRootFailsFast(t *testing.T) {
 func TestApplyRenderMountCredential(t *testing.T) {
 	cases := []struct {
 		name       string
-		cfg        Settings
+		cfg        model.Settings
 		credID     string
 		wantSource string
 		wantUser   string
 		wantPass   string
 	}{
 		{
-			name: "凭据档案优先，不下发明文", cfg: Settings{SMBUser: "nas", SMBPassword: "pw"},
+			name: "凭据档案优先，不下发明文", cfg: model.Settings{SMBUser: "nas", SMBPassword: "pw"},
 			credID: "cred_node_1", wantSource: "archive",
 		},
 		{
-			name: "档案缺失回落明文（与转码同口径）", cfg: Settings{SMBUser: "nas", SMBPassword: "pw"},
+			name: "档案缺失回落明文（与转码同口径）", cfg: model.Settings{SMBUser: "nas", SMBPassword: "pw"},
 			wantSource: "plaintext", wantUser: "nas", wantPass: "pw",
 		},
 		{
-			name: "仅账号无口令不下发半截凭据", cfg: Settings{SMBUser: "nas"},
+			name: "仅账号无口令不下发半截凭据", cfg: model.Settings{SMBUser: "nas"},
 		},
 		{
-			name: "全空保持无凭据（由 FVCS 前置报 E_CREDENTIAL_MISSING）", cfg: Settings{},
+			name: "全空保持无凭据（由 FVCS 前置报 E_CREDENTIAL_MISSING）", cfg: model.Settings{},
 		},
 	}
 

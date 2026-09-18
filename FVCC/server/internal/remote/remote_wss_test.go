@@ -4,7 +4,7 @@
 //  2) 端到端：FVCC remote 以 wss:// 连接启用 TLS 的假 FVCS 节点，完成鉴权握手；
 //  3) 证书信任语义：未信任 CA 握手失败；携带 CA 成功；skipVerify 放行。
 
-package main
+package remote
 
 import (
 	"crypto/tls"
@@ -17,6 +17,8 @@ import (
 	"testing"
 
 	"github.com/gorilla/websocket"
+
+	"fvcc/internal/store/model"
 )
 
 // newTLSFVCS 返回一个启用 TLS 的假 FVCS 节点（/ws 升级 + Auth 应答）。
@@ -53,14 +55,14 @@ func certPoolOf(srv *httptest.Server) *x509.CertPool {
 func TestBuildDialerBranches(t *testing.T) {
 	tests := []struct {
 		name   string
-		server Server
+		server model.Server
 		wantTLS bool // 期望 TLSClientConfig 非 nil
 		wantSkip bool // 期望 InsecureSkipVerify
 	}{
-		{"plain", Server{IP: "127.0.0.1", Port: 8080}, false, false},
-		{"wss-system-roots", Server{IP: "127.0.0.1", Port: 8080, UseWSS: true}, true, false},
-		{"wss-with-ca", Server{IP: "127.0.0.1", Port: 8080, UseWSS: true, TLSCACert: "unused.pem"}, true, false},
-		{"wss-skip-verify", Server{IP: "127.0.0.1", Port: 8080, UseWSS: true, TLSSkipVerify: true}, true, true},
+		{"plain", model.Server{IP: "127.0.0.1", Port: 8080}, false, false},
+		{"wss-system-roots", model.Server{IP: "127.0.0.1", Port: 8080, UseWSS: true}, true, false},
+		{"wss-with-ca", model.Server{IP: "127.0.0.1", Port: 8080, UseWSS: true, TLSCACert: "unused.pem"}, true, false},
+		{"wss-skip-verify", model.Server{IP: "127.0.0.1", Port: 8080, UseWSS: true, TLSSkipVerify: true}, true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,7 +85,7 @@ func TestBuildDialerBranches(t *testing.T) {
 
 func TestDialAndAuthWSS(t *testing.T) {
 	srv := newTLSFVCS(t)
-	server := Server{
+	server := model.Server{
 		ID:      "wss-node",
 		IP:      "127.0.0.1",
 		Port:    mustPort(t, srv.Listener.Addr().String()),
@@ -147,7 +149,7 @@ func TestDialAndAuthPlainCompat(t *testing.T) {
 	defer srv.Close()
 
 	rc := &RemoteClient{conns: make(map[string]*wsConn)}
-	server := Server{ID: "plain-node", IP: "127.0.0.1", Port: mustPort(t, srv.Listener.Addr().String()), AuthKey: "k"}
+	server := model.Server{ID: "plain-node", IP: "127.0.0.1", Port: mustPort(t, srv.Listener.Addr().String()), AuthKey: "k"}
 	httpPort, chunkSize, err := rc.dialAndAuth(server, nil)
 	if err != nil {
 		t.Fatalf("明文链路应保持可用: %v", err)

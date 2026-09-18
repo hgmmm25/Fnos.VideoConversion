@@ -449,25 +449,6 @@ func toShareRelRoot(localRoot, shareBase string) (string, bool) {
 	return rel, true
 }
 
-// normalizeRootForCompare 归一化根路径用于前缀比较：反斜杠→斜杠、压缩重复斜杠（保留 UNC 前缀）、
-// 去尾斜杠。大小写在比较处以 ToLower 处理，返回值保留原大小写以免污染真实路径。
-func normalizeRootForCompare(p string) string {
-	p = strings.ReplaceAll(strings.TrimSpace(p), `\`, "/")
-	if strings.HasPrefix(p, "//") {
-		p = "//" + strings.TrimLeft(strings.TrimPrefix(p, "//"), "/")
-		p = "//" + strings.ReplaceAll(strings.TrimPrefix(p, "//"), "//", "/")
-	} else {
-		for strings.Contains(p, "//") {
-			p = strings.ReplaceAll(p, "//", "/")
-		}
-	}
-	p = strings.TrimRight(p, "/")
-	if p == "//" {
-		return ""
-	}
-	return p
-}
-
 // isRootPathStyleErr 判断校验错误是否仅源于根路径写法（sourceRoot/destRoot）。
 func isRootPathStyleErr(e *edlValidationError) bool {
 	return e != nil && (e.Field == "sourceRoot" || e.Field == "destRoot")

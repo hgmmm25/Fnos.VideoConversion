@@ -17,20 +17,6 @@ import (
 	"fvcc/logger"
 )
 
-// RenderDispatcher 渲染类任务的下发通道（06 §4.2）。
-// 由 B-06 在 remote.go 中实现（CreateRenderEDL / CreateGenProxy，仅传 credentialId，07 号文档）；
-// B-05 只负责"何时下发"，不关心线协议细节，故以接口注入，便于单测替身。
-type RenderDispatcher interface {
-	// CreateRenderEDL 向节点下发 RENDER_EDL 任务，返回节点侧 taskId。
-	CreateRenderEDL(server Server, t Task) (string, error)
-	// CreateGenProxy 向节点下发 GEN_PROXY 任务，返回节点侧 taskId。
-	CreateGenProxy(server Server, t Task) (string, error)
-	// CreateRenderEDLWithTrace 同 CreateRenderEDL，额外透传链路追踪 ID（P2-1）。
-	CreateRenderEDLWithTrace(server Server, t Task, traceID string) (string, error)
-	// CreateGenProxyWithTrace 同 CreateGenProxy，额外透传链路追踪 ID（P2-1）。
-	CreateGenProxyWithTrace(server Server, t Task, traceID string) (string, error)
-}
-
 // Scheduler 任务调度器，每 1 秒执行一次状态分发。
 // 主循环仅做快速状态检查与分发，IO 操作（上传/下载）丢入独立协程。
 type Scheduler struct {
@@ -732,15 +718,14 @@ const renderMaxRetryDefault = 5
 const defaultDispatchLockSec = 300
 
 // ===== B-05 首次使用的错误码（06 §4.3 白名单）=====
+// E_SMB_MOUNT_FAILED / E_RENDER_FAILED / E_PAYLOAD_MISSING 已随 remote 域收敛至
+// internal/remote（P2-1 B轮），经 remote_shim.go 转发，此处保留调度域专属码。
 const (
-	errCodeSMBMountFailed = "E_SMB_MOUNT_FAILED"
-	errCodeTimeoutStall   = "E_TIMEOUT_STALL"
-	errCodeRenderFailed   = "E_RENDER_FAILED"
-	errCodeDiskFull       = "E_DISK_FULL"
-	errCodeFFmpegMissing  = "E_FFMPEG_MISSING"
-	// E_NODE_NOT_FOUND / E_PAYLOAD_MISSING：06 §4.3 未定义，实现补充（见 10 号台账）。
-	errCodeNodeNotFound   = "E_NODE_NOT_FOUND"
-	errCodePayloadMissing = "E_PAYLOAD_MISSING"
+	errCodeTimeoutStall  = "E_TIMEOUT_STALL"
+	errCodeDiskFull      = "E_DISK_FULL"
+	errCodeFFmpegMissing = "E_FFMPEG_MISSING"
+	// E_NODE_NOT_FOUND：06 §4.3 未定义，实现补充（见 10 号台账）。
+	errCodeNodeNotFound = "E_NODE_NOT_FOUND"
 	// errCodeCredentialMissing 挂载前缺凭据（代理 E_RENDER_FAILED 闭环，节点侧前置判定）。
 	errCodeCredentialMissing = "E_CREDENTIAL_MISSING"
 )

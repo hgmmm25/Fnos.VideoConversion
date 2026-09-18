@@ -1,4 +1,4 @@
-package main
+package remote
 
 // B-06 验收测试（06 §4.2 下发 / 07 §5.2、§5.5 凭据禁传）：
 //  1) 线协议：CreateRenderEDL / CreateGenProxy 的 Cmd、TaskType、PriorityLevel、payload 透传、
@@ -21,6 +21,9 @@ import (
 	"testing"
 
 	"github.com/gorilla/websocket"
+
+	"fvcc/internal/edl"
+	"fvcc/internal/store/model"
 )
 
 // fakeFVCSNode 扮演 FVCS 节点：完成 Auth 握手、记录并应答渲染下发指令。
@@ -78,7 +81,7 @@ func (f *fakeFVCSNode) setReply(reply string) {
 	f.reply = reply
 }
 
-func (f *fakeFVCSNode) server(t *testing.T, id string) Server {
+func (f *fakeFVCSNode) server(t *testing.T, id string) model.Server {
 	t.Helper()
 	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(f.srv.URL, "http://"))
 	if err != nil {
@@ -88,7 +91,7 @@ func (f *fakeFVCSNode) server(t *testing.T, id string) Server {
 	if err != nil {
 		t.Fatalf("解析测试服务器端口失败: %v", err)
 	}
-	return Server{ID: id, Name: "Fake FVCS", IP: host, Port: port, AuthKey: "k_test", Status: "online"}
+	return model.Server{ID: id, Name: "Fake FVCS", IP: host, Port: port, AuthKey: "k_test", Status: "online"}
 }
 
 // rawLast 返回最近一条业务指令的原始报文（用于口令字段禁传检查）。
@@ -151,9 +154,9 @@ func keysOf(m map[string]json.RawMessage) []string {
 func TestB06RenderDispatchWireContract(t *testing.T) {
 	cases := []struct {
 		name     string
-		taskType TaskType
+		taskType model.TaskType
 		payload  string
-		dispatch func(rc *RemoteClient, srv Server, tk Task) (string, error)
+		dispatch func(rc *RemoteClient, srv model.Server, tk model.Task) (string, error)
 		wantCmd  string
 		wantPrio string
 		wantSrc  string
@@ -161,7 +164,7 @@ func TestB06RenderDispatchWireContract(t *testing.T) {
 	}{
 		{
 			name:     "RENDER_EDL 常规优先级",
-			taskType: TaskTypeRenderEDL,
+			taskType: model.TaskTypeRenderEDL,
 			payload:  `{"type":"RenderEDL","projectId":"p_1","sourceRoot":"videos","destRoot":"exports","output":"a.mp4","checksum":"abc"}`,
 			dispatch: (*RemoteClient).CreateRenderEDL,
 			wantCmd:  "CreateRenderEDL",
@@ -171,7 +174,7 @@ func TestB06RenderDispatchWireContract(t *testing.T) {
 		},
 		{
 			name:     "GEN_PROXY 低优先级",
-			taskType: TaskTypeGenProxy,
+			taskType: model.TaskTypeGenProxy,
 			payload:  `{"type":"GenProxy","assetId":"a_1","srcFile":"videos/a.mp4","proxyFile":"proxies/a.mp4"}`,
 			dispatch: (*RemoteClient).CreateGenProxy,
 			wantCmd:  "CreateGenProxy",
@@ -188,12 +191,12 @@ func TestB06RenderDispatchWireContract(t *testing.T) {
 			rc := NewRemoteClient()
 			t.Cleanup(rc.CloseAll)
 			// 仅配置共享根（不配 smbUser，避免依赖宿主机 samba 配置）
-			rc.SetSettingsProvider(func() Settings {
-				return Settings{SMBSharePath: `\\192.168.1.10\media`}
+			rc.SetSettingsProvider(func() model.Settings {
+				return model.Settings{SMBSharePath: `\\192.168.1.10\media`}
 			})
 			srv := node.server(t, "srv1")
 
-			task := Task{
+			task := model.Task{
 				ID: "t_1_abc123", TaskType: c.taskType, ServerID: srv.ID,
 				PayloadJSON: c.payload, CredentialID: "cred_node_1",
 			}
@@ -260,8 +263,8 @@ func TestB06RenderDispatchWireContract(t *testing.T) {
 
 func TestB06SharePathResolution(t *testing.T) {
 	rc := NewRemoteClient()
-	rc.SetSettingsProvider(func() Settings {
-		return Settings{SMBSharePath: `\\192.168.1.10\media`}
+	rc.SetSettingsProvider(func() model.Settings {
+		return model.Settings{SMBSharePath: `\\192.168.1.10\media`}
 	})
 
 	cases := []struct {
@@ -289,10 +292,10 @@ func TestB06SharePathResolution(t *testing.T) {
 
 	// 无任何共享配置：必须报可重试的 E_SMB_MOUNT_FAILED，绝不猜测映射
 	rcNoCfg := NewRemoteClient()
-	rcNoCfg.SetSettingsProvider(func() Settings { return Settings{} })
+	rcNoCfg.SetSettingsProvider(func() model.Settings { return model.Settings{} })
 	_, err := rcNoCfg.toSMBUNC("/media/videos")
-	if err == nil || !strings.Contains(err.Error(), errCodeSMBMountFailed) {
-		t.Fatalf("无共享配置时期望 %s，实际: %v", errCodeSMBMountFailed, err)
+	if err == nil || !strings.Contains(err.Error(), ErrCodeSMBMountFailed) {
+		t.Fatalf("无共享配置时期望 %s，实际: %v", ErrCodeSMBMountFailed, err)
 	}
 
 	// 空路径由调用方判定缺失，不作为映射失败
@@ -305,27 +308,27 @@ func TestB06SharePathResolution(t *testing.T) {
 
 func TestB06RenderDispatchPayloadGuards(t *testing.T) {
 	rc := NewRemoteClient()
-	rc.SetSettingsProvider(func() Settings {
-		return Settings{SMBSharePath: `\\192.168.1.10\media`}
+	rc.SetSettingsProvider(func() model.Settings {
+		return model.Settings{SMBSharePath: `\\192.168.1.10\media`}
 	})
-	srv := Server{ID: "srv1", IP: "127.0.0.1", Port: 1}
+	srv := model.Server{ID: "srv1", IP: "127.0.0.1", Port: 1}
 
-	if _, err := rc.CreateRenderEDL(srv, Task{ID: "t_empty"}); err == nil || !strings.Contains(err.Error(), errCodePayloadMissing) {
-		t.Fatalf("空载荷期望 %s，实际: %v", errCodePayloadMissing, err)
+	if _, err := rc.CreateRenderEDL(srv, model.Task{ID: "t_empty"}); err == nil || !strings.Contains(err.Error(), ErrCodePayloadMissing) {
+		t.Fatalf("空载荷期望 %s，实际: %v", ErrCodePayloadMissing, err)
 	}
-	if _, err := rc.CreateRenderEDL(srv, Task{ID: "t_bad", PayloadJSON: "{oops"}); err == nil || !strings.Contains(err.Error(), errCodeEDLInvalid) {
-		t.Fatalf("非法 JSON 期望 %s，实际: %v", errCodeEDLInvalid, err)
+	if _, err := rc.CreateRenderEDL(srv, model.Task{ID: "t_bad", PayloadJSON: "{oops"}); err == nil || !strings.Contains(err.Error(), edl.ErrCodeEDLInvalid) {
+		t.Fatalf("非法 JSON 期望 %s，实际: %v", edl.ErrCodeEDLInvalid, err)
 	}
-	if _, err := rc.CreateRenderEDL(srv, Task{ID: "t_noroot", PayloadJSON: `{"type":"RenderEDL"}`}); err == nil || !strings.Contains(err.Error(), errCodePayloadMissing) {
-		t.Fatalf("缺 sourceRoot 期望 %s，实际: %v", errCodePayloadMissing, err)
+	if _, err := rc.CreateRenderEDL(srv, model.Task{ID: "t_noroot", PayloadJSON: `{"type":"RenderEDL"}`}); err == nil || !strings.Contains(err.Error(), ErrCodePayloadMissing) {
+		t.Fatalf("缺 sourceRoot 期望 %s，实际: %v", ErrCodePayloadMissing, err)
 	}
-	if _, err := rc.CreateRenderEDL(srv, Task{ID: "t_nodest", PayloadJSON: `{"type":"RenderEDL","sourceRoot":"videos"}`}); err == nil || !strings.Contains(err.Error(), errCodePayloadMissing) {
-		t.Fatalf("缺 destRoot 期望 %s，实际: %v", errCodePayloadMissing, err)
+	if _, err := rc.CreateRenderEDL(srv, model.Task{ID: "t_nodest", PayloadJSON: `{"type":"RenderEDL","sourceRoot":"videos"}`}); err == nil || !strings.Contains(err.Error(), ErrCodePayloadMissing) {
+		t.Fatalf("缺 destRoot 期望 %s，实际: %v", ErrCodePayloadMissing, err)
 	}
 	// GEN_PROXY 无显式根：未配置共享根时直接报可重试错误
 	rcNoCfg := NewRemoteClient()
-	if _, err := rcNoCfg.CreateGenProxy(srv, Task{ID: "t_proxy", PayloadJSON: `{"type":"GenProxy","srcFile":"a.mp4"}`}); err == nil || !strings.Contains(err.Error(), errCodeSMBMountFailed) {
-		t.Fatalf("GEN_PROXY 缺共享根期望 %s，实际: %v", errCodeSMBMountFailed, err)
+	if _, err := rcNoCfg.CreateGenProxy(srv, model.Task{ID: "t_proxy", PayloadJSON: `{"type":"GenProxy","srcFile":"a.mp4"}`}); err == nil || !strings.Contains(err.Error(), ErrCodeSMBMountFailed) {
+		t.Fatalf("GEN_PROXY 缺共享根期望 %s，实际: %v", ErrCodeSMBMountFailed, err)
 	}
 }
 
@@ -335,26 +338,26 @@ func TestB06RenderDispatchSurfacesFVCSErrors(t *testing.T) {
 	node := newFakeFVCSNode(t)
 	rc := NewRemoteClient()
 	t.Cleanup(rc.CloseAll)
-	rc.SetSettingsProvider(func() Settings {
-		return Settings{SMBSharePath: `\\192.168.1.10\media`}
+	rc.SetSettingsProvider(func() model.Settings {
+		return model.Settings{SMBSharePath: `\\192.168.1.10\media`}
 	})
 	srv := node.server(t, "srv1")
-	task := Task{
-		ID: "t_1_abc123", TaskType: TaskTypeRenderEDL, ServerID: srv.ID,
+	task := model.Task{
+		ID: "t_1_abc123", TaskType: model.TaskTypeRenderEDL, ServerID: srv.ID,
 		PayloadJSON:  `{"type":"RenderEDL","sourceRoot":"videos","destRoot":"exports","output":"a.mp4"}`,
 		CredentialID: "cred_node_1",
 	}
 
 	// FVCS 业务拒绝：错误码须透出，供调度侧 classifyRenderError 判定冷却/终止（06 §4.3）
 	node.setReply(`{"Code":500,"Msg":"E_SMB_MOUNT_FAILED: credential cred_node_1 mount failed","Data":null}`)
-	if _, err := rc.CreateRenderEDL(srv, task); err == nil || !strings.Contains(err.Error(), errCodeSMBMountFailed) {
-		t.Fatalf("FVCS 拒绝时期望透出 %s，实际: %v", errCodeSMBMountFailed, err)
+	if _, err := rc.CreateRenderEDL(srv, task); err == nil || !strings.Contains(err.Error(), ErrCodeSMBMountFailed) {
+		t.Fatalf("FVCS 拒绝时期望透出 %s，实际: %v", ErrCodeSMBMountFailed, err)
 	}
 
 	// 应答缺 TaskId：不得把任务误标为已下发
 	node.setReply(`{"Code":0,"Msg":"ok","Data":{"TaskId":""}}`)
-	if _, err := rc.CreateRenderEDL(srv, task); err == nil || !strings.Contains(err.Error(), errCodeRenderFailed) {
-		t.Fatalf("空 TaskId 期望 %s，实际: %v", errCodeRenderFailed, err)
+	if _, err := rc.CreateRenderEDL(srv, task); err == nil || !strings.Contains(err.Error(), ErrCodeRenderFailed) {
+		t.Fatalf("空 TaskId 期望 %s，实际: %v", ErrCodeRenderFailed, err)
 	}
 	rc.CloseConn(srv.ID)
 }

@@ -1,4 +1,4 @@
-package main
+package remote
 
 import (
 	"bytes"
@@ -19,6 +19,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"fvcc/internal/edl"
+	"fvcc/internal/store/model"
 	"fvcc/logger"
 	"fvcc/smbshare"
 )
@@ -37,23 +39,23 @@ type RemoteClient struct {
 	// 消除 FVCS 侧同一节点短时间重复连接（日志中 1s 内 3 连即由此产生）。
 	connMu map[string]*sync.Mutex
 	// serverCfg 节点连接参数快照：断线自愈重连（reconnectLoop）无需调用方再次传入。
-	serverCfg  map[string]Server
+	serverCfg  map[string]model.Server
 	httpClient *http.Client
 	// OnPushProgress FVCS 经 WS 回传的渲染/转码进度（B-07：由 main.go 接到调度侧）。
 	OnPushProgress func(serverID string, p RemoteProgress)
 	// OnPushHello FVCS 建链后上报的节点能力（B-08：由 main.go 接到 ApplyNodeHello 落库）。
-	OnPushHello  func(serverID string, caps NodeCaps)
+	OnPushHello  func(serverID string, caps model.NodeCaps)
 	OnDisconnect func(serverID string)
 	// getSettings 设置读取器（B-06，main.go 注入）：渲染下发时用 smbSharePath / smbUser
 	// 把共享根解析为 FVCS 可挂载的 UNC。未注入时仅支持 UNC 直传。
-	getSettings func() Settings
+	getSettings func() model.Settings
 }
 
 func NewRemoteClient() *RemoteClient {
 	return &RemoteClient{
 		conns:     map[string]*wsConn{},
 		connMu:    map[string]*sync.Mutex{},
-		serverCfg: map[string]Server{},
+		serverCfg: map[string]model.Server{},
 		httpClient: &http.Client{
 			Timeout: 300 * time.Second,
 		},
@@ -144,7 +146,7 @@ type helloPush struct {
 	AgentVersion  string          `json:"agent_version,omitempty"`
 	OS            string          `json:"os,omitempty"`
 	CPUCores      int             `json:"cpu_cores,omitempty"`
-	GPU           []GPUInfo       `json:"gpu,omitempty"`
+	GPU           []model.GPUInfo       `json:"gpu,omitempty"`
 	Encoders      []string        `json:"encoders,omitempty"`
 	MaxConcurrent int             `json:"max_concurrent,omitempty"`
 	FFmpegPath    string          `json:"ffmpeg_path,omitempty"`
@@ -155,7 +157,7 @@ type helloPush struct {
 // parseHelloCaps 解析 Hello 能力上报为 NodeCaps（B-08）。serverID 为 WS 连接身份，
 // 作为载荷缺失时的权威兜底。ok=false 表示载荷不携带任何能力信息（忽略，不落库）。
 // 逐字段合并 camelCase / snake_case 两种命名，camelCase 优先，缺失项回落到 snake_case。
-func parseHelloCaps(serverID string, data json.RawMessage) (NodeCaps, bool) {
+func parseHelloCaps(serverID string, data json.RawMessage) (model.NodeCaps, bool) {
 	inner := data
 	var wrap helloPush
 	if err := json.Unmarshal(data, &wrap); err == nil {
@@ -166,7 +168,7 @@ func parseHelloCaps(serverID string, data json.RawMessage) (NodeCaps, bool) {
 		}
 	}
 
-	var camel NodeCaps
+	var camel model.NodeCaps
 	_ = json.Unmarshal(inner, &camel)
 	var snake helloPush
 	_ = json.Unmarshal(inner, &snake)
@@ -202,16 +204,16 @@ func parseHelloCaps(serverID string, data json.RawMessage) (NodeCaps, bool) {
 
 	if caps.AgentVersion == "" && caps.OS == "" && caps.CPUCores == 0 && caps.MaxConcurrent == 0 &&
 		len(caps.Encoders) == 0 && len(caps.GPU) == 0 && caps.FFmpegPath == "" {
-		return NodeCaps{}, false
+		return model.NodeCaps{}, false
 	}
 	return caps, true
 }
 
-func (rc *RemoteClient) Connect(server Server) (int, int, error) {
+func (rc *RemoteClient) Connect(server model.Server) (int, int, error) {
 	// 快照节点连接参数：断线自愈无需调用方再次传入。
 	rc.mu.Lock()
 	if rc.serverCfg == nil {
-		rc.serverCfg = map[string]Server{}
+		rc.serverCfg = map[string]model.Server{}
 	}
 	rc.serverCfg[server.ID] = server
 	rc.mu.Unlock()
@@ -255,7 +257,7 @@ func (rc *RemoteClient) connectMuFor(serverID string) *sync.Mutex {
 //   - wss + TLSCACert：加载指定 CA 至 RootCAs（自签/内网 CA）；
 //   - wss + 无 CA：使用系统根证书池（自签 CA 需导入系统信任）；
 //   - TLSSkipVerify=true：显式跳过证书校验（危险开关，调用方已输出 WARN）。
-func buildDialer(server Server) *websocket.Dialer {
+func buildDialer(server model.Server) *websocket.Dialer {
 	d := &websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 		ReadBufferSize:   1024 * 1024,
@@ -288,7 +290,7 @@ func buildDialer(server Server) *websocket.Dialer {
 
 // dialAndAuth 实际拨号+鉴权+登记连接；old 为同节点将被替换的旧连接（若存在），
 // 新连接就绪后优雅关闭旧连接，避免 ghost 连接残留占用 FVCS 侧连接配额。
-func (rc *RemoteClient) dialAndAuth(server Server, old *wsConn) (int, int, error) {
+func (rc *RemoteClient) dialAndAuth(server model.Server, old *wsConn) (int, int, error) {
 	scheme := "ws"
 	if server.UseWSS {
 		scheme = "wss"
@@ -496,7 +498,7 @@ func (rc *RemoteClient) CloseAll() {
 		}
 		delete(rc.conns, id)
 	}
-	rc.serverCfg = map[string]Server{}
+	rc.serverCfg = map[string]model.Server{}
 	rc.connMu = map[string]*sync.Mutex{}
 }
 
@@ -568,12 +570,12 @@ func (wc *wsConn) roundTrip(cmd wsCmd, timeout time.Duration) (wsResp, error) {
 	}
 }
 
-func (rc *RemoteClient) CreateTask(server Server, sourceFileName, outputName, ffmpegArgs string) (string, error) {
+func (rc *RemoteClient) CreateTask(server model.Server, sourceFileName, outputName, ffmpegArgs string) (string, error) {
 	return rc.CreateTaskWithTrace(server, sourceFileName, outputName, ffmpegArgs, "")
 }
 
 // CreateTaskWithTrace 与 CreateTask 等价，额外透传任务链路追踪 ID（P2-1）。
-func (rc *RemoteClient) CreateTaskWithTrace(server Server, sourceFileName, outputName, ffmpegArgs, traceID string) (string, error) {
+func (rc *RemoteClient) CreateTaskWithTrace(server model.Server, sourceFileName, outputName, ffmpegArgs, traceID string) (string, error) {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return "", err
@@ -602,12 +604,12 @@ func (rc *RemoteClient) CreateTaskWithTrace(server Server, sourceFileName, outpu
 	return td.TaskId, nil
 }
 
-func (rc *RemoteClient) CreateSMBTask(server Server, sourceFileName, outputName, ffmpegArgs, smbPath, smbUser, smbPassword string) (string, error) {
+func (rc *RemoteClient) CreateSMBTask(server model.Server, sourceFileName, outputName, ffmpegArgs, smbPath, smbUser, smbPassword string) (string, error) {
 	return rc.CreateSMBTaskWithTrace(server, sourceFileName, outputName, ffmpegArgs, smbPath, smbUser, smbPassword, "")
 }
 
 // CreateSMBTaskWithTrace 与 CreateSMBTask 等价，额外透传任务链路追踪 ID（P2-1）。
-func (rc *RemoteClient) CreateSMBTaskWithTrace(server Server, sourceFileName, outputName, ffmpegArgs, smbPath, smbUser, smbPassword, traceID string) (string, error) {
+func (rc *RemoteClient) CreateSMBTaskWithTrace(server model.Server, sourceFileName, outputName, ffmpegArgs, smbPath, smbUser, smbPassword, traceID string) (string, error) {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return "", err
@@ -652,7 +654,7 @@ const (
 
 // SetSettingsProvider 注入设置读取器（B-06 装配入口）。
 // main.go 装配：remote.SetSettingsProvider(store.GetSettings)。
-func (rc *RemoteClient) SetSettingsProvider(get func() Settings) {
+func (rc *RemoteClient) SetSettingsProvider(get func() model.Settings) {
 	rc.getSettings = get
 }
 
@@ -666,35 +668,35 @@ type renderShareDirs struct {
 //
 // 载荷仅携带 credentialId + 结构化 payload + 共享根，严禁携带 SMBUser/SMBPassword 明文
 // （07 §5.2/§5.5）；FVCS 侧凭 credentialId 自行解析挂载凭据。
-func (rc *RemoteClient) CreateRenderEDL(server Server, t Task) (string, error) {
-	return rc.dispatchRender(server, t, "CreateRenderEDL", TaskTypeRenderEDL, "")
+func (rc *RemoteClient) CreateRenderEDL(server model.Server, t model.Task) (string, error) {
+	return rc.dispatchRender(server, t, "CreateRenderEDL", model.TaskTypeRenderEDL, "")
 }
 
 // CreateRenderEDLWithTrace 与 CreateRenderEDL 等价，额外透传任务链路追踪 ID（P2-1）。
-func (rc *RemoteClient) CreateRenderEDLWithTrace(server Server, t Task, traceID string) (string, error) {
-	return rc.dispatchRender(server, t, "CreateRenderEDL", TaskTypeRenderEDL, traceID)
+func (rc *RemoteClient) CreateRenderEDLWithTrace(server model.Server, t model.Task, traceID string) (string, error) {
+	return rc.dispatchRender(server, t, "CreateRenderEDL", model.TaskTypeRenderEDL, traceID)
 }
 
 // CreateGenProxy 下发 GEN_PROXY 代理生成任务（04 §3.5），
 // 低优先级以 PriorityLevel=low 表达（06 §4.1，调度排序已保证不插队）。
-func (rc *RemoteClient) CreateGenProxy(server Server, t Task) (string, error) {
-	return rc.dispatchRender(server, t, "CreateGenProxy", TaskTypeGenProxy, "")
+func (rc *RemoteClient) CreateGenProxy(server model.Server, t model.Task) (string, error) {
+	return rc.dispatchRender(server, t, "CreateGenProxy", model.TaskTypeGenProxy, "")
 }
 
 // CreateGenProxyWithTrace 与 CreateGenProxy 等价，额外透传任务链路追踪 ID（P2-1）。
-func (rc *RemoteClient) CreateGenProxyWithTrace(server Server, t Task, traceID string) (string, error) {
-	return rc.dispatchRender(server, t, "CreateGenProxy", TaskTypeGenProxy, traceID)
+func (rc *RemoteClient) CreateGenProxyWithTrace(server model.Server, t model.Task, traceID string) (string, error) {
+	return rc.dispatchRender(server, t, "CreateGenProxy", model.TaskTypeGenProxy, traceID)
 }
 
 // dispatchRender 渲染类任务共用下发实现（06 §4.2）：
 // 载荷校验 → 共享根解析（UNC）→ WS 下发 → 返回 FVCS 侧任务 ID。
-func (rc *RemoteClient) dispatchRender(server Server, t Task, cmd string, want TaskType, traceID string) (string, error) {
+func (rc *RemoteClient) dispatchRender(server model.Server, t model.Task, cmd string, want model.TaskType, traceID string) (string, error) {
 	payload := json.RawMessage(strings.TrimSpace(t.PayloadJSON))
 	if len(payload) == 0 {
-		return "", fmt.Errorf("%s: 任务载荷为空，无法下发 (task=%s)", errCodePayloadMissing, t.ID)
+		return "", fmt.Errorf("%s: 任务载荷为空，无法下发 (task=%s)", ErrCodePayloadMissing, t.ID)
 	}
 	if !json.Valid(payload) {
-		return "", fmt.Errorf("%s: 任务载荷不是合法 JSON (task=%s)", errCodeEDLInvalid, t.ID)
+		return "", fmt.Errorf("%s: 任务载荷不是合法 JSON (task=%s)", edl.ErrCodeEDLInvalid, t.ID)
 	}
 
 	smbPath, smbOutputPath, err := rc.resolveRenderSharePaths(want, payload)
@@ -740,7 +742,7 @@ func (rc *RemoteClient) dispatchRender(server Server, t Task, cmd string, want T
 		return "", fmt.Errorf("%s 返回解析失败: %w", cmd, err)
 	}
 	if strings.TrimSpace(td.TaskId) == "" {
-		return "", fmt.Errorf("%s: FVCS 未返回 TaskId (task=%s, code=%s)", cmd, t.ID, errCodeRenderFailed)
+		return "", fmt.Errorf("%s: FVCS 未返回 TaskId (task=%s, code=%s)", cmd, t.ID, ErrCodeRenderFailed)
 	}
 
 	logger.Info("remote", "%s 下发成功: task=%s server=%s remote=%s priority=%s credSource=%s",
@@ -774,8 +776,8 @@ func (rc *RemoteClient) applyRenderMountCredential(wire *wsCmd) string {
 }
 
 // renderPriorityLevel 渲染下发优先级（06 §4.1）。
-func renderPriorityLevel(t TaskType) string {
-	if t == TaskTypeGenProxy {
+func renderPriorityLevel(t model.TaskType) string {
+	if t == model.TaskTypeGenProxy {
 		return renderPriorityLow
 	}
 	return renderPriorityNormal
@@ -786,11 +788,11 @@ func renderPriorityLevel(t TaskType) string {
 //   - GEN_PROXY：素材共享根取载荷 sourceRoot（非缺省素材根时）或 settings.videoRoot
 //     （与转码下发同源推导；videoRoot 未配置时才回退 settings.smbSharePath）；
 //     输出根为素材共享根下的 _proxy 目录（04 §3.2：smbOutputPath = \\NAS\media\videos\_proxy）。
-func (rc *RemoteClient) resolveRenderSharePaths(t TaskType, payload json.RawMessage) (string, string, error) {
+func (rc *RemoteClient) resolveRenderSharePaths(t model.TaskType, payload json.RawMessage) (string, string, error) {
 	var dirs renderShareDirs
 	_ = json.Unmarshal(payload, &dirs)
 
-	if t == TaskTypeGenProxy {
+	if t == model.TaskTypeGenProxy {
 		cfg := rc.settings()
 		base := strings.TrimSpace(cfg.SMBSharePath)
 		// 修复①：剪辑页在多个授权目录间切换时，代理任务会携带实际素材根（sourceRoot）。
@@ -808,7 +810,7 @@ func (rc *RemoteClient) resolveRenderSharePaths(t TaskType, payload json.RawMess
 			base = vr
 		}
 		if base == "" {
-			return "", "", fmt.Errorf("%s: GEN_PROXY 下发缺少共享根，请在设置中配置素材根 videoRoot（或 smbSharePath）（06 §4.2）", errCodeSMBMountFailed)
+			return "", "", fmt.Errorf("%s: GEN_PROXY 下发缺少共享根，请在设置中配置素材根 videoRoot（或 smbSharePath）（06 §4.2）", ErrCodeSMBMountFailed)
 		}
 		root, err := rc.resolveRenderRoot(base)
 		if err != nil {
@@ -825,14 +827,14 @@ func (rc *RemoteClient) resolveRenderSharePaths(t TaskType, payload json.RawMess
 		return "", "", err
 	}
 	if src == "" {
-		return "", "", fmt.Errorf("%s: 载荷缺少 sourceRoot，无法解析素材共享根 (task)", errCodePayloadMissing)
+		return "", "", fmt.Errorf("%s: 载荷缺少 sourceRoot，无法解析素材共享根 (task)", ErrCodePayloadMissing)
 	}
 	dst, err := rc.toSMBUNC(dirs.DestRoot)
 	if err != nil {
 		return "", "", err
 	}
 	if dst == "" {
-		return "", "", fmt.Errorf("%s: 载荷缺少 destRoot，无法解析输出共享根", errCodePayloadMissing)
+		return "", "", fmt.Errorf("%s: 载荷缺少 destRoot，无法解析输出共享根", ErrCodePayloadMissing)
 	}
 	return src, dst, nil
 }
@@ -855,16 +857,16 @@ func (rc *RemoteClient) resolveRenderRoot(base string) (string, error) {
 		return rc.toSMBUNC(base)
 	}
 	if strings.TrimSpace(cfg.SMBUser) == "" {
-		return "", fmt.Errorf("%s: 素材根 %s 为本地路径且未配置 smbUser，无法解析对应共享（与转码同机制需 smbUser）", errCodeSMBMountFailed, base)
+		return "", fmt.Errorf("%s: 素材根 %s 为本地路径且未配置 smbUser，无法解析对应共享（与转码同机制需 smbUser）", ErrCodeSMBMountFailed, base)
 	}
 
 	ip, err := smbshare.GetLocalIP()
 	if err != nil {
-		return "", fmt.Errorf("%s: 获取本机 IP 失败，无法解析素材根共享: %w", errCodeSMBMountFailed, err)
+		return "", fmt.Errorf("%s: 获取本机 IP 失败，无法解析素材根共享: %w", ErrCodeSMBMountFailed, err)
 	}
 	unc, err := smbshare.BuildSMBURL(ip, cfg.SMBUser, filepath.FromSlash(base))
 	if err != nil || strings.TrimSpace(unc) == "" {
-		return "", fmt.Errorf("%s: 素材根 %s 未匹配任何 samba 共享（与转码同机制解析失败）: %v", errCodeSMBMountFailed, base, err)
+		return "", fmt.Errorf("%s: 素材根 %s 未匹配任何 samba 共享（与转码同机制解析失败）: %v", ErrCodeSMBMountFailed, base, err)
 	}
 	return unc, nil
 }
@@ -905,13 +907,13 @@ func (rc *RemoteClient) toSMBUNC(root string) (string, error) {
 	}
 
 	return "", fmt.Errorf("%s: 无法解析为 SMB 共享路径（%s）：请在设置中配置 smbSharePath（共享根 UNC）或 smbUser",
-		errCodeSMBMountFailed, root)
+		ErrCodeSMBMountFailed, root)
 }
 
 // settings 返回设置快照；未注入读取器时返回零值（此时仅 UNC 直传可用）。
-func (rc *RemoteClient) settings() Settings {
+func (rc *RemoteClient) settings() model.Settings {
 	if rc.getSettings == nil {
-		return Settings{}
+		return model.Settings{}
 	}
 	return rc.getSettings()
 }
@@ -936,7 +938,7 @@ func normalizeUNC(p string) (string, bool) {
 	return `\\` + strings.Join(kept, `\`), true
 }
 
-func (rc *RemoteClient) UploadFinish(server Server, remoteTaskID string) error {
+func (rc *RemoteClient) UploadFinish(server model.Server, remoteTaskID string) error {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return err
@@ -952,7 +954,7 @@ func (rc *RemoteClient) UploadFinish(server Server, remoteTaskID string) error {
 	return nil
 }
 
-func (rc *RemoteClient) DownloadFinish(server Server, remoteTaskID string) error {
+func (rc *RemoteClient) DownloadFinish(server model.Server, remoteTaskID string) error {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return err
@@ -968,7 +970,7 @@ func (rc *RemoteClient) DownloadFinish(server Server, remoteTaskID string) error
 	return nil
 }
 
-func (rc *RemoteClient) CancelTask(server Server, remoteTaskID string) error {
+func (rc *RemoteClient) CancelTask(server model.Server, remoteTaskID string) error {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return err
@@ -984,7 +986,7 @@ func (rc *RemoteClient) CancelTask(server Server, remoteTaskID string) error {
 	return nil
 }
 
-func (rc *RemoteClient) PauseTask(server Server, remoteTaskID string) error {
+func (rc *RemoteClient) PauseTask(server model.Server, remoteTaskID string) error {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return err
@@ -1000,7 +1002,7 @@ func (rc *RemoteClient) PauseTask(server Server, remoteTaskID string) error {
 	return nil
 }
 
-func (rc *RemoteClient) ResumeTask(server Server, remoteTaskID string) error {
+func (rc *RemoteClient) ResumeTask(server model.Server, remoteTaskID string) error {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return err
@@ -1029,7 +1031,7 @@ type RemoteTaskStatus struct {
 }
 
 // QueryTask 查询远端任务状态（保持既有签名：调度侧仅需状态与进度）。
-func (rc *RemoteClient) QueryTask(server Server, remoteTaskID string) (status string, progress float64, err error) {
+func (rc *RemoteClient) QueryTask(server model.Server, remoteTaskID string) (status string, progress float64, err error) {
 	st, err := rc.QueryTaskDetail(server, remoteTaskID)
 	if err != nil {
 		return "", 0, err
@@ -1038,7 +1040,7 @@ func (rc *RemoteClient) QueryTask(server Server, remoteTaskID string) (status st
 }
 
 // QueryTaskDetail 查询远端任务详情（QueryTask 的增强版，附带失败节点信息）。
-func (rc *RemoteClient) QueryTaskDetail(server Server, remoteTaskID string) (RemoteTaskStatus, error) {
+func (rc *RemoteClient) QueryTaskDetail(server model.Server, remoteTaskID string) (RemoteTaskStatus, error) {
 	var out RemoteTaskStatus
 	out.TaskID = remoteTaskID
 
@@ -1076,7 +1078,7 @@ func (rc *RemoteClient) QueryTaskDetail(server Server, remoteTaskID string) (Rem
 	return out, nil
 }
 
-func (rc *RemoteClient) getConn(server Server) (*wsConn, error) {
+func (rc *RemoteClient) getConn(server model.Server) (*wsConn, error) {
 	rc.mu.Lock()
 	wc, ok := rc.conns[server.ID]
 	rc.mu.Unlock()
@@ -1094,7 +1096,7 @@ func (rc *RemoteClient) getConn(server Server) (*wsConn, error) {
 	return wc, nil
 }
 
-func (rc *RemoteClient) UploadChunk(ctx context.Context, server Server, remoteTaskID string, index int, isLast bool, data []byte) error {
+func (rc *RemoteClient) UploadChunk(ctx context.Context, server model.Server, remoteTaskID string, index int, isLast bool, data []byte) error {
 	httpPort, err := rc.getHttpPort(server)
 	if err != nil {
 		return err
@@ -1127,11 +1129,11 @@ func (rc *RemoteClient) UploadChunk(ctx context.Context, server Server, remoteTa
 	return nil
 }
 
-func (rc *RemoteClient) DownloadFile(server Server, remoteTaskID string, offset int64, writer io.Writer) (int64, error) {
+func (rc *RemoteClient) DownloadFile(server model.Server, remoteTaskID string, offset int64, writer io.Writer) (int64, error) {
 	return rc.DownloadFileWithProgress(server, remoteTaskID, offset, writer, nil)
 }
 
-func (rc *RemoteClient) DownloadFileWithProgress(server Server, remoteTaskID string, offset int64, writer io.Writer, onProgress func(int64, int64)) (int64, error) {
+func (rc *RemoteClient) DownloadFileWithProgress(server model.Server, remoteTaskID string, offset int64, writer io.Writer, onProgress func(int64, int64)) (int64, error) {
 	httpPort, err := rc.getHttpPort(server)
 	if err != nil {
 		return 0, err
@@ -1185,7 +1187,7 @@ func (rc *RemoteClient) DownloadFileWithProgress(server Server, remoteTaskID str
 	return totalWritten, nil
 }
 
-func (rc *RemoteClient) getHttpPort(server Server) (int, error) {
+func (rc *RemoteClient) getHttpPort(server model.Server) (int, error) {
 	wc, err := rc.getConn(server)
 	if err != nil {
 		return 0, err
