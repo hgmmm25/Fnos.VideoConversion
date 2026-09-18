@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 839b5d1d4fff15220193598838e6072d_7a97d58bb31211f1839d525400cd780f
+    ReservedCode1: s9HG/jS+Wzj8A8fX8BRTE17Pv+20H0zvmdWOLY8GheeAZcOpwZHGerPK4T22sHawEbm+595K0Yb7M4UHTKmsxd5j9j6Hv0nq5OO7cVurHbzym86BVtc1nPtrccRE4jxfuyDkUuPQzaHhz6Abqu6W8OCGmpiCcCSQM/mtTB2u2nsi4ZhnyA0vUk2bHDM=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 839b5d1d4fff15220193598838e6072d_7a97d58bb31211f1839d525400cd780f
+    ReservedCode2: s9HG/jS+Wzj8A8fX8BRTE17Pv+20H0zvmdWOLY8GheeAZcOpwZHGerPK4T22sHawEbm+595K0Yb7M4UHTKmsxd5j9j6Hv0nq5OO7cVurHbzym86BVtc1nPtrccRE4jxfuyDkUuPQzaHhz6Abqu6W8OCGmpiCcCSQM/mtTB2u2nsi4ZhnyA0vUk2bHDM=
+---
+
 # FVCC API 契约与命名规范（P2-4）
 
 > 生效范围：FVCC（NAS 调度端 Web UI）REST API + SSE/WS 推送。本文件是 `ui-src/src/api.ts` 统一错误契约与 `server/` 响应写法的**唯一权威依据**；新增接口、修改错误响应必须遵循本规范。
