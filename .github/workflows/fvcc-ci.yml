@@ -1,7 +1,7 @@
-# FVCC CI — 混乱报告 P2-3：建立流水线（go vet/test + 前端类型检查/设计门禁/构建）
+# FVCC CI — 混乱报告 P2-3：建立流水线（go vet/test + 覆盖率门槛 + 前端类型检查/设计门禁/构建）
 #
 # 触发：FVCC 相关路径的 push / PR；仓库根共用，故限定 paths 避免无关提交空跑。
-# 基线目标：go test ./... 与前端 check:design 全绿后合入，覆盖率 >=60%（后续补报）。
+# 基线目标：go test ./... 与前端 check:design 全绿后合入，覆盖率 >=55%（当前基线 56.1%，后续补测试后上调至 60%，由 check-coverage.ps1 强制）。
 
 name: FVCC CI
 
@@ -43,6 +43,9 @@ jobs:
 
       - name: go test
         run: go test -race ./...
+
+      - name: Coverage gate (>= 55%)
+        run: pwsh ../../scripts/check-coverage.ps1 -Race
 
   frontend:
     name: Frontend (tsc + design gate + build)

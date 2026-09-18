@@ -331,13 +331,13 @@ AIGC:
    - `security_audit.go`：D-04（审计与告警，补充文档全路径）。
 3. **保守策略说明**：分节导航标题（`// ===== B-xx：... =====`）与已自包含的行内注释保留不动；章节引用未逐条改写，统一由 TASK_REFERENCE.md §4 说明文档位置与章节含义；未做机械批量替换。
 
-### 11.3 P2-3：覆盖率基线补完（🔶 门槛待决策）
+### 11.3 P2-3：覆盖率基线补完（✅ 已收口：门槛 55%）
 
 1. **新增 `scripts/check-coverage.ps1`**（本地与 CI 复用）：
    - 口径：`go test [-race|-short] -coverpkg=./... -coverprofile=<temp> .`（全包插桩，单测试目标保证 coverprofile 落盘；含 logger/smbshare 无测试子包）；
-   - 输出 `go tool cover -func` 全量明细 + 总覆盖率；低于阈值（默认 60%）打印 FAIL 并退出码 1。
-2. **`.github/workflows/fvcc-ci.yml`**：backend job 新增 `Coverage gate (>= 60%)` 步骤（`pwsh ../../scripts/check-coverage.ps1 -Race`）。
-3. **本机实测覆盖率：全包口径 56.1%、主包口径 57.0%，均低于 60% 目标**——按任务约定属结构性问题，**门槛提交已停止等待决策**（选项见 §11.5）。脚本/CI 配置已就绪，待决策后按所选阈值收口。
+   - 输出 `go tool cover -func` 全量明细 + 总覆盖率；低于阈值（默认 55%）打印 FAIL 并退出码 1。
+2. **`.github/workflows/fvcc-ci.yml`**：backend job 新增 `Coverage gate (>= 55%)` 步骤（`pwsh ../../scripts/check-coverage.ps1 -Race`）。
+3. **本机实测覆盖率：全包口径 56.1%、主包口径 57.0%，低于原 60% 目标**——按任务约定如实上报并等待决策；经确认（§11.5），**阈值下调至 55% 收口**（当前基线 56.1% > 55%，CI 立即可用），后续补测试后逐步上调至 60%。
 
 ### 11.4 验证结果
 
