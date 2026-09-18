@@ -210,6 +210,15 @@ export interface BrowseEntry {
   default?: boolean
 }
 
+// 回收站条目（P2-5 删除回收站化）
+export interface TrashItem {
+  name: string
+  path: string
+  origPath: string
+  size: number
+  modTime: string
+}
+
 export interface BrowseResult {
   authorized?: boolean
   current: string

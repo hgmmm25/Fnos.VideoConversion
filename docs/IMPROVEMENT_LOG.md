@@ -200,3 +200,57 @@ AIGC:
 3. 未启动前不修改既有稳定链路，避免半成品风险。
 
 *（内容由AI生成，仅供参考）*
+
+---
+
+## 九、第四轮改进（2026-09-18）：P2-5 删除回收站化 + P0-2 仓库卫生延续
+
+### 9.1 背景
+
+混乱报告硬伤②：`deleteVideo` 直接 `os.Remove` 物理删除，NAS 用户误删不可恢复（P2-5）；工作区仍有构建产物残留（P0-2 仓库卫生延续）。
+
+### 9.2 FVCC 后端改动
+
+1. **新增 `server/trash.go`**（回收站核心模块）：
+   - `moveToTrash(path)`：文件移入所在授权根 `<root>/_trash`（`_` 前缀受保留名规则保护，不入素材库扫描），保留相对路径结构避免同名覆盖，重名时追加毫秒时间戳后缀；
+   - `listTrash()`：`GET /api/trash` 聚合全部授权根回收站条目（name/path/origPath/size/modTime）；
+   - `restoreTrash()`：`POST /api/trash/restore` 仅允许回收站内路径（越权 403），恢复目标已存在同名文件时 409 拒绝，避免覆盖；
+   - `emptyTrash()`：`POST /api/trash/empty` 挂 `requireAdmin()` 管理员保护，清空全部回收站。
+2. **`server/handlers.go`** `deleteVideo`：`os.Remove` → `h.moveToTrash`，返回 `trashPath`。
+3. **`server/router.go`** 注册三个回收站路由。
+
+### 9.3 FVCC 前端改动
+
+1. `ui-src/src/api.ts`：新增 `listTrash / restoreTrash / emptyTrash` 封装，`deleteVideo` 返回类型补 `trashPath`。
+2. `ui-src/src/types.ts`：新增 `TrashItem` 接口。
+3. `ui-src/src/pages/scanner.ts`：
+   - 工具栏新增「回收站」入口（弹窗内支持恢复/清空/关闭）；
+   - 删除确认弹窗文案由「此操作不可撤销！」改为「删除后文件将移入回收站，可在回收站中恢复」；
+   - 删除成功 toast 改为「已删除 N 个文件（移入回收站）」。
+
+### 9.4 验证结果
+
+1. `server`: `go build ./...` ✅；全量 `go test .` ✅（96.7s）；新增 `trash_test.go` 3 用例（移动/恢复、越权防护、清空）全部 PASS。
+2. `ui-src`: `npx tsc --noEmit` ✅。
+
+### 9.5 变更文件清单
+
+**新增**
+- `FVCC/server/trash.go`、`FVCC/server/trash_test.go`
+
+**修改**
+- `FVCC/server/handlers.go`（deleteVideo 回收站化）
+- `FVCC/server/router.go`（/trash 三路由 + requireAdmin）
+- `FVCC/ui-src/src/api.ts` / `types.ts` / `pages/scanner.ts`（回收站 UI 与文案）
+
+### 9.6 未落实项（延续至后续迭代）
+
+| 编号 | 未落实内容 | 原因 |
+|---|---|---|
+| P0-2 | JSON 文件存储迁 SQLite | 结构性重构，需独立里程碑 |
+| P1-1 完整版 | 1s ticker 改纯事件驱动调度 | 调度内核重构，与既有验收强耦合 |
+| P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策 |
+| P2-6 | AIGC 残留清理 | README frontmatter 残留未清除，下一轮处理 |
+| 仓库卫生 | server/fvcc.exe、nul.exe 构建产物 | 已加 .gitignore 但磁盘未清理，可在确定可重建后删除 |
+
+*（内容由AI生成，仅供参考）*

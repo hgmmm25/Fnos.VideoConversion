@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 839b5d1d4fff15220193598838e6072d_780a70e0b30c11f1839d525400cd780f
+    ReservedCode1: 2ysoiPtuqSp4s94f4ilGwDGkUXgKLrRRmbF1BJSjFKfAPfvCHxO4YJirhsdWfv4CoIIxgSQM9hHqXsgC/AWgUfp206l3qPmtUae6ZT4ehYu4zPE5+uiimfBPckdAFZxFbqAYNIoVLkJ6K73CttRuZspNAMDX06f0VixEZeD6TMhisxPLsqtF7q+99FA=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 839b5d1d4fff15220193598838e6072d_780a70e0b30c11f1839d525400cd780f
+    ReservedCode2: 2ysoiPtuqSp4s94f4ilGwDGkUXgKLrRRmbF1BJSjFKfAPfvCHxO4YJirhsdWfv4CoIIxgSQM9hHqXsgC/AWgUfp206l3qPmtUae6ZT4ehYu4zPE5+uiimfBPckdAFZxFbqAYNIoVLkJ6K73CttRuZspNAMDX06f0VixEZeD6TMhisxPLsqtF7q+99FA=
+---
+
 # FVCC — 视频转码调度 Web 客户端（fnNAS 应用）
 
 面向 fnNAS 的 Web 调度端：浏览本地素材、下发转码任务到 FVCS 渲染端、实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript（无框架原生 DOM）。
@@ -68,3 +79,4 @@ go test ./...
 | `manifest` | `version` | 1.4.1 |
 | `ui-src/package.json` | `version` | 1.4.1 |
 | `server/VERSION` | 文件内容 | 1.4.1 |
+*（内容由AI生成，仅供参考）*

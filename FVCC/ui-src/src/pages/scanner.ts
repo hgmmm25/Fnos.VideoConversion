@@ -89,6 +89,9 @@ export function renderScanner(container: HTMLElement) {
   browseBtn.append(svgIcon('folder-open', 16) as unknown as Node, el('span', {}, ['浏览目录']))
   const taskBtn = el('button', { class: 'btn btn-primary flex items-center gap-1.5', disabled: 'true' }, [])
   taskBtn.append(svgIcon('plus', 16) as unknown as Node, el('span', {}, ['创建转码任务']))
+  const trashBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5' }, [])
+  trashBtn.append(svgIcon('trash', 16) as unknown as Node, el('span', {}, ['回收站']))
+  trashBtn.onclick = () => openTrashManager()
 
   // 文件清单搜索框
   const searchInput = el('input', {
@@ -132,7 +135,7 @@ export function renderScanner(container: HTMLElement) {
   })
 
   const leftGroup = el('div', { class: 'flex items-center gap-2' }, [browseBtn, pathDisplay, refreshBtn])
-  const rightGroup = el('div', { class: 'flex items-center gap-2' }, [searchInput, taskBtn, colWrap])
+  const rightGroup = el('div', { class: 'flex items-center gap-2' }, [searchInput, trashBtn, taskBtn, colWrap])
   toolbar.append(leftGroup, rightGroup)
 
   // 列表
@@ -347,7 +350,7 @@ export function renderScanner(container: HTMLElement) {
     const warning = el('div', { class: 'text-sm text-danger mb-4' }, [
       warningText,
       el('br'),
-      '此操作不可撤销！'
+      '删除后文件将移入回收站，可在回收站中恢复。'
     ])
     
     const btns = el('div', { class: 'flex justify-end gap-2' })
@@ -373,7 +376,7 @@ export function renderScanner(container: HTMLElement) {
           }
         }
         if (deletedCount > 0) {
-          toast(`成功删除 ${deletedCount} 个文件`, 'success')
+          toast(`已删除 ${deletedCount} 个文件（移入回收站）`, 'success')
         }
         render()
         overlay.remove()
@@ -1226,4 +1229,72 @@ function openCreateTaskModal(scanRoot: string) {
   // P2-2：创建任务弹窗补对话框语义（role=dialog / aria-modal / Esc / 焦点陷阱）
   setupDialogAccessibility({ overlay, titleEl: title, onClose: () => overlay.remove() })
   serverSel.focus()
+}
+
+// openTrashManager 回收站管理弹窗（P2-5）：列表 / 恢复 / 清空
+function openTrashManager() {
+  const overlay = el('div', { class: 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-3' })
+  const modal = el('div', { class: 'card w-full max-w-2xl p-5 max-h-[80vh] flex flex-col' })
+  const title = el('h3', { class: 'font-semibold text-base mb-3' }, ['回收站'])
+  const listBox = el('div', { class: 'flex-1 overflow-auto border border-line rounded-lg mb-3 min-h-[200px]' })
+  const emptyHint = el('div', { class: 'text-sm text-ink-muted p-4 text-center' }, ['回收站为空'])
+  const btns = el('div', { class: 'flex justify-end gap-2' })
+  const cancel = el('button', { class: 'btn' }, ['关闭'])
+  const emptyBtn = el('button', { class: 'btn btn-danger' }, ['清空回收站'])
+
+  async function load() {
+    try {
+      const r = await api.listTrash()
+      listBox.innerHTML = ''
+      if (!r.items || r.items.length === 0) {
+        listBox.appendChild(emptyHint)
+        emptyBtn.disabled = true
+        return
+      }
+      emptyBtn.disabled = false
+      for (const item of r.items) {
+        const row = el('div', { class: 'flex items-center justify-between gap-2 px-3 py-2 border-b border-line last:border-0 text-sm' })
+        const info = el('div', { class: 'flex-1 min-w-0' }, [
+          el('div', { class: 'truncate font-medium' }, [item.name]),
+          el('div', { class: 'text-xs text-ink-muted truncate' }, [item.origPath]),
+        ])
+        const restoreBtn = el('button', { class: 'btn btn-sm btn-primary shrink-0' }, ['恢复'])
+        restoreBtn.onclick = async () => {
+          try {
+            await api.restoreTrash(item.path)
+            toast(`已恢复: ${item.name}`, 'success')
+            load()
+          } catch (e) {
+            toast((e as Error).message, 'error')
+          }
+        }
+        row.append(info, restoreBtn)
+        listBox.appendChild(row)
+      }
+    } catch (e) {
+      listBox.innerHTML = ''
+      listBox.appendChild(el('div', { class: 'text-sm text-danger p-4 text-center' }, [`加载失败: ${(e as Error).message}`]))
+    }
+  }
+
+  cancel.onclick = () => overlay.remove()
+  emptyBtn.onclick = async () => {
+    emptyBtn.disabled = true
+    try {
+      const r = await api.emptyTrash()
+      toast(`已清空回收站（${r.removed} 项）`, 'success')
+      load()
+    } catch (e) {
+      toast((e as Error).message, 'error')
+      emptyBtn.disabled = false
+    }
+  }
+
+  btns.append(emptyBtn, cancel)
+  modal.append(title, listBox, btns)
+  overlay.appendChild(modal)
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove() }
+  document.body.appendChild(overlay)
+  setupDialogAccessibility({ overlay, titleEl: title, onClose: () => overlay.remove() })
+  load()
 }

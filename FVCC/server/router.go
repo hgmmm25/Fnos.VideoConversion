@@ -45,6 +45,11 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		api.POST("/video/rename", h.renameVideo)
 		api.POST("/video/move", h.moveVideo)
 		api.POST("/video/delete", h.deleteVideo)
+
+		// P2-5 回收站：删除操作回收站化后的列表/恢复/清空入口
+		api.GET("/trash", h.listTrash)
+		api.POST("/trash/restore", h.restoreTrash)
+		api.POST("/trash/empty", requireAdmin(), h.emptyTrash)
 		api.GET("/dirs", h.browseDirs)
 
 		// 服务器管理

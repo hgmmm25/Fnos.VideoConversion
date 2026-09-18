@@ -8,6 +8,7 @@ import type {
   BrowseResult,
   Settings,
   Project,
+  TrashItem,
   ProjectSummary,
   ProjectCreateRequest,
   ProjectUpdateRequest,
@@ -136,7 +137,13 @@ export const api = {
       body: JSON.stringify({ path, destDir }) 
     }),
   deleteVideo: (path: string) =>
-    request<{ ok: boolean }>('/video/delete', { method: 'POST', body: JSON.stringify({ path }) }),
+    request<{ ok: boolean; trashPath: string }>('/video/delete', { method: 'POST', body: JSON.stringify({ path }) }),
+
+  // 回收站（P2-5：删除回收站化）
+  listTrash: () => request<{ ok: boolean; items: TrashItem[]; count: number }>('/trash'),
+  restoreTrash: (path: string) =>
+    request<{ ok: boolean; path: string }>('/trash/restore', { method: 'POST', body: JSON.stringify({ path }) }),
+  emptyTrash: () => request<{ ok: boolean; removed: number }>('/trash/empty', { method: 'POST' }),
 
   // 目录浏览
   browseDirs: (path?: string) =>

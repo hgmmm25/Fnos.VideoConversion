@@ -597,12 +597,14 @@ func (h *Handlers) deleteVideo(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "文件不存在"})
 		return
 	}
-	if err := os.Remove(req.Path); err != nil {
+	// P2-5：删除改为移入回收站（<授权根>/_trash），不再物理删除
+	trashPath, err := h.moveToTrash(req.Path)
+	if err != nil {
 		c.JSON(500, gin.H{"error": "删除失败: " + err.Error()})
 		return
 	}
 	h.store.DeleteVideoCache(req.Path)
-	c.JSON(200, gin.H{"ok": true})
+	c.JSON(200, gin.H{"ok": true, "trashPath": trashPath})
 }
 
 // ===== 目录浏览 =====
