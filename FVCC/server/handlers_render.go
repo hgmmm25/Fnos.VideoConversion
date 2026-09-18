@@ -34,6 +34,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fvcc/internal/security"
 	"fvcc/logger"
 )
 
@@ -189,7 +190,7 @@ func (h *Handlers) renderEDLProject(c *gin.Context) {
 	if !in.Force {
 		if t, hit := h.store.FindActiveTaskByChecksum(probe.Checksum); hit {
 			h.store.AppendAudit(AuditEntry{
-				Actor: edlActor(c), Action: "render.reuse_active", Target: t.ID, Result: "ok",
+				Actor: security.GetEDLActor(c), Action: "render.reuse_active", Target: t.ID, Result: "ok",
 				Detail: "checksum=" + probe.Checksum,
 			})
 			c.JSON(http.StatusOK, renderSubmitBody(t, true))
@@ -197,7 +198,7 @@ func (h *Handlers) renderEDLProject(c *gin.Context) {
 		}
 		if t, hit := h.store.FindSuccessTaskByChecksum(probe.Checksum); hit && h.outputArtifactExists(t, localDest) {
 			h.store.AppendAudit(AuditEntry{
-				Actor: edlActor(c), Action: "render.reuse_success", Target: t.ID, Result: "ok",
+				Actor: security.GetEDLActor(c), Action: "render.reuse_success", Target: t.ID, Result: "ok",
 				Detail: "checksum=" + probe.Checksum,
 			})
 			c.JSON(http.StatusOK, renderSubmitBody(t, true))
@@ -306,7 +307,7 @@ func (h *Handlers) renderEDLProject(c *gin.Context) {
 	h.store.UpsertTask(task)
 	h.store.SetProjectLastRenderTask(proj.ID, task.ID)
 	h.store.AppendAudit(AuditEntry{
-		Actor: edlActor(c), Action: "render.submit", Target: task.ID, Result: "ok",
+		Actor: security.GetEDLActor(c), Action: "render.submit", Target: task.ID, Result: "ok",
 		Detail: fmt.Sprintf("project=%s rev=%d output=%s totalMs=%d fastCopy=%t checksum=%s",
 			proj.ID, proj.Rev, output, payload.TotalMs, payload.Profile.FastCopyAllowed, payload.Checksum),
 	})

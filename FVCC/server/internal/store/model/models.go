@@ -1,4 +1,9 @@
-package main
+// Package model 是 FVCC 持久化契约模型（P2-1 阶段 A 前置下沉）。
+// 归属规则（见混乱报告 §4.1.5）：凡落盘 / 跨进程传输的结构体归本包；
+// 仅内存态的内部结构体留在所属业务包内。本文件为 models.go 整体迁入，
+// 阶段 C 将按域拆分为 task.go / server.go / profile.go / settings.go /
+// project.go / edl.go / asset.go / audit.go / nodecaps.go / common.go。
+package model
 
 import "time"
 
@@ -372,7 +377,7 @@ func DefaultSettings() Settings {
 		SMBPassword:            "",
 		LogLevel:               "INFO",
 		MaxLocalTranscodeCount: 1,
-		PlayerMuted:            boolPtr(true), // 修复⑤：默认静音（保持既有行为）
+		PlayerMuted:            BoolPtr(true), // 修复⑤：默认静音（保持既有行为）
 		VideoRoot:              "/media/videos",  // 03 §2.3
 		ExportRoot:             "/media/exports", // 03 §2.3（缺省可回落 SourceRoot/_exports）
 	}
@@ -383,8 +388,8 @@ type SettingsFile struct {
 	Settings Settings `json:"settings"`
 }
 
-// boolPtr 返回布尔指针（修复⑤：Settings.PlayerMuted 用指针区分「未配置」与「显式 false」）。
-func boolPtr(b bool) *bool { return &b }
+// BoolPtr 返回布尔指针（修复⑤：Settings.PlayerMuted 用指针区分「未配置」与「显式 false」）。
+func BoolPtr(b bool) *bool { return &b }
 
 // ===== EDL 项目模型（03 §2.2）=====
 
@@ -624,9 +629,9 @@ type GenProxyPayload struct {
 	SourceRoot string `json:"sourceRoot,omitempty"`
 }
 
-// defaultProxyTemplate 代理参数模板默认值（需求6：默认走 GPU 硬编 h264_nvenc；
+// DefaultProxyTemplate 代理参数模板默认值（需求6：默认走 GPU 硬编 h264_nvenc；
 // 远端 FVCS 无 NVIDIA 编码器时自动降级 libx264，见 FVCS proxy_flow.go）。
-func defaultProxyTemplate() ProxyTemplate {
+func DefaultProxyTemplate() ProxyTemplate {
 	return ProxyTemplate{
 		PresetKey:    "proxy_720p_nvenc",
 		Height:       720,

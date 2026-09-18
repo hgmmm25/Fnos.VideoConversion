@@ -1,4 +1,4 @@
-package main
+package security
 
 import (
 	"strings"
@@ -15,8 +15,8 @@ type GatewayUser struct {
 	Present  bool   // 是否存在有效登录态
 }
 
-// getGatewayUser 从请求头解析网关用户信息。
-func getGatewayUser(c *gin.Context) GatewayUser {
+// GetGatewayUser 从请求头解析网关用户信息。
+func GetGatewayUser(c *gin.Context) GatewayUser {
 	u := GatewayUser{
 		UID:      c.GetHeader("X-Trim-User-Id"),
 		Username: c.GetHeader("X-Trim-User-Name"),
@@ -29,10 +29,10 @@ func getGatewayUser(c *gin.Context) GatewayUser {
 	return u
 }
 
-// gatewayUser 中间件：解析网关用户并注入到 context。
-func gatewayUser() gin.HandlerFunc {
+// GatewayUserMiddleware 中间件：解析网关用户并注入到 context。
+func GatewayUserMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user := getGatewayUser(c)
+		user := GetGatewayUser(c)
 		c.Set("gatewayUser", user)
 		c.Next()
 	}
@@ -41,12 +41,12 @@ func gatewayUser() gin.HandlerFunc {
 // errCodeForbidden 权限拒绝错误码（07 §4.2；03 §5.3 未定义，实现补充，见 10 号台账）。
 const errCodeForbidden = "E_FORBIDDEN"
 
-// requireAdmin 中间件：要求管理员权限（独立模式放行）。
+// RequireAdmin 中间件：要求管理员权限（独立模式放行）。
 // 依据 07 §4.2 / §7：提交渲染（/render）、生成代理（/proxy）、删除类（DELETE）等写操作仅 admin；
 // 无网关身份（独立 / 内网直连模式）时放行，行为与改造前一致；拒绝响应对齐 03 §4.1 统一失败契约。
-func requireAdmin() gin.HandlerFunc {
+func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user := getGatewayUser(c)
+		user := GetGatewayUser(c)
 		// 独立模式（无网关头）放行，仅内网使用
 		if !user.Present {
 			c.Next()

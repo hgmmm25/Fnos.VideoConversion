@@ -8,6 +8,7 @@ package main
 //  5) node_caps 主键覆盖、健康采样裁剪、审计日志过滤。
 
 import (
+	"fvcc/internal/store"
 	"encoding/json"
 	"errors"
 	"os"
@@ -63,8 +64,8 @@ func TestLoadMigratesLegacyTasksFile(t *testing.T) {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatalf("回写文件不可解析: %v", err)
 	}
-	if f.Version != storeSchemaVersion {
-		t.Fatalf("文件版本未升级到 %d，实际 %d", storeSchemaVersion, f.Version)
+	if f.Version != store.StoreSchemaVersion {
+		t.Fatalf("文件版本未升级到 %d，实际 %d", store.StoreSchemaVersion, f.Version)
 	}
 	if f.Tasks[0].TaskType != TaskTypeTranscode {
 		t.Fatalf("回写文件中的 task_type 不正确: %q", f.Tasks[0].TaskType)
@@ -97,7 +98,7 @@ func TestLoadRejectsCorruptTasksFile(t *testing.T) {
 
 func TestLoadRejectsFutureTasksVersion(t *testing.T) {
 	dir := t.TempDir()
-	writeTasksFile(t, dir, TasksFile{Version: storeSchemaVersion + 1, Tasks: []Task{}})
+	writeTasksFile(t, dir, TasksFile{Version: store.StoreSchemaVersion + 1, Tasks: []Task{}})
 	s := NewStore(dir)
 	if err := s.Load(); err == nil {
 		t.Fatalf("高于支持版本的任务文件必须拒绝启动")
@@ -212,16 +213,16 @@ func TestChecksumIdempotencyQueries(t *testing.T) {
 }
 
 func TestCooldownBackoffAndDueList(t *testing.T) {
-	if got := CooldownBackoffSec(0); got != 30 {
+	if got := store.CooldownBackoffSec(0); got != 30 {
 		t.Fatalf("attempt=0 退避应为 30s，实际 %d", got)
 	}
-	if got := CooldownBackoffSec(1); got != 60 {
+	if got := store.CooldownBackoffSec(1); got != 60 {
 		t.Fatalf("attempt=1 退避应为 60s，实际 %d", got)
 	}
-	if got := CooldownBackoffSec(4); got != 480 {
+	if got := store.CooldownBackoffSec(4); got != 480 {
 		t.Fatalf("attempt=4 退避应为 480s，实际 %d", got)
 	}
-	if got := CooldownBackoffSec(10); got != 600 {
+	if got := store.CooldownBackoffSec(10); got != 600 {
 		t.Fatalf("退避上限应为 600s，实际 %d", got)
 	}
 

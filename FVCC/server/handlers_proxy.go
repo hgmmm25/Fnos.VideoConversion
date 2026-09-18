@@ -27,6 +27,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fvcc/internal/security"
 	"fvcc/logger"
 )
 
@@ -131,7 +132,7 @@ func (h *Handlers) handleProxyRequest(c *gin.Context) {
 		return
 	}
 
-	tmpl := defaultProxyTemplate()
+	tmpl := DefaultProxyTemplate()
 	proxyFile := proxyRelOf(file)
 	payload := GenProxyPayload{
 		Type:       proxyPayloadType,
@@ -168,7 +169,7 @@ func (h *Handlers) handleProxyRequest(c *gin.Context) {
 	}
 	h.store.UpsertTask(task)
 	h.store.AppendAudit(AuditEntry{
-		Actor: edlActor(c), Action: "proxy.submit", Target: task.ID, Result: "ok",
+		Actor: security.GetEDLActor(c), Action: "proxy.submit", Target: task.ID, Result: "ok",
 		Detail: fmt.Sprintf("asset=%s file=%s proxy=%s preset=%s", assetID, file, proxyFile, tmpl.PresetKey),
 	})
 	if h.hub != nil {

@@ -1,4 +1,4 @@
-package main
+package store
 
 // M4：代理映射持久化与读写（04 §4.2）。
 //
@@ -11,29 +11,30 @@ package main
 // 因此天然不会突破 2 次上限；POST /proxy 对 invalid 状态的素材允许显式重建。
 
 import (
+	"fvcc/internal/store/model"
 	"time"
 )
 
 // persistAssetProxies 把内存中的代理映射落盘（写盘为副本，避免持锁 IO 过长）。
 func (s *Store) persistAssetProxies() {
 	s.mu.RLock()
-	items := make([]AssetProxy, len(s.assetProxies))
+	items := make([]model.AssetProxy, len(s.assetProxies))
 	copy(items, s.assetProxies)
 	s.mu.RUnlock()
-	saveJSON(s.path("asset_proxies.json"), AssetProxiesFile{Version: 1, Items: items})
+	saveJSON(s.path("asset_proxies.json"), model.AssetProxiesFile{Version: 1, Items: items})
 }
 
 // GetAssetProxies 返回全部代理映射（副本，供诊断/测试）。
-func (s *Store) GetAssetProxies() []AssetProxy {
+func (s *Store) GetAssetProxies() []model.AssetProxy {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]AssetProxy, len(s.assetProxies))
+	out := make([]model.AssetProxy, len(s.assetProxies))
 	copy(out, s.assetProxies)
 	return out
 }
 
 // GetAssetProxy 按 assetKey（相对 SourceRoot 的 POSIX 路径）查询。
-func (s *Store) GetAssetProxy(assetKey string) (AssetProxy, bool) {
+func (s *Store) GetAssetProxy(assetKey string) (model.AssetProxy, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for i := range s.assetProxies {
@@ -41,11 +42,11 @@ func (s *Store) GetAssetProxy(assetKey string) (AssetProxy, bool) {
 			return s.assetProxies[i], true
 		}
 	}
-	return AssetProxy{}, false
+	return model.AssetProxy{}, false
 }
 
 // UpsertAssetProxy 新增或覆盖一条代理映射并落盘（以 assetKey 为主键）。
-func (s *Store) UpsertAssetProxy(p AssetProxy) {
+func (s *Store) UpsertAssetProxy(p model.AssetProxy) {
 	s.mu.Lock()
 	replaced := false
 	for i := range s.assetProxies {
@@ -124,21 +125,21 @@ func (s *Store) DeleteAssetProxy(assetKey string) bool {
 
 // FindActiveProxyTask 查找同一 file（assetKey）上尚未终结的 GEN_PROXY 任务（04 §3.5 同素材去重）。
 // 命中时调用方应直接返回既有 taskId（HTTP 200），不得重复建任务。
-func (s *Store) FindActiveProxyTask(assetKey string) (Task, bool) {
+func (s *Store) FindActiveProxyTask(assetKey string) (model.Task, bool) {
 	if assetKey == "" {
-		return Task{}, false
+		return model.Task{}, false
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for i := range s.tasks {
 		t := s.tasks[i]
-		if t.TaskType != TaskTypeGenProxy || t.SourceFile != assetKey {
+		if t.TaskType != model.TaskTypeGenProxy || t.SourceFile != assetKey {
 			continue
 		}
-		if t.Status.IsTerminal() || t.Status == StatusError || t.Status == StatusCooldown {
+		if t.Status.IsTerminal() || t.Status == model.StatusError || t.Status == model.StatusCooldown {
 			continue
 		}
 		return t, true
 	}
-	return Task{}, false
+	return model.Task{}, false
 }

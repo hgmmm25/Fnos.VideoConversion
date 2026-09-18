@@ -7,6 +7,7 @@ package main
 //     转码任务保持既有 (0,100] 且不回退语义；未匹配上报忽略。
 
 import (
+	"fvcc/internal/store"
 	"testing"
 	"time"
 )
@@ -36,7 +37,7 @@ func TestB07ApplyRenderProgressStore(t *testing.T) {
 	})
 
 	// 首次上报：全量字段落库
-	got, ok := s.ApplyRenderProgress("t_edl", RenderProgress{
+	got, ok := s.ApplyRenderProgress("t_edl", store.RenderProgress{
 		Progress: 40, Stage: StageSegment, SegIndex: 2, SegTotal: 4,
 		OutTimeMs: 2000, TotalMs: 8000, Speed: "1.5x",
 	})
@@ -49,26 +50,26 @@ func TestB07ApplyRenderProgressStore(t *testing.T) {
 	}
 
 	// 单调不回退：迟到的低进度被忽略，其余同帧字段保持
-	got, ok = s.ApplyRenderProgress("t_edl", RenderProgress{Progress: 15})
+	got, ok = s.ApplyRenderProgress("t_edl", store.RenderProgress{Progress: 15})
 	if !ok || got.Progress != 40 {
 		t.Fatalf("进度不应回退，实际 %v (ok=%v)", got.Progress, ok)
 	}
 
 	// 空值保持：stage/seg/speed 为空或 <=0 时不清空既有值
-	got, _ = s.ApplyRenderProgress("t_edl", RenderProgress{Progress: 40, Stage: "", SegIndex: 0, OutTimeMs: 0, Speed: ""})
+	got, _ = s.ApplyRenderProgress("t_edl", store.RenderProgress{Progress: 40, Stage: "", SegIndex: 0, OutTimeMs: 0, Speed: ""})
 	if got.Stage != StageSegment || got.SegIndex != 2 || got.OutTimeMs != 2000 || got.Speed != "1.5x" {
 		t.Fatalf("空值字段不应清空既有进度: %+v", got)
 	}
 
 	// 越界钳制：>100 → 100，<0 → 0（此处任务已为 40，低位钳制不产生回退）
-	got, _ = s.ApplyRenderProgress("t_edl", RenderProgress{Progress: 150})
+	got, _ = s.ApplyRenderProgress("t_edl", store.RenderProgress{Progress: 150})
 	if got.Progress != 100 {
 		t.Fatalf("进度上界应钳制为 100，实际 %v", got.Progress)
 	}
 
 	// 终态任务不被进度上报覆盖
 	before, _ := s.GetTask("t_done")
-	got, ok = s.ApplyRenderProgress("t_done", RenderProgress{Progress: 50, Stage: StageSegment})
+	got, ok = s.ApplyRenderProgress("t_done", store.RenderProgress{Progress: 50, Stage: StageSegment})
 	if ok {
 		t.Fatalf("终态任务不应命中进度落库: %+v", got)
 	}
@@ -78,7 +79,7 @@ func TestB07ApplyRenderProgressStore(t *testing.T) {
 	}
 
 	// 不存在任务
-	if _, ok := s.ApplyRenderProgress("t_missing", RenderProgress{Progress: 10}); ok {
+	if _, ok := s.ApplyRenderProgress("t_missing", store.RenderProgress{Progress: 10}); ok {
 		t.Fatal("不存在的任务不应命中")
 	}
 

@@ -1,6 +1,7 @@
-package main
+package store
 
 import (
+	"fvcc/internal/store/model"
 	"encoding/json"
 	"errors"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"fvcc/logger"
+	"fvcc/internal/security"
 )
 
 // Store 内存缓存 + 原子持久化的配置存储。
@@ -19,23 +21,26 @@ type Store struct {
 	mu         sync.RWMutex
 	dataDir    string
 	secretKey  []byte // P0-1 凭据主密钥（AES-256，0600 落盘 <dataDir>/secret.key）
-	tasks      []Task
-	history    []Task
-	servers    []Server
-	profiles   []Profile
-	locks      []Lock
-	settings   Settings
-	videoCache []VideoInfoCache
+	tasks      []model.Task
+	history    []model.Task
+	servers    []model.Server
+	profiles   []model.Profile
+	locks      []model.Lock
+	settings   model.Settings
+	videoCache []model.VideoInfoCache
 	// ===== B-01：调度与持久化扩展（06 §2）=====
-	projects      []Project          // EDL 项目
-	nodeCaps      []NodeCaps         // 渲染节点能力快照
-	healthSamples []NodeHealthSample // 节点健康采样
-	auditLog      []AuditEntry       // 审计日志
+	projects      []model.Project          // EDL 项目
+	nodeCaps      []model.NodeCaps         // 渲染节点能力快照
+	healthSamples []model.NodeHealthSample // 节点健康采样
+	auditLog      []model.AuditEntry       // 审计日志
 	// ===== M4：代理映射（04 §4.2）=====
-	assetProxies []AssetProxy // 素材代理映射（asset_proxies.json）
+	assetProxies []model.AssetProxy // 素材代理映射（asset_proxies.json）
 	loaded       bool
 	orderCounter int64 // 任务顺序号计数器，保证任务按创建顺序处理
 }
+
+// DataDir 返回数据目录（供日志等旁路文件定位）。
+func (s *Store) DataDir() string { return s.dataDir }
 
 // NewStore 创建存储实例，首次调用 Load 加载数据。
 func NewStore(dataDir string) *Store {
@@ -52,7 +57,7 @@ func (s *Store) Load() error {
 	}
 
 	// P0-1：加载凭据主密钥（不存在则生成），后续 settings/server 解密依赖它。
-	key, err := loadOrCreateSecretKey(s.dataDir)
+	key, err := security.LoadOrCreateSecretKey(s.dataDir)
 	if err != nil {
 		logger.Error("store", "加载凭据主密钥失败: %v", err)
 		return err
@@ -64,14 +69,14 @@ func (s *Store) Load() error {
 	if err := s.loadTasksLocked(); err != nil {
 		return err
 	}
-	s.history = loadJSON[HistoryFile](s.path("history_tasks.json"), HistoryFile{Version: 1, Tasks: []Task{}}).Tasks
-	s.servers = decryptServersOnLoad(key, loadJSON[ServersFile](s.path("server.json"), ServersFile{Version: 1, Servers: []Server{}}).Servers)
-	s.profiles = loadJSON[ProfilesFile](s.path("transcode_profile.json"), ProfilesFile{Version: 1, Profiles: []Profile{}}).Profiles
-	s.locks = loadJSON[LocksFile](s.path("locks.json"), LocksFile{Version: 1, Locks: []Lock{}}).Locks
-	s.settings = decryptSettingsOnLoad(key, loadJSON[SettingsFile](s.path("settings.json"), SettingsFile{Version: 1, Settings: DefaultSettings()}).Settings)
-	s.videoCache = loadJSON[VideoCacheFile](s.path("video_cache.json"), VideoCacheFile{Version: 1, Entries: []VideoInfoCache{}}).Entries
+	s.history = loadJSON[model.HistoryFile](s.path("history_tasks.json"), model.HistoryFile{Version: 1, Tasks: []model.Task{}}).Tasks
+	s.servers = security.DecryptServersOnLoad(key, loadJSON[model.ServersFile](s.path("server.json"), model.ServersFile{Version: 1, Servers: []model.Server{}}).Servers)
+	s.profiles = loadJSON[model.ProfilesFile](s.path("transcode_profile.json"), model.ProfilesFile{Version: 1, Profiles: []model.Profile{}}).Profiles
+	s.locks = loadJSON[model.LocksFile](s.path("locks.json"), model.LocksFile{Version: 1, Locks: []model.Lock{}}).Locks
+	s.settings = security.DecryptSettingsOnLoad(key, loadJSON[model.SettingsFile](s.path("settings.json"), model.SettingsFile{Version: 1, Settings: model.DefaultSettings()}).Settings)
+	s.videoCache = loadJSON[model.VideoCacheFile](s.path("video_cache.json"), model.VideoCacheFile{Version: 1, Entries: []model.VideoInfoCache{}}).Entries
 	// B-01 新增集合（06 §2.1）：不存在时按空集合初始化，不阻断启动。
-	s.projects = loadJSON[ProjectsFile](s.path("projects.json"), ProjectsFile{Version: 1, Projects: []Project{}}).Projects
+	s.projects = loadJSON[model.ProjectsFile](s.path("projects.json"), model.ProjectsFile{Version: 1, Projects: []model.Project{}}).Projects
 	// 派生字段不落盘（03 §2.2）：加载后统一重算，并补齐 schema_ver 缺省（03 §7）。
 	for i := range s.projects {
 		if s.projects[i].SchemaVer == 0 {
@@ -79,18 +84,18 @@ func (s *Store) Load() error {
 		}
 		normalizeProject(&s.projects[i])
 	}
-	s.nodeCaps = loadJSON[NodeCapsFile](s.path("node_caps.json"), NodeCapsFile{Version: 1, Items: []NodeCaps{}}).Items
-	s.healthSamples = loadJSON[NodeHealthFile](s.path("node_health_samples.json"), NodeHealthFile{Version: 1, Samples: []NodeHealthSample{}}).Samples
-	s.auditLog = loadJSON[AuditLogFile](s.path("audit_log.json"), AuditLogFile{Version: 1, Entries: []AuditEntry{}}).Entries
+	s.nodeCaps = loadJSON[model.NodeCapsFile](s.path("node_caps.json"), model.NodeCapsFile{Version: 1, Items: []model.NodeCaps{}}).Items
+	s.healthSamples = loadJSON[model.NodeHealthFile](s.path("node_health_samples.json"), model.NodeHealthFile{Version: 1, Samples: []model.NodeHealthSample{}}).Samples
+	s.auditLog = loadJSON[model.AuditLogFile](s.path("audit_log.json"), model.AuditLogFile{Version: 1, Entries: []model.AuditEntry{}}).Entries
 	// M4 新增集合（04 §4.2）：不存在时按空集合初始化，不阻断启动。
-	s.assetProxies = loadJSON[AssetProxiesFile](s.path("asset_proxies.json"), AssetProxiesFile{Version: 1, Items: []AssetProxy{}}).Items
+	s.assetProxies = loadJSON[model.AssetProxiesFile](s.path("asset_proxies.json"), model.AssetProxiesFile{Version: 1, Items: []model.AssetProxy{}}).Items
 
 	// 启动崩溃恢复：非终态的中断任务重置为 QUEUE
 	for i := range s.tasks {
 		t := &s.tasks[i]
-		if !t.Status.IsTerminal() && t.Status != StatusQueue {
+		if !t.Status.IsTerminal() && t.Status != model.StatusQueue {
 			logger.Info("store", "recover task %s %s -> QUEUE (was interrupted)", t.ID, t.Status)
-			t.Status = StatusQueue
+			t.Status = model.StatusQueue
 			t.Progress = 0
 			t.UploadChunkIdx = 0
 			t.RemoteTaskID = ""
@@ -134,10 +139,10 @@ func (s *Store) Load() error {
 
 // ===== Tasks =====
 
-func (s *Store) GetTasks() []Task {
+func (s *Store) GetTasks() []model.Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Task, len(s.tasks))
+	out := make([]model.Task, len(s.tasks))
 	copy(out, s.tasks)
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].OrderID < out[j].OrderID
@@ -145,7 +150,7 @@ func (s *Store) GetTasks() []Task {
 	return out
 }
 
-func (s *Store) GetTask(id string) (Task, bool) {
+func (s *Store) GetTask(id string) (model.Task, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, t := range s.tasks {
@@ -153,13 +158,13 @@ func (s *Store) GetTask(id string) (Task, bool) {
 			return t, true
 		}
 	}
-	return Task{}, false
+	return model.Task{}, false
 }
 
-func (s *Store) UpsertTask(t Task) {
+func (s *Store) UpsertTask(t model.Task) {
 	s.mu.Lock()
 	t.UpdatedAt = time.Now()
-	if t.Status == StatusCompleted {
+	if t.Status == model.StatusCompleted {
 		if t.Progress < 100 {
 			t.Progress = 100
 		}
@@ -230,7 +235,7 @@ func (s *Store) NextOrderID() int64 {
 	return s.orderCounter
 }
 
-func (s *Store) UpdateTaskStatus(id string, status TaskStatus, progress float64, errMsg string) {
+func (s *Store) UpdateTaskStatus(id string, status model.TaskStatus, progress float64, errMsg string) {
 	s.mu.Lock()
 	needPersist := true
 	for i := range s.tasks {
@@ -245,7 +250,7 @@ func (s *Store) UpdateTaskStatus(id string, status TaskStatus, progress float64,
 				break
 			}
 
-			if status == StatusCompleted {
+			if status == model.StatusCompleted {
 				progress = 100
 			} else if status == oldStatus {
 				if progress < oldProgress {
@@ -270,7 +275,7 @@ func (s *Store) UpdateTaskStatus(id string, status TaskStatus, progress float64,
 			s.tasks[i].UpdatedAt = time.Now()
 
 			// 报错任务移到队列末尾
-			if status == StatusError && oldStatus != StatusError {
+			if status == model.StatusError && oldStatus != model.StatusError {
 				s.orderCounter++
 				s.tasks[i].OrderID = s.orderCounter
 			}
@@ -285,7 +290,7 @@ func (s *Store) UpdateTaskStatus(id string, status TaskStatus, progress float64,
 
 func (s *Store) MoveToHistory(id string) {
 	s.mu.Lock()
-	var moved *Task
+	var moved *model.Task
 	for i, t := range s.tasks {
 		if t.ID == id {
 			moved = &t
@@ -335,7 +340,7 @@ func (s *Store) ReorderTasks(taskIDs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	taskMap := make(map[string]*Task)
+	taskMap := make(map[string]*model.Task)
 	for i := range s.tasks {
 		taskMap[s.tasks[i].ID] = &s.tasks[i]
 	}
@@ -363,27 +368,27 @@ func (s *Store) ReorderTasks(taskIDs []string) error {
 	return nil
 }
 
-func (s *Store) GetHistory() []Task {
+func (s *Store) GetHistory() []model.Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Task, len(s.history))
+	out := make([]model.Task, len(s.history))
 	copy(out, s.history)
 	return out
 }
 
 // ===== Servers =====
 
-func (s *Store) GetServers() []Server {
+func (s *Store) GetServers() []model.Server {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Server, len(s.servers))
+	out := make([]model.Server, len(s.servers))
 	copy(out, s.servers)
 	return out
 }
 
-func (s *Store) GetServer(id string) (Server, bool) {
+func (s *Store) GetServer(id string) (model.Server, bool) {
 	if id == "_local_" {
-		return Server{
+		return model.Server{
 			ID:      "_local_",
 			Name:    "fnNAS 自转码",
 			Status:  "online",
@@ -397,10 +402,10 @@ func (s *Store) GetServer(id string) (Server, bool) {
 			return sv, true
 		}
 	}
-	return Server{}, false
+	return model.Server{}, false
 }
 
-func (s *Store) UpsertServer(sv Server) {
+func (s *Store) UpsertServer(sv model.Server) {
 	s.mu.Lock()
 	for i, ex := range s.servers {
 		if ex.ID == sv.ID {
@@ -450,15 +455,15 @@ func (s *Store) UpdateServerStatus(id, status string) {
 
 // ===== Profiles =====
 
-func (s *Store) GetProfiles() []Profile {
+func (s *Store) GetProfiles() []model.Profile {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Profile, len(s.profiles))
+	out := make([]model.Profile, len(s.profiles))
 	copy(out, s.profiles)
 	return out
 }
 
-func (s *Store) GetProfile(id string) (Profile, bool) {
+func (s *Store) GetProfile(id string) (model.Profile, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, p := range s.profiles {
@@ -466,10 +471,10 @@ func (s *Store) GetProfile(id string) (Profile, bool) {
 			return p, true
 		}
 	}
-	return Profile{}, false
+	return model.Profile{}, false
 }
 
-func (s *Store) UpsertProfile(p Profile) {
+func (s *Store) UpsertProfile(p model.Profile) {
 	s.mu.Lock()
 	for i, ex := range s.profiles {
 		if ex.ID == p.ID {
@@ -499,10 +504,10 @@ func (s *Store) DeleteProfile(id string) bool {
 
 // ===== Locks =====
 
-func (s *Store) GetLocks() []Lock {
+func (s *Store) GetLocks() []model.Lock {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Lock, len(s.locks))
+	out := make([]model.Lock, len(s.locks))
 	copy(out, s.locks)
 	return out
 }
@@ -518,15 +523,15 @@ func (s *Store) AcquireTransLock(serverID, taskID string, expireSec int) bool {
 					return false // 被其他任务占用
 				}
 			}
-			s.locks[i].TransLock = &LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)}
+			s.locks[i].TransLock = &model.LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)}
 			s.persistLocks()
 			return true
 		}
 	}
 	// 服务器还没有锁记录，新建
-	s.locks = append(s.locks, Lock{
+	s.locks = append(s.locks, model.Lock{
 		ServerID:  serverID,
-		TransLock: &LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)},
+		TransLock: &model.LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)},
 	})
 	s.persistLocks()
 	return true
@@ -543,14 +548,14 @@ func (s *Store) AcquireCodeLock(serverID, taskID string, expireSec int) bool {
 					return false
 				}
 			}
-			s.locks[i].CodeLock = &LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)}
+			s.locks[i].CodeLock = &model.LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)}
 			s.persistLocks()
 			return true
 		}
 	}
-	s.locks = append(s.locks, Lock{
+	s.locks = append(s.locks, model.Lock{
 		ServerID: serverID,
-		CodeLock: &LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)},
+		CodeLock: &model.LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)},
 	})
 	s.persistLocks()
 	return true
@@ -614,30 +619,30 @@ func (s *Store) ReleaseAllLocks() {
 func (s *Store) path(name string) string { return filepath.Join(s.dataDir, name) }
 
 func (s *Store) persistTasks() {
-	saveJSON(s.path("tasks.json"), TasksFile{Version: storeSchemaVersion, Tasks: s.tasks})
+	saveJSON(s.path("tasks.json"), model.TasksFile{Version: StoreSchemaVersion, Tasks: s.tasks})
 }
 func (s *Store) persistHistory() {
-	saveJSON(s.path("history_tasks.json"), HistoryFile{Version: 1, Tasks: s.history})
+	saveJSON(s.path("history_tasks.json"), model.HistoryFile{Version: 1, Tasks: s.history})
 }
 func (s *Store) persistServers() {
-	saveJSON(s.path("server.json"), ServersFile{Version: 1, Servers: encryptServersForDisk(s.secretKey, s.servers)})
+	saveJSON(s.path("server.json"), model.ServersFile{Version: 1, Servers: security.EncryptServersForDisk(s.secretKey, s.servers)})
 }
 func (s *Store) persistProfiles() {
-	saveJSON(s.path("transcode_profile.json"), ProfilesFile{Version: 1, Profiles: s.profiles})
+	saveJSON(s.path("transcode_profile.json"), model.ProfilesFile{Version: 1, Profiles: s.profiles})
 }
 func (s *Store) persistLocks() {
-	saveJSON(s.path("locks.json"), LocksFile{Version: 1, Locks: s.locks})
+	saveJSON(s.path("locks.json"), model.LocksFile{Version: 1, Locks: s.locks})
 }
 
 // ===== Settings =====
 
-func (s *Store) GetSettings() Settings {
+func (s *Store) GetSettings() model.Settings {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.settings
 }
 
-func (s *Store) SaveSettings(v Settings) {
+func (s *Store) SaveSettings(v model.Settings) {
 	s.mu.Lock()
 	s.settings = v
 	s.mu.Unlock()
@@ -645,12 +650,12 @@ func (s *Store) SaveSettings(v Settings) {
 }
 
 func (s *Store) persistSettings() {
-	saveJSON(s.path("settings.json"), SettingsFile{Version: 1, Settings: encryptSettingsForDisk(s.secretKey, s.settings)})
+	saveJSON(s.path("settings.json"), model.SettingsFile{Version: 1,Settings: security.EncryptSettingsForDisk(s.secretKey, s.settings)})
 }
 
 // ===== VideoCache =====
 
-func (s *Store) GetVideoCache(path string) (VideoInfoCache, bool) {
+func (s *Store) GetVideoCache(path string) (model.VideoInfoCache, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, c := range s.videoCache {
@@ -658,10 +663,10 @@ func (s *Store) GetVideoCache(path string) (VideoInfoCache, bool) {
 			return c, true
 		}
 	}
-	return VideoInfoCache{}, false
+	return model.VideoInfoCache{}, false
 }
 
-func (s *Store) UpsertVideoCache(c VideoInfoCache) {
+func (s *Store) UpsertVideoCache(c model.VideoInfoCache) {
 	s.mu.Lock()
 	c.UpdatedAt = time.Now()
 	for i, ex := range s.videoCache {
@@ -692,7 +697,7 @@ func (s *Store) DeleteVideoCache(path string) bool {
 
 func (s *Store) ClearVideoCache() {
 	s.mu.Lock()
-	s.videoCache = []VideoInfoCache{}
+	s.videoCache = []model.VideoInfoCache{}
 	s.mu.Unlock()
 	s.persistVideoCache()
 }
@@ -704,7 +709,7 @@ func (s *Store) GetVideoCacheCount() int {
 }
 
 func (s *Store) persistVideoCache() {
-	saveJSON(s.path("video_cache.json"), VideoCacheFile{Version: 1, Entries: s.videoCache})
+	saveJSON(s.path("video_cache.json"), model.VideoCacheFile{Version: 1, Entries: s.videoCache})
 }
 
 // loadJSON 从文件加载 JSON，不存在或解析失败时返回默认值。

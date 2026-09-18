@@ -1,4 +1,4 @@
-package main
+package version
 
 import (
 	"os"
@@ -12,14 +12,14 @@ import (
 // 历史缺陷：appVer 曾硬编码 "1.0.0"，而交付包已到 1.2.x，前端「设置」页展示的
 // 应用版本与真实包版本不一致（同一轮修复中，FVCS 也出现过 hello.go 硬编码 1.2.0 的问题）。
 func TestAppVerEmbeddedFromFile(t *testing.T) {
-	if strings.TrimSpace(appVer) == "" {
+	if strings.TrimSpace(AppVer) == "" {
 		t.Fatal("appVer 为空：server/VERSION 缺失或 go:embed 未生效")
 	}
-	if appVer != strings.TrimSpace(appVer) {
-		t.Fatalf("appVer 含首尾空白未清理: %q", appVer)
+	if AppVer != strings.TrimSpace(AppVer) {
+		t.Fatalf("AppVer 含首尾空白未清理: %q", AppVer)
 	}
-	if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(appVer) {
-		t.Fatalf("appVer 非三段式版本号（应为 x.y.z）: %q", appVer)
+	if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(AppVer) {
+		t.Fatalf("AppVer 非三段式版本号（应为 x.y.z）: %q", AppVer)
 	}
 }
 
@@ -29,8 +29,8 @@ func TestAppVerMatchesPackagingFiles(t *testing.T) {
 		path    string
 		pattern string
 	}{
-		{"../manifest", `(?m)^version\s*=\s*(\S+)`},
-		{"../ui-src/package.json", `"version"\s*:\s*"([^"]+)"`},
+		{"../../manifest", `(?m)^version\s*=\s*(\S+)`},
+		{"../../ui-src/package.json", `"version"\s*:\s*"([^"]+)"`},
 	}
 	for _, c := range checks {
 		raw, err := os.ReadFile(c.path)
@@ -41,8 +41,8 @@ func TestAppVerMatchesPackagingFiles(t *testing.T) {
 		if m == nil {
 			t.Fatalf("%s 中未找到版本号字段", c.path)
 		}
-		if m[1] != appVer {
-			t.Fatalf("%s 中版本=%q 与二进制版本 appVer=%q 不一致：出新包时请同步修改", c.path, m[1], appVer)
+		if m[1] != AppVer {
+			t.Fatalf("%s 中版本=%q 与二进制版本 AppVer=%q 不一致：出新包时请同步修改", c.path, m[1], AppVer)
 		}
 	}
 }

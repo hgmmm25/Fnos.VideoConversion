@@ -19,12 +19,12 @@ package main
 import (
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"fvcc/logger"
+	"fvcc/internal/security"
 )
 
 const (
@@ -38,8 +38,6 @@ const (
 	renderSubmitMax  = 30               // 渲染提交次数
 	renderWindow     = time.Minute      // 观测窗口
 
-	// 限流器内存约束
-	rlMaxKeys = 4096 // 单限流器保留的 key 上限（超出触发空闲回收）
 )
 
 // ===== 安全响应头（07 §4.4）=====
@@ -55,167 +53,13 @@ func securityHeaders() gin.HandlerFunc {
 	}
 }
 
-// ===== 滑动窗口限流器（07 §4.5）=====
-
-// slidingWindowLimiter 按 key 独立的滑动窗口计数限流器（now 可注入，便于单测推进时间）。
-// cooldown > 0 时，窗口内达阈值即进入冷却，冷却期内该 key 一律拒绝（07 §4.5 登录失败）。
-type slidingWindowLimiter struct {
-	mu       sync.Mutex
-	events   map[string][]time.Time
-	blocked  map[string]time.Time // key → 冷却截止时刻
-	limit    int
-	window   time.Duration
-	cooldown time.Duration
-	now      func() time.Time
-}
-
-func newSlidingWindowLimiter(limit int, window time.Duration) *slidingWindowLimiter {
-	if limit <= 0 {
-		limit = 1
-	}
-	if window <= 0 {
-		window = time.Minute
-	}
-	return &slidingWindowLimiter{
-		events:  map[string][]time.Time{},
-		blocked: map[string]time.Time{},
-		limit:   limit,
-		window:  window,
-		now:     time.Now,
-	}
-}
-
-// newCooldownLimiter 构造「达阈值即冷却」的限流器（如 07 §4.5 登录失败：10 次/5min → 冷却 15min）。
-func newCooldownLimiter(limit int, window, cooldown time.Duration) *slidingWindowLimiter {
-	l := newSlidingWindowLimiter(limit, window)
-	l.cooldown = cooldown
-	return l
-}
-
-// exceeded 判断 key 在窗口内是否已达阈值（只读，不记录）。
-func (l *slidingWindowLimiter) exceeded(key string) bool {
-	t := l.now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return len(l.pruneLocked(key, t)) >= l.limit
-}
-
-// record 记录一次事件（超限后仍记录，保证窗口滚动期间持续受限）。
-func (l *slidingWindowLimiter) record(key string) {
-	t := l.now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if _, ok := l.events[key]; !ok && len(l.events) >= rlMaxKeys {
-		l.evictLocked(t)
-	}
-	l.events[key] = append(l.pruneLocked(key, t), t)
-}
-
-// allow 记录一次事件并回报是否未超限（限流判定为「先记录后判定」，用于消费型配额）。
-func (l *slidingWindowLimiter) allow(key string) bool {
-	t := l.now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if _, ok := l.events[key]; !ok && len(l.events) >= rlMaxKeys {
-		l.evictLocked(t)
-	}
-	kept := l.pruneLocked(key, t)
-	if len(kept) >= l.limit {
-		l.events[key] = kept
-		return false
-	}
-	l.events[key] = append(kept, t)
-	return true
-}
-
-// fail 记录一次鉴权失败；若窗口内达到阈值则进入冷却，返回是否「本次刚进入冷却」。
-func (l *slidingWindowLimiter) fail(key string) bool {
-	t := l.now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if _, ok := l.events[key]; !ok && len(l.events) >= rlMaxKeys {
-		l.evictLocked(t)
-	}
-	kept := append(l.pruneLocked(key, t), t)
-	l.events[key] = kept
-	if l.cooldown <= 0 || len(kept) < l.limit {
-		return false
-	}
-	if _, blocked := l.blocked[key]; blocked {
-		return false
-	}
-	l.blocked[key] = t.Add(l.cooldown)
-	return true
-}
-
-// inCooldown 判断 key 是否处于冷却期；冷却到期自动解封。
-func (l *slidingWindowLimiter) inCooldown(key string) bool {
-	if l.cooldown <= 0 {
-		return false
-	}
-	t := l.now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	until, ok := l.blocked[key]
-	if !ok {
-		return false
-	}
-	if !t.Before(until) {
-		delete(l.blocked, key)
-		return false
-	}
-	return true
-}
-
-// cooldownUntil 返回冷却截止时刻（无冷却则零值；诊断 / 单测用）。
-func (l *slidingWindowLimiter) cooldownUntil(key string) time.Time {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.blocked[key]
-}
-
-// pruneLocked 丢弃窗口外的历史事件；key 不存在时不创建条目；需持有 l.mu。
-func (l *slidingWindowLimiter) pruneLocked(key string, now time.Time) []time.Time {
-	ev := l.events[key]
-	if len(ev) == 0 {
-		return ev
-	}
-	cut := now.Add(-l.window)
-	kept := ev[:0]
-	for _, t := range ev {
-		if t.After(cut) {
-			kept = append(kept, t)
-		}
-	}
-	l.events[key] = kept
-	return kept
-}
-
-// evictLocked 回收窗口内无事件的 key；需持有 l.mu。
-func (l *slidingWindowLimiter) evictLocked(now time.Time) {
-	cut := now.Add(-l.window)
-	for k, ev := range l.events {
-		if len(ev) == 0 || ev[len(ev)-1].Before(cut) {
-			delete(l.events, k)
-		}
-	}
-}
-
-// count 返回 key 当前窗口内的事件数（诊断 / 单测用）。
-func (l *slidingWindowLimiter) count(key string) int {
-	t := l.now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return len(l.pruneLocked(key, t))
-}
-
 // ===== 限流器实例 =====
 
 var (
 	// authFailLimiter 鉴权失败限流（07 §4.5：10 次 / 5 分钟 / IP → 冷却 15 分钟）
-	authFailLimiter = newCooldownLimiter(authFailMax, authFailWindow, authFailCooldown)
+	authFailLimiter = security.NewCooldownLimiter(authFailMax, authFailWindow, authFailCooldown)
 	// renderSubmitLimiter 渲染提交限流（07 §4.5：30 次 / 分钟 / 用户）
-	renderSubmitLimiter = newSlidingWindowLimiter(renderSubmitMax, renderWindow)
+	renderSubmitLimiter = security.NewSlidingWindowLimiter(renderSubmitMax, renderWindow)
 )
 
 // ===== 中间件 =====
@@ -223,7 +67,7 @@ var (
 // auditReject 生成限流拒绝回调：写审计（Result=denied）+ WARN 日志。
 func (h *Handlers) auditReject(action string) func(c *gin.Context, key string) {
 	return func(c *gin.Context, key string) {
-		actor := edlActor(c)
+		actor := security.GetEDLActor(c)
 		path := ""
 		if c.Request != nil && c.Request.URL != nil {
 			path = c.Request.URL.Path
@@ -258,10 +102,10 @@ func rateLimited(c *gin.Context, msg string) {
 // 口径说明：403（已登录但无权限，如 requireAdmin 拒绝）不计入「登录失败」，
 // 避免正常越权尝试与账号安全限流相互污染；网关在到达应用前直接拒绝的请求
 // 不在本层可见，由网关侧承担。
-func authFailThrottle(l *slidingWindowLimiter, onReject func(c *gin.Context, key string)) gin.HandlerFunc {
+func authFailThrottle(l *security.SlidingWindowLimiter, onReject func(c *gin.Context, key string)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := authFailKey(c)
-		if l.inCooldown(key) || l.exceeded(key) {
+		if l.InCooldown(key) || l.Exceeded(key) {
 			onReject(c, key)
 			rateLimited(c, "鉴权失败次数过多，请 15 分钟后重试")
 			c.Abort()
@@ -269,8 +113,8 @@ func authFailThrottle(l *slidingWindowLimiter, onReject func(c *gin.Context, key
 		}
 		c.Next()
 		if st := c.Writer.Status(); st == http.StatusUnauthorized {
-			if l.fail(key) {
-				logger.Warn("ratelimit", "鉴权失败达阈值，进入冷却: key=%v cooldown=%v", key, l.cooldown)
+			if l.Fail(key) {
+				logger.Warn("ratelimit", "鉴权失败达阈值，进入冷却: key=%v cooldown=%v", key, l.CooldownUntil(key))
 			}
 		}
 	}
@@ -278,10 +122,10 @@ func authFailThrottle(l *slidingWindowLimiter, onReject func(c *gin.Context, key
 
 // renderSubmitLimit 渲染提交限流（07 §4.5：30 次 / 分钟 / 用户）。
 // 仅对成功受理（2xx）的提交计数，校验失败 / 权限拒绝不占用配额。
-func renderSubmitLimit(l *slidingWindowLimiter, onReject func(c *gin.Context, key string)) gin.HandlerFunc {
+func renderSubmitLimit(l *security.SlidingWindowLimiter, onReject func(c *gin.Context, key string)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := rateKey(c)
-		if l.exceeded(key) {
+		if l.Exceeded(key) {
 			onReject(c, key)
 			rateLimited(c, "渲染提交过于频繁，请稍后重试")
 			c.Abort()
@@ -289,7 +133,7 @@ func renderSubmitLimit(l *slidingWindowLimiter, onReject func(c *gin.Context, ke
 		}
 		c.Next()
 		if st := c.Writer.Status(); st >= 200 && st < 300 {
-			l.record(key)
+			l.Record(key)
 		}
 	}
 }
@@ -307,7 +151,7 @@ func authFailKey(c *gin.Context) string {
 
 // rateKey 用户维度限流的 key：网关 UID → 用户名 → 来源 IP → anonymous（07 §4.5）。
 func rateKey(c *gin.Context) string {
-	u := getGatewayUser(c)
+	u := security.GetGatewayUser(c)
 	if u.UID != "" {
 		return "uid:" + u.UID
 	}

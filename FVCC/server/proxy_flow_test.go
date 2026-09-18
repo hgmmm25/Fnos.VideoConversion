@@ -99,7 +99,7 @@ func (e *proxyFlowEnv) submitted(t *testing.T) (Task, GenProxyPayload) {
 		AssetID:   "a_0000000a",
 		SrcFile:   "demo/a_01.mp4",
 		ProxyFile: "demo/a_01.proxy.mp4",
-		Template:  defaultProxyTemplate(),
+		Template:  DefaultProxyTemplate(),
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

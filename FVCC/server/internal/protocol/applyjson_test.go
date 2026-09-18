@@ -1,9 +1,13 @@
-package main
+package protocol
 
-import "testing"
+import (
+	"testing"
+
+	"fvcc/internal/store/model"
+)
 
 func TestApplyJSONUpdatesBasic(t *testing.T) {
-	p := Profile{ID: "profile-1", Name: "old", Width: 1920, Crf: 23, DeleteSource: false, Volume: 1.0}
+	p := model.Profile{ID: "profile-1", Name: "old", Width: 1920, Crf: 23, DeleteSource: false, Volume: 1.0}
 	updates := map[string]interface{}{
 		"name":         "new",
 		"width":        float64(1280),
@@ -11,7 +15,7 @@ func TestApplyJSONUpdatesBasic(t *testing.T) {
 		"deleteSource": true,
 		"volume":       2.5,
 	}
-	applyJSONUpdates(&p, updates)
+	ApplyJSONUpdates(&p, updates)
 	if p.Name != "new" {
 		t.Errorf("name = %q, want new", p.Name)
 	}
@@ -30,8 +34,8 @@ func TestApplyJSONUpdatesBasic(t *testing.T) {
 }
 
 func TestApplyJSONUpdatesPartialKeepsRest(t *testing.T) {
-	p := Profile{ID: "profile-1", Name: "keep-name", Width: 1920, Height: 1080, Vcodec: "libx264"}
-	applyJSONUpdates(&p, map[string]interface{}{"width": float64(640)})
+	p := model.Profile{ID: "profile-1", Name: "keep-name", Width: 1920, Height: 1080, Vcodec: "libx264"}
+	ApplyJSONUpdates(&p, map[string]interface{}{"width": float64(640)})
 	if p.Width != 640 {
 		t.Errorf("width = %d, want 640", p.Width)
 	}
@@ -41,8 +45,8 @@ func TestApplyJSONUpdatesPartialKeepsRest(t *testing.T) {
 }
 
 func TestApplyJSONUpdatesIgnoresUnknownAndBadType(t *testing.T) {
-	p := Profile{ID: "profile-1", Name: "stable", Crf: 20}
-	applyJSONUpdates(&p, map[string]interface{}{
+	p := model.Profile{ID: "profile-1", Name: "stable", Crf: 20}
+	ApplyJSONUpdates(&p, map[string]interface{}{
 		"notAField": "x",   // 未知字段忽略
 		"crf":      "abc",  // 类型不匹配忽略
 		"name":      123.0, // 类型不匹配忽略
@@ -53,8 +57,8 @@ func TestApplyJSONUpdatesIgnoresUnknownAndBadType(t *testing.T) {
 }
 
 func TestApplyJSONUpdatesNonPtrNoPanic(t *testing.T) {
-	p := Profile{Name: "x"}
-	applyJSONUpdates(p, map[string]interface{}{"name": "y"}) // 传值不传指针，不 panic
+	p := model.Profile{Name: "x"}
+	ApplyJSONUpdates(p, map[string]interface{}{"name": "y"}) // 传值不传指针，不 panic
 	if p.Name != "x" {
 		t.Errorf("传值不应修改: %+v", p)
 	}

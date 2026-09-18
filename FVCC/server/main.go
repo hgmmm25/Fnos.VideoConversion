@@ -28,6 +28,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"fvcc/logger"
+	"fvcc/internal/security"
+	"fvcc/internal/version"
 )
 
 const (
@@ -36,7 +38,7 @@ const (
 	sockName = "app.sock"
 )
 
-// appVer 由 version.go 从 VERSION 文件注入（go:embed），勿在此另写版本字面量。
+// AppVer 由 internal/version 从 VERSION 文件注入（go:embed），勿在此另写版本字面量。
 
 // Config 保存服务运行配置。
 type Config struct {
@@ -107,7 +109,7 @@ func main() {
 	}
 	applyDevDefaults(&cfg)
 
-	logger.Info("main", "fvcc %s starting (dev=%v, dataDir=%s, uiDir=%s)", appVer, cfg.DevMode, cfg.DataDir, cfg.UIDir)
+	logger.Info("main", "fvcc %s starting (dev=%v, dataDir=%s, uiDir=%s)", version.AppVer, cfg.DevMode, cfg.DataDir, cfg.UIDir)
 
 	// 确保数据目录存在
 	if cfg.DataDir != "" {
@@ -124,6 +126,9 @@ func main() {
 		logger.Fatal("main", "load store: %v", err)
 	}
 	globalStore = store
+
+	// P2-1 阶段 A：审计落库回调注入（internal/security 经 AuditSink 记账，nil 时仅降级日志）
+	security.SetAuditSink(store.AppendAudit)
 
 	// 从设置中加载日志级别
 	settings := store.GetSettings()
@@ -205,7 +210,7 @@ func main() {
 	defer cancel()
 
 	go func() {
-		logger.Info("main", "fvcc %s listening on %s (dev=%v, ffprobe=%v)", appVer, ln.Addr(), cfg.DevMode, probe.Available())
+		logger.Info("main", "fvcc %s listening on %s (dev=%v, ffprobe=%v)", version.AppVer, ln.Addr(), cfg.DevMode, probe.Available())
 		if err := http.Serve(ln, srv.Handler); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Fatal("main", "serve: %v", err)
 		}

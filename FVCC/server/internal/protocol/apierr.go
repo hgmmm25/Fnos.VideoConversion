@@ -1,4 +1,6 @@
-package main
+// Package protocol 承载跨包共享的协议层基元（P2-1 阶段 A：apierr/applyjson 迁入）。
+// 依赖方向：本包仅依赖标准库与 gin，禁止反向被下层包依赖。
+package protocol
 
 import (
 	"net/http"
@@ -17,8 +19,8 @@ import (
 // 前端适配层（ui-src/src/api.ts request）保留 body.msg || body.error 兜底，
 // 新代码一律走本 helper。命名规范详见 docs/API_CONTRACT.md。
 
-// failCode 按 HTTP 状态码映射通用错误码（P2-4）。
-func failCode(status int) string {
+// FailCode 按 HTTP 状态码映射通用错误码（P2-4）。
+func FailCode(status int) string {
 	switch status {
 	case http.StatusBadRequest:
 		return "E_BAD_REQUEST"
@@ -37,17 +39,17 @@ func failCode(status int) string {
 	}
 }
 
-// fail 输出统一失败契约（P2-4）。msg 面向用户展示；detail 可选透出额外上下文。
-func fail(c *gin.Context, status int, msg string, detail ...any) {
-	body := gin.H{"ok": false, "code": failCode(status), "msg": msg}
+// Fail 输出统一失败契约（P2-4）。msg 面向用户展示；detail 可选透出额外上下文。
+func Fail(c *gin.Context, status int, msg string, detail ...any) {
+	body := gin.H{"ok": false, "code": FailCode(status), "msg": msg}
 	if len(detail) > 0 && detail[0] != nil {
 		body["detail"] = detail[0]
 	}
 	c.JSON(status, body)
 }
 
-// failWithCode 显式指定错误码（用于业务域自定义 code，如 EDL/stream/网关域既有码）。
-func failWithCode(c *gin.Context, status int, code, msg string, detail ...any) {
+// FailWithCode 显式指定错误码（用于业务域自定义 code，如 EDL/stream/网关域既有码）。
+func FailWithCode(c *gin.Context, status int, code, msg string, detail ...any) {
 	body := gin.H{"ok": false, "code": code, "msg": msg}
 	if len(detail) > 0 && detail[0] != nil {
 		body["detail"] = detail[0]

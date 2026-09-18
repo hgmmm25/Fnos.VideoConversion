@@ -1,6 +1,6 @@
 <# check-versions.ps1 — FVCC 四方版本一致性校验（P0-1 改进方向落实）
    校验维度：
-     1) 应用版本三方对齐：FVCC\manifest(version) == FVCC\ui-src\package.json(version) == FVCC\server\VERSION
+     1) 应用版本三方对齐：FVCC\manifest(version) == FVCC\ui-src\package.json(version) == FVCC\server\internal\version\VERSION
      2) 构建工具链声明：FVCC\server\go.mod 的 go 指令与 BUILD.md 文档声明一致（代码即真相）
      3) 打包工具引用：build.ps1 / BUILD.md 引用的 fnpack 与仓库实际留存版本一致（仅提示）
 
@@ -28,7 +28,7 @@ function Write-Check {
 # --- 读取三处应用版本 ---
 $manifestPath = Join-Path $BASE_DIR "FVCC\manifest"
 $pkgPath      = Join-Path $BASE_DIR "FVCC\ui-src\package.json"
-$verPath      = Join-Path $BASE_DIR "FVCC\server\VERSION"
+$verPath      = Join-Path $BASE_DIR "FVCC\server\internal\version\VERSION"
 $goModPath    = Join-Path $BASE_DIR "FVCC\server\go.mod"
 
 $manifestVer = $null
@@ -49,7 +49,7 @@ $verFile = $null
 if (Test-Path $verPath) {
     $verFile = (Get-Content $verPath | Select-Object -First 1).Trim()
 }
-if (-not $verFile) { Write-Check "server/VERSION" "未找到（$verPath）" $false }
+if (-not $verFile) { Write-Check "server/internal/version/VERSION" "未找到（$verPath）" $false }
 
 # --- 读取 go.mod 的 go 指令 ---
 $goDirective = $null

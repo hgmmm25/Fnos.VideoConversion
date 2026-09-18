@@ -1,4 +1,4 @@
-package main
+package protocol
 
 import (
 	"encoding/json"
@@ -16,7 +16,7 @@ func TestFailContractShape(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/t", func(c *gin.Context) {
-		fail(c, http.StatusBadRequest, "路径不能为空")
+		Fail(c, http.StatusBadRequest, "路径不能为空")
 	})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/t", nil)
@@ -50,7 +50,7 @@ func TestFailContractWithDetail(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/t", func(c *gin.Context) {
-		fail(c, http.StatusNotFound, "文件不存在", gin.H{"path": "/data/a.mp4"})
+		Fail(c, http.StatusNotFound, "文件不存在", gin.H{"path": "/data/a.mp4"})
 	})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/t", nil)
@@ -79,7 +79,7 @@ func TestFailWithCodeExplicit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/t", func(c *gin.Context) {
-		failWithCode(c, http.StatusOK, "E_SERVER_OFFLINE", "连通性测试失败")
+		FailWithCode(c, http.StatusOK, "E_SERVER_OFFLINE", "连通性测试失败")
 	})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/t", nil)
@@ -112,8 +112,8 @@ func TestFailCodeMapping(t *testing.T) {
 		{http.StatusOK, "E_INTERNAL"}, // 未显式 code 的 200 兜底为 E_INTERNAL
 	}
 	for _, tc := range cases {
-		if got := failCode(tc.status); got != tc.want {
-			t.Errorf("failCode(%d) = %s, want %s", tc.status, got, tc.want)
+		if got := FailCode(tc.status); got != tc.want {
+			t.Errorf("FailCode(%d) = %s, want %s", tc.status, got, tc.want)
 		}
 	}
 }

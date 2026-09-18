@@ -10,6 +10,7 @@ package main
 //   - 素材存在性预检、盘余量、选机等属于 B-04 renderEDLProject 的职责。
 
 import (
+	"fvcc/internal/security"
 	"errors"
 	"math"
 	"net/http"
@@ -40,20 +41,12 @@ const (
 // edlErr 统一失败响应。
 func edlErr(c *gin.Context, status int, code, msg string, detail gin.H) {
 	// D-04：拒绝类错误码集中记账（07 §7）
-	auditRejection(c, code)
+	security.AuditRejection(c, code)
 	body := gin.H{"ok": false, "code": code, "msg": msg}
 	if detail != nil {
 		body["detail"] = detail
 	}
 	c.JSON(status, body)
-}
-
-// edlActor 审计主体：优先取网关用户名，独立模式记为 local。
-func edlActor(c *gin.Context) string {
-	if u := getGatewayUser(c); u.Username != "" {
-		return u.Username
-	}
-	return "local"
 }
 
 // edlProjectInput 新建/保存项目的请求体（03 §4.2）。
@@ -173,7 +166,7 @@ func (h *Handlers) deleteEDLProject(c *gin.Context) {
 		return
 	}
 	h.store.AppendAudit(AuditEntry{
-		Actor:  edlActor(c),
+		Actor:  security.GetEDLActor(c),
 		Action: "project.delete",
 		Target: id,
 		Result: "ok",

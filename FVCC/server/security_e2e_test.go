@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"fvcc/internal/security"
 )
 
 // e2eSecurityHeaders 拒绝响应也必须带全的 D-04 安全头（07 §4.4）。
@@ -43,6 +45,7 @@ func TestD04SecurityE2ERejectChain(t *testing.T) {
 	resetRateLimiters()
 	r, s, srcDir, _, _ := newD02RenderEnv(t)
 	withGlobalStore(t, s)
+	resetAlertCounters := security.ResetAlertCounters
 	resetAlertCounters()
 	t.Cleanup(resetAlertCounters)
 
@@ -92,7 +95,7 @@ func TestD04SecurityE2ERejectChain(t *testing.T) {
 			}
 			p := mustCreateRenderProject(t, s, "e2e_"+tc.name, renderTestTimeline(), clips)
 
-			before := len(s.ListAudit(0, auditActionValidateReject))
+			before := len(s.ListAudit(0, security.AuditActionValidateReject))
 			w := doEDLRequest(t, r, http.MethodPost, "/api/edl/projects/"+p.ID+"/render",
 				`{"presetKey":"`+preset+`","outputName":"`+tc.output+`"}`)
 
@@ -115,7 +118,7 @@ func TestD04SecurityE2ERejectChain(t *testing.T) {
 				t.Fatalf("拒绝请求不得入队任务，实际 %d 个: %+v", len(tasks), tasks)
 			}
 
-			rejects := s.ListAudit(0, auditActionValidateReject)
+			rejects := s.ListAudit(0, security.AuditActionValidateReject)
 			wantDelta := 0
 			if tc.wantAudit {
 				wantDelta = 1
@@ -141,8 +144,8 @@ func TestD04SecurityE2ERejectChain(t *testing.T) {
 			if srcDir != "" && strings.Contains(last.Detail, srcDir) {
 				t.Errorf("审计 Detail 泄露素材根绝对路径: %q", last.Detail)
 			}
-			if alerts := s.ListAudit(0, auditActionSecurityAlert); len(alerts) != 0 {
-				t.Errorf("本轮向量不应触发告警（阈值 %d），实际 %d 条", alertAssetScanThreshold, len(alerts))
+			if alerts := s.ListAudit(0, security.AuditActionSecurityAlert); len(alerts) != 0 {
+				t.Errorf("本轮向量不应触发告警（阈值 %d），实际 %d 条", security.AlertAssetScanThreshold, len(alerts))
 			}
 		})
 	}
@@ -161,7 +164,7 @@ func TestD04SecurityE2ERejectChain(t *testing.T) {
 		if tasks := s2.GetTasks(); len(tasks) != 1 {
 			t.Fatalf("合法提交应入队 1 个任务，实际 %d", len(tasks))
 		}
-		if got := len(s2.ListAudit(0, auditActionValidateReject)); got != 0 {
+		if got := len(s2.ListAudit(0, security.AuditActionValidateReject)); got != 0 {
 			t.Fatalf("合法提交不应产生拒绝审计，实际 %d 条", got)
 		}
 	})
@@ -172,6 +175,7 @@ func TestD04SecurityE2EAssetScanAlert(t *testing.T) {
 	resetRateLimiters()
 	r, s, srcDir, _, _ := newD02RenderEnv(t)
 	withGlobalStore(t, s)
+	resetAlertCounters := security.ResetAlertCounters
 	resetAlertCounters()
 	t.Cleanup(resetAlertCounters)
 
@@ -188,7 +192,7 @@ func TestD04SecurityE2EAssetScanAlert(t *testing.T) {
 	clips[1].File = "link/secret.mp4"
 	p := mustCreateRenderProject(t, s, "e2e_scan", renderTestTimeline(), clips)
 
-	for i := 1; i <= alertAssetScanThreshold; i++ {
+	for i := 1; i <= security.AlertAssetScanThreshold; i++ {
 		w := doEDLRequest(t, r, http.MethodPost, "/api/edl/projects/"+p.ID+"/render",
 			`{"presetKey":"copy_same_source","outputName":"e2e_scan"}`)
 		if w.Code != http.StatusForbidden {
@@ -204,13 +208,13 @@ func TestD04SecurityE2EAssetScanAlert(t *testing.T) {
 			t.Fatalf("第 %d 次错误码应为 %s，实际 %q", i, errCodeAssetNotInRoot, resp.Code)
 		}
 
-		alerts := s.ListAudit(0, auditActionSecurityAlert)
-		if i < alertAssetScanThreshold && len(alerts) != 0 {
+		alerts := s.ListAudit(0, security.AuditActionSecurityAlert)
+		if i < security.AlertAssetScanThreshold && len(alerts) != 0 {
 			t.Fatalf("未达阈值（第 %d 次）不应告警，实际 %d 条", i, len(alerts))
 		}
-		if i == alertAssetScanThreshold {
+		if i == security.AlertAssetScanThreshold {
 			if len(alerts) != 1 {
-				t.Fatalf("达阈值应恰好 1 条 %s，实际 %d 条", auditActionSecurityAlert, len(alerts))
+				t.Fatalf("达阈值应恰好 1 条 %s，实际 %d 条", security.AuditActionSecurityAlert, len(alerts))
 			}
 			if alerts[0].Result != errCodeAssetNotInRoot || !strings.Contains(alerts[0].Detail, "疑似路径越权扫描") {
 				t.Fatalf("告警审计字段异常: %+v", alerts[0])
@@ -218,8 +222,8 @@ func TestD04SecurityE2EAssetScanAlert(t *testing.T) {
 		}
 	}
 
-	if got := len(s.ListAudit(0, auditActionValidateReject)); got != alertAssetScanThreshold {
-		t.Fatalf("应累计 %d 条拒绝审计，实际 %d 条", alertAssetScanThreshold, got)
+	if got := len(s.ListAudit(0, security.AuditActionValidateReject)); got != security.AlertAssetScanThreshold {
+		t.Fatalf("应累计 %d 条拒绝审计，实际 %d 条", security.AlertAssetScanThreshold, got)
 	}
 	if tasks := s.GetTasks(); len(tasks) != 0 {
 		t.Fatalf("越权请求不得入队任务，实际 %d 个", len(tasks))

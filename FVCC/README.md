@@ -98,13 +98,13 @@ go test ./...
 
 ## 版本号单一来源
 
-升级版本必须**三处同步**（构建时以 `server/VERSION` 为准，`scripts/check-versions.ps1` 自动校验）：
+升级版本必须**三处同步**（构建时以 `server/internal/version/VERSION` 为准，`scripts/check-versions.ps1` 自动校验）：
 
 | 文件 | 字段 | 当前值 |
 |------|------|--------|
 | `manifest` | `version` | 1.4.2 |
 | `ui-src/package.json` | `version` | 1.4.2 |
-| `server/VERSION` | 文件内容 | 1.4.2 |
+| `server/internal/version/VERSION` | 文件内容 | 1.4.2 |
 
 ## 项目内文档体系
 

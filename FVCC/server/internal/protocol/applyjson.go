@@ -1,17 +1,17 @@
-package main
+package protocol
 
 import (
 	"reflect"
 	"strings"
 )
 
-// applyJSONUpdates 将 partial（gin ShouldBindJSON 解码出的 map）按结构体 json tag
+// ApplyJSONUpdates 将 partial（gin ShouldBindJSON 解码出的 map）按结构体 json tag
 // 白名单映射到 dst，仅更新 partial 中出现的字段，保持部分更新（patch）语义。
 //
 // 设计动机（P1-1）：原 updateProfile 以 59 块手写 `if v, ok := updates["xxx"]; ok {...}`
 // 实现字段映射，字段新增时极易漏改。本 helper 从目标结构体的 json tag 自动推导
 // 白名单，新增字段零改动；类型不匹配或未知字段一律忽略，与旧实现行为一致。
-func applyJSONUpdates(dst interface{}, partial map[string]interface{}) {
+func ApplyJSONUpdates(dst interface{}, partial map[string]interface{}) {
 	v := reflect.ValueOf(dst)
 	if v.Kind() != reflect.Ptr || v.IsNil() {
 		return

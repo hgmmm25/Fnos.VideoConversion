@@ -1,4 +1,4 @@
-package main
+package store
 
 // B-01：调度持久化扩展（设计文档 06 §2 持久化模型 / §4.4 幂等 / §4.5 分布式锁 / §5 节点管理）
 //
@@ -15,6 +15,7 @@ package main
 // 后续若替换为 SQLite，仅需替换本文件的读写实现，上层调用签名保持不变。
 
 import (
+	"fvcc/internal/store/model"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -28,8 +29,8 @@ import (
 	"fvcc/logger"
 )
 
-// storeSchemaVersion 当前 tasks.json 结构版本（06 §2.2 列迁移完成后的版本）。
-const storeSchemaVersion = 2
+// StoreSchemaVersion 当前 tasks.json 结构版本（06 §2.2 列迁移完成后的版本）。
+const StoreSchemaVersion = 2
 
 // healthSampleRetainPerServer 每个节点保留的健康采样条数（06 §2.1：保留最近 N 条）。
 const healthSampleRetainPerServer = 288
@@ -66,46 +67,46 @@ func (s *Store) loadTasksLocked() error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			s.tasks = []Task{}
+			s.tasks = []model.Task{}
 			return nil
 		}
 		return fmt.Errorf("读取 %s 失败: %w", path, err)
 	}
 
-	var f TasksFile
+	var f model.TasksFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return fmt.Errorf("%s 解析失败，拒绝启动以免静默丢弃任务: %w", path, err)
 	}
-	if f.Version > storeSchemaVersion {
-		return fmt.Errorf("%s 结构版本为 %d，高于本程序支持的 %d，请升级 FVCC 后再启动", path, f.Version, storeSchemaVersion)
+	if f.Version > StoreSchemaVersion {
+		return fmt.Errorf("%s 结构版本为 %d，高于本程序支持的 %d，请升级 FVCC 后再启动", path, f.Version, StoreSchemaVersion)
 	}
 
-	migrated := f.Version != storeSchemaVersion
+	migrated := f.Version != StoreSchemaVersion
 	for i := range f.Tasks {
 		if migrateTaskColumns(&f.Tasks[i]) {
 			migrated = true
 		}
 	}
-	f.Version = storeSchemaVersion
+	f.Version = StoreSchemaVersion
 	s.tasks = f.Tasks
 
 	if migrated {
-		logger.Info("store", "tasks.json 列迁移完成：version→%d，共 %d 条任务", storeSchemaVersion, len(s.tasks))
-		saveJSON(path, TasksFile{Version: storeSchemaVersion, Tasks: s.tasks})
+		logger.Info("store", "tasks.json 列迁移完成：version→%d，共 %d 条任务", StoreSchemaVersion, len(s.tasks))
+		saveJSON(path, model.TasksFile{Version: StoreSchemaVersion, Tasks: s.tasks})
 	}
 	return nil
 }
 
 // migrateTaskColumns 为单条任务补齐缺失的新列（等价 SQLite: ALTER TABLE ADD COLUMN ... DEFAULT），
 // 返回是否发生变更。只对零值赋默认，幂等，不覆盖既有数据。
-func migrateTaskColumns(t *Task) bool {
+func migrateTaskColumns(t *model.Task) bool {
 	changed := false
 	if t.TaskType == "" {
-		t.TaskType = TaskTypeTranscode
+		t.TaskType = model.TaskTypeTranscode
 		changed = true
 	}
 	if t.Status == "" {
-		t.Status = StatusQueue
+		t.Status = model.StatusQueue
 		changed = true
 	}
 	if t.SegIndex < 0 {
@@ -141,9 +142,9 @@ type RenderProgress struct {
 //
 // 返回更新后的任务快照与是否命中；未命中（任务不存在或已收口）返回 false。
 // 仅在内容确实变化时落盘。
-func (s *Store) ApplyRenderProgress(id string, p RenderProgress) (Task, bool) {
+func (s *Store) ApplyRenderProgress(id string, p RenderProgress) (model.Task, bool) {
 	s.mu.Lock()
-	var updated Task
+	var updated model.Task
 	found := false
 	needPersist := false
 
@@ -152,7 +153,7 @@ func (s *Store) ApplyRenderProgress(id string, p RenderProgress) (Task, bool) {
 			continue
 		}
 		t := &s.tasks[i]
-		if t.Status.IsTerminal() || t.Status == StatusError || t.Status == StatusPaused {
+		if t.Status.IsTerminal() || t.Status == model.StatusError || t.Status == model.StatusPaused {
 			break
 		}
 
@@ -209,22 +210,22 @@ func (s *Store) ApplyRenderProgress(id string, p RenderProgress) (Task, bool) {
 
 func (s *Store) persistProjects() {
 	// 派生字段不落盘（03 §2.2）：写盘前清零副本，读取时由 normalizeProject 重算。
-	out := make([]Project, len(s.projects))
+	out := make([]model.Project, len(s.projects))
 	copy(out, s.projects)
 	for i := range out {
 		out[i].ClipCount = 0
 		out[i].TotalMs = 0
 	}
-	saveJSON(s.path("projects.json"), ProjectsFile{Version: 1, Projects: out})
+	saveJSON(s.path("projects.json"), model.ProjectsFile{Version: 1, Projects: out})
 }
 func (s *Store) persistNodeCaps() {
-	saveJSON(s.path("node_caps.json"), NodeCapsFile{Version: 1, Items: s.nodeCaps})
+	saveJSON(s.path("node_caps.json"), model.NodeCapsFile{Version: 1, Items: s.nodeCaps})
 }
 func (s *Store) persistHealthSamples() {
-	saveJSON(s.path("node_health_samples.json"), NodeHealthFile{Version: 1, Samples: s.healthSamples})
+	saveJSON(s.path("node_health_samples.json"), model.NodeHealthFile{Version: 1, Samples: s.healthSamples})
 }
 func (s *Store) persistAuditLog() {
-	saveJSON(s.path("audit_log.json"), AuditLogFile{Version: 1, Entries: s.auditLog})
+	saveJSON(s.path("audit_log.json"), model.AuditLogFile{Version: 1, Entries: s.auditLog})
 }
 
 // ===== Projects（06 §2.1，03 §2.2 / §4.2）=====
@@ -239,9 +240,9 @@ func newProjectID() string {
 }
 
 // normalizeProject 统一收口派生字段与默认值：片段速度、片段数、总时长、时间线默认参数。
-func normalizeProject(p *Project) {
+func normalizeProject(p *model.Project) {
 	if p.Clips == nil {
-		p.Clips = []EDLClip{}
+		p.Clips = []model.EDLClip{}
 	}
 	var total int64
 	for i := range p.Clips {
@@ -263,12 +264,12 @@ func normalizeProject(p *Project) {
 }
 
 // GetProjects 返回全部项目的摘要视图，按更新时间倒序。
-func (s *Store) GetProjects() []ProjectSummary {
+func (s *Store) GetProjects() []model.ProjectSummary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]ProjectSummary, 0, len(s.projects))
+	out := make([]model.ProjectSummary, 0, len(s.projects))
 	for _, p := range s.projects {
-		out = append(out, ProjectSummary{
+		out = append(out, model.ProjectSummary{
 			ID:        p.ID,
 			Name:      p.Name,
 			Rev:       p.Rev,
@@ -280,7 +281,7 @@ func (s *Store) GetProjects() []ProjectSummary {
 	return out
 }
 
-func (s *Store) GetProject(id string) (Project, bool) {
+func (s *Store) GetProject(id string) (model.Project, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, p := range s.projects {
@@ -288,11 +289,11 @@ func (s *Store) GetProject(id string) (Project, bool) {
 			return p, true
 		}
 	}
-	return Project{}, false
+	return model.Project{}, false
 }
 
 // FindProjectByName 精确匹配项目名称（模拟 UNIQUE(name)）。
-func (s *Store) FindProjectByName(name string) (Project, bool) {
+func (s *Store) FindProjectByName(name string) (model.Project, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, p := range s.projects {
@@ -300,21 +301,21 @@ func (s *Store) FindProjectByName(name string) (Project, bool) {
 			return p, true
 		}
 	}
-	return Project{}, false
+	return model.Project{}, false
 }
 
 // CreateProject 新建项目，rev 从 1 开始。名称重复返回 ErrProjectNameUsed。
-func (s *Store) CreateProject(p Project) (Project, error) {
+func (s *Store) CreateProject(p model.Project) (model.Project, error) {
 	name := strings.TrimSpace(p.Name)
 	if name == "" {
-		return Project{}, errors.New("E_EDL_INVALID: 项目名称不能为空")
+		return model.Project{}, errors.New("E_EDL_INVALID: 项目名称不能为空")
 	}
 
 	s.mu.Lock()
 	for _, ex := range s.projects {
 		if ex.Name == name {
 			s.mu.Unlock()
-			return Project{}, ErrProjectNameUsed
+			return model.Project{}, ErrProjectNameUsed
 		}
 	}
 	now := time.Now()
@@ -339,7 +340,7 @@ func (s *Store) CreateProject(p Project) (Project, error) {
 
 // UpdateProject 乐观锁更新：expectRev <= 0 表示跳过版本校验；
 // rev 不匹配返回 (当前项目, ErrRevConflict)，由 handler 转为 409。
-func (s *Store) UpdateProject(id string, expectRev int, p Project) (Project, error) {
+func (s *Store) UpdateProject(id string, expectRev int, p model.Project) (model.Project, error) {
 	s.mu.Lock()
 	idx := -1
 	for i := range s.projects {
@@ -350,7 +351,7 @@ func (s *Store) UpdateProject(id string, expectRev int, p Project) (Project, err
 	}
 	if idx < 0 {
 		s.mu.Unlock()
-		return Project{}, ErrProjectNotFound
+		return model.Project{}, ErrProjectNotFound
 	}
 
 	cur := s.projects[idx]
@@ -371,7 +372,7 @@ func (s *Store) UpdateProject(id string, expectRev int, p Project) (Project, err
 	}
 
 	cur.Name = name
-	if p.Timeline != (Timeline{}) {
+	if p.Timeline != (model.Timeline{}) {
 		cur.Timeline = p.Timeline
 	}
 	cur.Clips = p.Clips
@@ -422,9 +423,9 @@ func (s *Store) DeleteProject(id string) bool {
 
 // ===== NodeCaps（06 §2.1 / §5.1）=====
 
-func (s *Store) UpsertNodeCaps(c NodeCaps) {
+func (s *Store) UpsertNodeCaps(c model.NodeCaps) {
 	if c.GPU == nil {
-		c.GPU = []GPUInfo{}
+		c.GPU = []model.GPUInfo{}
 	}
 	if c.Encoders == nil {
 		c.Encoders = []string{}
@@ -445,7 +446,7 @@ func (s *Store) UpsertNodeCaps(c NodeCaps) {
 	s.persistNodeCaps()
 }
 
-func (s *Store) GetNodeCaps(serverID string) (NodeCaps, bool) {
+func (s *Store) GetNodeCaps(serverID string) (model.NodeCaps, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, c := range s.nodeCaps {
@@ -453,13 +454,13 @@ func (s *Store) GetNodeCaps(serverID string) (NodeCaps, bool) {
 			return c, true
 		}
 	}
-	return NodeCaps{}, false
+	return model.NodeCaps{}, false
 }
 
-func (s *Store) GetAllNodeCaps() []NodeCaps {
+func (s *Store) GetAllNodeCaps() []model.NodeCaps {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]NodeCaps, len(s.nodeCaps))
+	out := make([]model.NodeCaps, len(s.nodeCaps))
 	copy(out, s.nodeCaps)
 	return out
 }
@@ -481,7 +482,7 @@ func (s *Store) DeleteNodeCaps(serverID string) bool {
 // ===== NodeHealthSamples（06 §2.1 / §5.2）=====
 
 // AppendNodeHealthSample 追加一次采样，并按每节点上限裁剪历史。
-func (s *Store) AppendNodeHealthSample(sm NodeHealthSample) {
+func (s *Store) AppendNodeHealthSample(sm model.NodeHealthSample) {
 	if sm.SampledAt.IsZero() {
 		sm.SampledAt = time.Now()
 	}
@@ -496,10 +497,10 @@ func (s *Store) AppendNodeHealthSample(sm NodeHealthSample) {
 }
 
 // ListNodeHealthSamples 返回指定节点自 since 起的采样，按时间倒序；limit<=0 表示不限。
-func (s *Store) ListNodeHealthSamples(serverID string, since time.Time, limit int) []NodeHealthSample {
+func (s *Store) ListNodeHealthSamples(serverID string, since time.Time, limit int) []model.NodeHealthSample {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := []NodeHealthSample{}
+	out := []model.NodeHealthSample{}
 	for _, sm := range s.healthSamples {
 		if serverID != "" && sm.ServerID != serverID {
 			continue
@@ -535,11 +536,11 @@ func (s *Store) pruneHealthSamplesLocked(perServer int) int {
 	if len(s.healthSamples) == 0 {
 		return 0
 	}
-	byServer := make(map[string][]NodeHealthSample, len(s.nodeCaps)+1)
+	byServer := make(map[string][]model.NodeHealthSample, len(s.nodeCaps)+1)
 	for _, sm := range s.healthSamples {
 		byServer[sm.ServerID] = append(byServer[sm.ServerID], sm)
 	}
-	kept := make([]NodeHealthSample, 0, len(s.healthSamples))
+	kept := make([]model.NodeHealthSample, 0, len(s.healthSamples))
 	for _, list := range byServer {
 		sort.Slice(list, func(i, j int) bool { return list[i].SampledAt.After(list[j].SampledAt) })
 		if len(list) > perServer {
@@ -556,7 +557,7 @@ func (s *Store) pruneHealthSamplesLocked(perServer int) int {
 // ===== AuditLog（06 §7 / 07 §5.4）=====
 
 // AppendAudit 写入一条审计记录（凭据、权限相关操作必须调用）。
-func (s *Store) AppendAudit(e AuditEntry) {
+func (s *Store) AppendAudit(e model.AuditEntry) {
 	if e.At.IsZero() {
 		e.At = time.Now()
 	}
@@ -576,10 +577,10 @@ func (s *Store) AppendAudit(e AuditEntry) {
 }
 
 // ListAudit 返回审计记录，按时间倒序；action 非空时按动作前缀过滤，limit<=0 表示不限。
-func (s *Store) ListAudit(limit int, action string) []AuditEntry {
+func (s *Store) ListAudit(limit int, action string) []model.AuditEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := []AuditEntry{}
+	out := []model.AuditEntry{}
 	for _, e := range s.auditLog {
 		if action != "" && !strings.HasPrefix(e.Action, action) {
 			continue
@@ -596,9 +597,9 @@ func (s *Store) ListAudit(limit int, action string) []AuditEntry {
 // ===== 任务查询：幂等与冷却（06 §4.3 / §4.4）=====
 
 // FindActiveTaskByChecksum 查找 checksum 相同且仍在调度中的任务（状态 ∈ QUEUE/RUNNING/COOLDOWN 等非终态）。
-func (s *Store) FindActiveTaskByChecksum(checksum string) (Task, bool) {
+func (s *Store) FindActiveTaskByChecksum(checksum string) (model.Task, bool) {
 	if checksum == "" {
-		return Task{}, false
+		return model.Task{}, false
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -607,37 +608,37 @@ func (s *Store) FindActiveTaskByChecksum(checksum string) (Task, bool) {
 			return t, true
 		}
 	}
-	return Task{}, false
+	return model.Task{}, false
 }
 
 // FindSuccessTaskByChecksum 查找 checksum 相同且已完成的任务（先队列后历史），
 // 调用方需再校验成品文件是否存在（fileExists(t.OutputFile)）后才可复用。
-func (s *Store) FindSuccessTaskByChecksum(checksum string) (Task, bool) {
+func (s *Store) FindSuccessTaskByChecksum(checksum string) (model.Task, bool) {
 	if checksum == "" {
-		return Task{}, false
+		return model.Task{}, false
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, t := range s.tasks {
-		if t.Checksum == checksum && t.Status == StatusCompleted {
+		if t.Checksum == checksum && t.Status == model.StatusCompleted {
 			return t, true
 		}
 	}
 	for _, t := range s.history {
-		if t.Checksum == checksum && t.Status == StatusCompleted {
+		if t.Checksum == checksum && t.Status == model.StatusCompleted {
 			return t, true
 		}
 	}
-	return Task{}, false
+	return model.Task{}, false
 }
 
 // ListCooldownDue 返回冷却到期（next_retry_at <= now）的任务，按 OrderID 升序，供 tick 转回 QUEUE。
-func (s *Store) ListCooldownDue(now time.Time) []Task {
+func (s *Store) ListCooldownDue(now time.Time) []model.Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := []Task{}
+	out := []model.Task{}
 	for _, t := range s.tasks {
-		if t.Status != StatusCooldown {
+		if t.Status != model.StatusCooldown {
 			continue
 		}
 		if t.CoolDownUntil == nil || !now.Before(*t.CoolDownUntil) {

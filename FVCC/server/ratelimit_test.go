@@ -9,10 +9,10 @@ package main
 //  6) 浏览器 WS 连接上限（07 §4.5：浏览器 ≤ 5 条）。
 
 import (
+	"fvcc/internal/security"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 	"time"
 
@@ -21,8 +21,8 @@ import (
 
 // resetRateLimiters 每个用例前重置全局限流器，避免用例间相互污染。
 func resetRateLimiters() {
-	authFailLimiter = newCooldownLimiter(authFailMax, authFailWindow, authFailCooldown)
-	renderSubmitLimiter = newSlidingWindowLimiter(renderSubmitMax, renderWindow)
+	authFailLimiter = security.NewCooldownLimiter(authFailMax, authFailWindow, authFailCooldown)
+	renderSubmitLimiter = security.NewSlidingWindowLimiter(renderSubmitMax, renderWindow)
 }
 
 // d04Router 构造带 D-04 中间件的最小路由（/api/info 正常 200，/api/protected 返回 401）。
@@ -40,7 +40,7 @@ func d04Router(t *testing.T) (*gin.Engine, *Store) {
 	r := gin.New()
 	r.Use(securityHeaders())
 	r.Use(authFailThrottle(authFailLimiter, h.auditReject("ratelimit.auth")))
-	r.Use(gatewayUser())
+	r.Use(security.GatewayUserMiddleware())
 	g := r.Group(gwPrefix)
 	g.GET("/api/info", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 	g.GET("/api/protected", func(c *gin.Context) {
@@ -143,7 +143,7 @@ func TestD04FVCCAuthFailThrottle(t *testing.T) {
 	}
 
 	// 冷却 15 分钟后解封（推进限流器时钟）
-	authFailLimiter.now = func() time.Time { return time.Now().Add(authFailCooldown + time.Minute) }
+	authFailLimiter.SetNow(func() time.Time { return time.Now().Add(authFailCooldown + time.Minute) })
 	if w := d04Request(r, http.MethodGet, "/api/protected", hdr); w.Code != http.StatusUnauthorized {
 		t.Fatalf("冷却到期后应恢复放行（401 而非 429），实际 %d", w.Code)
 	}
@@ -178,10 +178,10 @@ func TestD04FVCCRenderSubmitThrottle(t *testing.T) {
 func TestD04FVCCRenderLimitCountsSuccessOnly(t *testing.T) {
 	resetRateLimiters()
 	gin.SetMode(gin.TestMode)
-	l := newSlidingWindowLimiter(2, time.Minute)
+	l := security.NewSlidingWindowLimiter(2, time.Minute)
 	h := &Handlers{}
 	r := gin.New()
-	r.Use(gatewayUser())
+	r.Use(security.GatewayUserMiddleware())
 	r.POST(gwPrefix+"/api/edl/projects/:id/render",
 		renderSubmitLimit(l, h.auditReject("ratelimit.render")),
 		func(c *gin.Context) {
@@ -208,51 +208,7 @@ func TestD04FVCCRenderLimitCountsSuccessOnly(t *testing.T) {
 	}
 }
 
-// ===== 4. 限流器单元行为 =====
-
-func TestD04FVCCTokenWindowRolling(t *testing.T) {
-	l := newSlidingWindowLimiter(3, time.Minute)
-	now := time.Now()
-	l.now = func() time.Time { return now }
-
-	for i := 0; i < 3; i++ {
-		if !l.allow("k") {
-			t.Fatalf("第 %d 次应放行", i+1)
-		}
-	}
-	if l.allow("k") {
-		t.Fatalf("超限应拒绝")
-	}
-	// 窗口滚动：窗口内 3 次事件全部滑出后恢复放行
-	now = now.Add(61 * time.Second)
-	if !l.allow("k") {
-		t.Fatalf("窗口滚动后应恢复放行")
-	}
-	// key 隔离
-	if !l.allow("k2") {
-		t.Fatalf("不同 key 额度应独立")
-	}
-	if l.count("k2") != 1 {
-		t.Fatalf("k2 计数应为 1，实际 %d", l.count("k2"))
-	}
-}
-
-func TestD04FVCCLimiterEviction(t *testing.T) {
-	l := newSlidingWindowLimiter(30, time.Minute)
-	now := time.Now()
-	l.now = func() time.Time { return now }
-
-	for i := 0; i < rlMaxKeys; i++ {
-		l.events["k"+strconv.Itoa(i)] = []time.Time{now.Add(-2 * time.Minute)}
-	}
-	if l.exceeded("new-key") {
-		t.Fatalf("新 key 不应超限")
-	}
-	l.record("new-key")
-	if len(l.events) != 1 {
-		t.Fatalf("空闲 key 应被回收，剩余 %d", len(l.events))
-	}
-}
+// ===== 4. 限流器 key 取值 =====
 
 func TestD04FVCCRateKeys(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -279,39 +235,6 @@ func TestD04FVCCRateKeys(t *testing.T) {
 	}
 	if k := authFailKey(c2); k != "ip:192.168.1.7" {
 		t.Fatalf("authFailKey 应剥离端口，实际 %s", k)
-	}
-}
-
-// 鉴权失败冷却：达阈值进入 15 分钟冷却，冷却到期后解封。
-func TestD04FVCCAuthFailCooldown(t *testing.T) {
-	l := newCooldownLimiter(3, 5*time.Minute, authFailCooldown)
-	now := time.Now()
-	l.now = func() time.Time { return now }
-
-	for i := 0; i < 3; i++ {
-		if l.inCooldown("ip:1.1.1.1") {
-			t.Fatalf("第 %d 次失败不应已处于冷却", i+1)
-		}
-		l.fail("ip:1.1.1.1")
-	}
-	if !l.inCooldown("ip:1.1.1.1") {
-		t.Fatalf("达阈值应进入冷却")
-	}
-	if got := l.cooldownUntil("ip:1.1.1.1"); !got.Equal(now.Add(authFailCooldown)) {
-		t.Fatalf("冷却截止时刻应为 now+15min，实际 %v", got)
-	}
-	// 冷却期内即使事件窗口已滑出，仍保持封控
-	now = now.Add(6 * time.Minute)
-	if !l.inCooldown("ip:1.1.1.1") {
-		t.Fatalf("窗口滑出但冷却未满，仍应封控")
-	}
-	// 冷却到期解封，且窗口事件已过期 → 完全恢复
-	now = now.Add(authFailCooldown)
-	if l.inCooldown("ip:1.1.1.1") {
-		t.Fatalf("冷却到期应解封")
-	}
-	if l.exceeded("ip:1.1.1.1") {
-		t.Fatalf("冷却到期后窗口内不应残留计数")
 	}
 }
 

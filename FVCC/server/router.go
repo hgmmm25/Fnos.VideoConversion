@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fvcc/internal/security"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,7 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 	r.Use(securityHeaders())
 	// 鉴权失败限流（07 §4.5）：应用侧 401/403 达阈值后 429
 	r.Use(authFailThrottle(authFailLimiter, h.auditReject("ratelimit.auth")))
-	r.Use(gatewayUser())
+	r.Use(security.GatewayUserMiddleware())
 
 	g := r.Group(gwPrefix)
 
@@ -33,9 +34,9 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		api.GET("/settings", h.getSettings)
 		api.PUT("/settings", h.saveSettings)
 		api.GET("/log", h.getLog)
-		api.DELETE("/log", requireAdmin(), h.clearLog)
+		api.DELETE("/log", security.RequireAdmin(), h.clearLog)
 		api.GET("/video-cache", h.getVideoCacheInfo)
-		api.DELETE("/video-cache", requireAdmin(), h.clearVideoCache)
+		api.DELETE("/video-cache", security.RequireAdmin(), h.clearVideoCache)
 
 		// 视频管理
 		api.POST("/video/scan", h.scanDirectory)
@@ -49,21 +50,21 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		// P2-5 回收站：删除操作回收站化后的列表/恢复/清空入口
 		api.GET("/trash", h.listTrash)
 		api.POST("/trash/restore", h.restoreTrash)
-		api.POST("/trash/empty", requireAdmin(), h.emptyTrash)
+		api.POST("/trash/empty", security.RequireAdmin(), h.emptyTrash)
 		api.GET("/dirs", h.browseDirs)
 
 		// 服务器管理
 		api.GET("/servers", h.listServers)
 		api.POST("/servers", h.createServer)
 		api.PUT("/servers/:id", h.updateServer)
-		api.DELETE("/servers/:id", requireAdmin(), h.deleteServer)
+		api.DELETE("/servers/:id", security.RequireAdmin(), h.deleteServer)
 		api.POST("/servers/:id/test", h.testServer)
 
 		// 转码方案管理
 		api.GET("/profiles", h.listProfiles)
 		api.POST("/profiles", h.createProfile)
 		api.PUT("/profiles/:id", h.updateProfile)
-		api.DELETE("/profiles/:id", requireAdmin(), h.deleteProfile)
+		api.DELETE("/profiles/:id", security.RequireAdmin(), h.deleteProfile)
 
 		// 任务管理
 		api.GET("/tasks", h.listTasks)
@@ -73,11 +74,11 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		api.POST("/tasks/:id/resume", h.resumeTask)
 		api.POST("/tasks/:id/cancel", h.cancelTask)
 		api.POST("/tasks/:id/retry", h.retryTask)
-		api.DELETE("/tasks/:id", requireAdmin(), h.deleteTask)
+		api.DELETE("/tasks/:id", security.RequireAdmin(), h.deleteTask)
 
 		// 历史记录
 		api.GET("/history", h.listHistory)
-		api.DELETE("/history/:id", requireAdmin(), h.deleteHistory)
+		api.DELETE("/history/:id", security.RequireAdmin(), h.deleteHistory)
 
 		// EDL 剪辑项目（B-03 / 03 §4.2、§4.3）
 		// B-09：删除类与提交渲染挂 requireAdmin（07 §4.2、§7）；项目读写对只读用户开放；/proxy 路由落地时同步挂载
@@ -85,9 +86,9 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		api.POST("/edl/projects", h.createEDLProject)
 		api.GET("/edl/projects/:id", h.getEDLProject)
 		api.PUT("/edl/projects/:id", h.updateEDLProject)
-		api.DELETE("/edl/projects/:id", requireAdmin(), h.deleteEDLProject)
+		api.DELETE("/edl/projects/:id", security.RequireAdmin(), h.deleteEDLProject)
 		// 渲染提交（B-04 / 03 §4.4）；D-04：叠加 30 次/分钟/用户限流（07 §4.5）
-		api.POST("/edl/projects/:id/render", requireAdmin(),
+		api.POST("/edl/projects/:id/render", security.RequireAdmin(),
 			renderSubmitLimit(renderSubmitLimiter, h.auditReject("ratelimit.render")), h.renderEDLProject)
 
 		// 预览网关（M4 / 04 §2、03 §4.5）：
@@ -103,7 +104,7 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		api.GET("/thumb", h.handleThumb)
 
 		// 代理工作流（M4 / 04 §3.2）：写操作，与 EDL 删除类一致挂 requireAdmin（07 §4.2）
-		api.POST("/proxy", requireAdmin(), h.handleProxyRequest)
+		api.POST("/proxy", security.RequireAdmin(), h.handleProxyRequest)
 	}
 
 	// WebSocket：向前端推送任务状态

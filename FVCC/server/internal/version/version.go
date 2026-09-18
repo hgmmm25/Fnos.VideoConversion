@@ -1,4 +1,6 @@
-package main
+// Package version 承载版本单一来源（P2-1 阶段 A：version.go 迁入）。
+// 依赖方向：仅标准库；禁止反向依赖上层包。
+package version
 
 // 版本号唯一来源：本目录 VERSION 文件（go:embed 注入），禁止在代码中另写版本字面量。
 //
@@ -15,5 +17,5 @@ import (
 //go:embed VERSION
 var versionFile string
 
-// appVer FVCC 应用版本号（形如 1.2.2），必须与 manifest / ui-src/package.json 保持一致。
-var appVer = strings.TrimSpace(versionFile)
+// AppVer FVCC 应用版本号（形如 1.2.2），必须与 manifest / ui-src/package.json 保持一致。
+var AppVer = strings.TrimSpace(versionFile)

@@ -7,6 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"fvcc/smbshare"
+	"fvcc/internal/version"
+	"fvcc/internal/security"
+	"fvcc/internal/protocol"
+	"fvcc/internal/store"
 	"io"
 	"net/url"
 	"os"
@@ -63,10 +67,10 @@ type Handlers struct {
 // ===== 通用 =====
 
 func (h *Handlers) info(c *gin.Context) {
-	user := getGatewayUser(c)
+	user := security.GetGatewayUser(c)
 	c.JSON(200, gin.H{
 		"app":         "fvcc",
-		"version":     appVer,
+		"version":     version.AppVer,
 		"runtime":     fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 		"serverTime":  time.Now().Format(time.RFC3339),
 		"gatewayUser": user,
@@ -80,7 +84,7 @@ func (h *Handlers) info(c *gin.Context) {
 func (h *Handlers) getSettings(c *gin.Context) {
 	settings := h.store.GetSettings()
 	// 凭据安全（P0-1）：凭据不回显明文
-	settings.SMBPassword = MaskSecret(settings.SMBPassword)
+	settings.SMBPassword = security.MaskSecret(settings.SMBPassword)
 	// merge authorized paths from PathValidator so frontend can use them as default scan roots
 	authorized := h.pv.AccessPaths()
 	for _, p := range authorized {
@@ -104,7 +108,7 @@ func (h *Handlers) getSettings(c *gin.Context) {
 func (h *Handlers) saveSettings(c *gin.Context) {
 	var s Settings
 	if err := c.ShouldBindJSON(&s); err != nil {
-		fail(c, 400, "参数错误: "+err.Error())
+		protocol.Fail(c, 400, "参数错误: "+err.Error())
 		return
 	}
 	if s.SchedulerIntervalSec < 1 {
@@ -125,7 +129,7 @@ func (h *Handlers) saveSettings(c *gin.Context) {
 	// B-04：videoRoot/exportRoot 不在设置页表单内，为空时沿用既有值，避免被覆盖成空
 	old := h.store.GetSettings()
 	// P0-1：SMBPassword 为空或掩码时保留旧值（前端不回显明文，密码框留空表示不修改）
-	if s.SMBPassword == "" || s.SMBPassword == secretMaskValue {
+	if s.SMBPassword == "" || s.SMBPassword == security.SecretMaskValue {
 		s.SMBPassword = old.SMBPassword
 	}
 	if strings.TrimSpace(s.VideoRoot) == "" || strings.TrimSpace(s.ExportRoot) == "" {
@@ -168,40 +172,40 @@ func (h *Handlers) saveSettings(c *gin.Context) {
 	logger.SetLogLevel(logLevel)
 
 	resp := h.store.GetSettings()
-	resp.SMBPassword = MaskSecret(resp.SMBPassword) // 凭据安全（P0-1）：凭据不回显明文
+	resp.SMBPassword = security.MaskSecret(resp.SMBPassword) // 凭据安全（P0-1）：凭据不回显明文
 	c.JSON(200, gin.H{"settings": resp})
 }
 
 func (h *Handlers) getLog(c *gin.Context) {
-	logPath := filepath.Join(h.store.dataDir, "info.log")
+	logPath := filepath.Join(h.store.DataDir(), "info.log")
 	info, err := os.Stat(logPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			c.JSON(200, gin.H{"size": 0, "content": "", "exists": false})
 			return
 		}
-		fail(c, 500, err.Error())
+		protocol.Fail(c, 500, err.Error())
 		return
 	}
 	data, err := os.ReadFile(logPath)
 	if err != nil {
-		fail(c, 500, err.Error())
+		protocol.Fail(c, 500, err.Error())
 		return
 	}
 	c.JSON(200, gin.H{"size": info.Size(), "content": string(data), "exists": true})
 }
 
 func (h *Handlers) clearLog(c *gin.Context) {
-	logPath := filepath.Join(h.store.dataDir, "info.log")
+	logPath := filepath.Join(h.store.DataDir(), "info.log")
 	if err := os.WriteFile(logPath, []byte{}, 0o644); err != nil {
-		fail(c, 500, err.Error())
+		protocol.Fail(c, 500, err.Error())
 		return
 	}
 	c.JSON(200, gin.H{"ok": true})
 }
 
 func (h *Handlers) getVideoCacheInfo(c *gin.Context) {
-	cachePath := filepath.Join(h.store.dataDir, "video_cache.json")
+	cachePath := filepath.Join(h.store.DataDir(), "video_cache.json")
 	info, err := os.Stat(cachePath)
 	var size int64 = 0
 	if err == nil {
@@ -213,7 +217,7 @@ func (h *Handlers) getVideoCacheInfo(c *gin.Context) {
 
 func (h *Handlers) clearVideoCache(c *gin.Context) {
 	h.store.ClearVideoCache()
-	auditDestructive(c, auditActionDestructiveClear, "video_cache", "ok")
+	security.AuditDestructive(c, security.AuditActionDestructiveClear, "video_cache", "ok")
 	c.JSON(200, gin.H{"ok": true})
 }
 
@@ -237,13 +241,13 @@ func (h *Handlers) scanDirectory(c *gin.Context) {
 		Path string `json:"path" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "路径不能为空")
+		protocol.Fail(c, 400, "路径不能为空")
 		return
 	}
 
 	videos, err := h.scanDirectoryOnce(req.Path)
 	if err != nil {
-		fail(c, 500, err.Error())
+		protocol.Fail(c, 500, err.Error())
 		return
 	}
 
@@ -253,7 +257,7 @@ func (h *Handlers) scanDirectory(c *gin.Context) {
 func (h *Handlers) scanDirectoryStream(c *gin.Context) {
 	path := c.Query("path")
 	if path == "" {
-		fail(c, 400, "路径不能为空")
+		protocol.Fail(c, 400, "路径不能为空")
 		return
 	}
 	// 需求3：文件夹式阅览。recursive=false 时仅扫描当前目录（不进入子目录），
@@ -329,7 +333,7 @@ func (h *Handlers) doScanDirectory(path string, onProgress func([]VideoInfo) boo
 	}
 
 	settings := h.store.GetSettings()
-	if err := h.validateSMBPath(settings, path); err != nil {
+	if err := security.ValidateSMBPath(settings, path); err != nil {
 		return err
 	}
 
@@ -465,29 +469,29 @@ func (h *Handlers) probeVideo(c *gin.Context) {
 		Path string `json:"path" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "路径不能为空")
+		protocol.Fail(c, 400, "路径不能为空")
 		return
 	}
 
 	if err := h.pv.Validate(req.Path); err != nil {
-		fail(c, 403, err.Error())
+		protocol.Fail(c, 403, err.Error())
 		return
 	}
 
 	// SMB 模式：额外校验路径是否在已共享目录内
 	settings := h.store.GetSettings()
-	if err := h.validateSMBPath(settings, req.Path); err != nil {
-		if errors.Is(err, errSMBNotShared) {
-			fail(c, 403, "该文件未通过SMB共享，SMB模式下不可访问")
+	if err := security.ValidateSMBPath(settings, req.Path); err != nil {
+		if errors.Is(err, security.ErrSMBNotShared) {
+			protocol.Fail(c, 403, "该文件未通过SMB共享，SMB模式下不可访问")
 		} else {
-			fail(c, 500, err.Error())
+			protocol.Fail(c, 500, err.Error())
 		}
 		return
 	}
 
 	info, err := h.probe.Probe(req.Path)
 	if err != nil {
-		fail(c, 500, err.Error())
+		protocol.Fail(c, 500, err.Error())
 		return
 	}
 	c.JSON(200, info)
@@ -500,15 +504,15 @@ func (h *Handlers) previewVideo(c *gin.Context) {
 	path := c.Param("path")
 	decodedPath, err := url.QueryUnescape(path)
 	if err != nil {
-		fail(c, 400, "路径解析失败")
+		protocol.Fail(c, 400, "路径解析失败")
 		return
 	}
 	if err := h.pv.Validate(decodedPath); err != nil {
-		fail(c, 403, err.Error())
+		protocol.Fail(c, 403, err.Error())
 		return
 	}
 	if _, err := os.Stat(decodedPath); os.IsNotExist(err) {
-		fail(c, 404, "文件不存在")
+		protocol.Fail(c, 404, "文件不存在")
 		return
 	}
 	c.File(decodedPath)
@@ -521,25 +525,25 @@ func (h *Handlers) renameVideo(c *gin.Context) {
 		NewName string `json:"newName" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "参数错误")
+		protocol.Fail(c, 400, "参数错误")
 		return
 	}
 	if err := h.pv.Validate(req.Path); err != nil {
-		fail(c, 403, err.Error())
+		protocol.Fail(c, 403, err.Error())
 		return
 	}
 	if _, err := os.Stat(req.Path); os.IsNotExist(err) {
-		fail(c, 404, "文件不存在")
+		protocol.Fail(c, 404, "文件不存在")
 		return
 	}
 	if req.NewName == "" {
-		fail(c, 400, "新文件名不能为空")
+		protocol.Fail(c, 400, "新文件名不能为空")
 		return
 	}
 	dir := filepath.Dir(req.Path)
 	newPath := filepath.Join(dir, req.NewName)
 	if err := os.Rename(req.Path, newPath); err != nil {
-		fail(c, 500, "重命名失败: "+err.Error())
+		protocol.Fail(c, 500, "重命名失败: "+err.Error())
 		return
 	}
 	h.store.DeleteVideoCache(req.Path)
@@ -553,29 +557,29 @@ func (h *Handlers) moveVideo(c *gin.Context) {
 		DestDir string `json:"destDir" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "参数错误")
+		protocol.Fail(c, 400, "参数错误")
 		return
 	}
 	if err := h.pv.Validate(req.Path); err != nil {
-		fail(c, 403, err.Error())
+		protocol.Fail(c, 403, err.Error())
 		return
 	}
 	if err := h.pv.Validate(req.DestDir); err != nil {
-		fail(c, 403, "目标目录未授权")
+		protocol.Fail(c, 403, "目标目录未授权")
 		return
 	}
 	if _, err := os.Stat(req.Path); os.IsNotExist(err) {
-		fail(c, 404, "文件不存在")
+		protocol.Fail(c, 404, "文件不存在")
 		return
 	}
 	if _, err := os.Stat(req.DestDir); os.IsNotExist(err) {
-		fail(c, 404, "目标目录不存在")
+		protocol.Fail(c, 404, "目标目录不存在")
 		return
 	}
 	fileName := filepath.Base(req.Path)
 	newPath := filepath.Join(req.DestDir, fileName)
 	if err := os.Rename(req.Path, newPath); err != nil {
-		fail(c, 500, "移动失败: "+err.Error())
+		protocol.Fail(c, 500, "移动失败: "+err.Error())
 		return
 	}
 	h.store.DeleteVideoCache(req.Path)
@@ -588,21 +592,21 @@ func (h *Handlers) deleteVideo(c *gin.Context) {
 		Path string `json:"path" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "路径不能为空")
+		protocol.Fail(c, 400, "路径不能为空")
 		return
 	}
 	if err := h.pv.Validate(req.Path); err != nil {
-		fail(c, 403, err.Error())
+		protocol.Fail(c, 403, err.Error())
 		return
 	}
 	if _, err := os.Stat(req.Path); os.IsNotExist(err) {
-		fail(c, 404, "文件不存在")
+		protocol.Fail(c, 404, "文件不存在")
 		return
 	}
 	// P2-5：删除改为移入回收站（<授权根>/_trash），不再物理删除
-	trashPath, err := h.moveToTrash(req.Path)
+	trashPath, err := store.MoveToTrash(h.pv.AccessPaths(), req.Path)
 	if err != nil {
-		fail(c, 500, "删除失败: "+err.Error())
+		protocol.Fail(c, 500, "删除失败: "+err.Error())
 		return
 	}
 	h.store.DeleteVideoCache(req.Path)
@@ -658,33 +662,33 @@ func (h *Handlers) browseDirs(c *gin.Context) {
 
 	// 路径安全校验
 	if err := h.pv.Validate(pathParam); err != nil {
-		fail(c, 403, err.Error())
+		protocol.Fail(c, 403, err.Error())
 		return
 	}
 
 	// SMB 模式：额外校验路径是否在已共享目录内
-	if err := h.validateSMBPath(settings, pathParam); err != nil {
-		if errors.Is(err, errSMBNotShared) {
-			fail(c, 403, "该目录未通过SMB共享，SMB模式下不可访问")
+	if err := security.ValidateSMBPath(settings, pathParam); err != nil {
+		if errors.Is(err, security.ErrSMBNotShared) {
+			protocol.Fail(c, 403, "该目录未通过SMB共享，SMB模式下不可访问")
 		} else {
-			fail(c, 500, err.Error())
+			protocol.Fail(c, 500, err.Error())
 		}
 		return
 	}
 
 	info, err := os.Stat(pathParam)
 	if err != nil {
-		fail(c, 404, fmt.Sprintf("路径不存在: %v", err))
+		protocol.Fail(c, 404, fmt.Sprintf("路径不存在: %v", err))
 		return
 	}
 	if !info.IsDir() {
-		fail(c, 400, "指定路径不是目录")
+		protocol.Fail(c, 400, "指定路径不是目录")
 		return
 	}
 
 	entries, err := os.ReadDir(pathParam)
 	if err != nil {
-		fail(c, 500, fmt.Sprintf("读取目录失败: %v", err))
+		protocol.Fail(c, 500, fmt.Sprintf("读取目录失败: %v", err))
 		return
 	}
 
@@ -737,7 +741,7 @@ func (h *Handlers) listServers(c *gin.Context) {
 	out := make([]Server, len(servers))
 	copy(out, servers)
 	for i := range out {
-		out[i].AuthKey = MaskSecret(out[i].AuthKey)
+		out[i].AuthKey = security.MaskSecret(out[i].AuthKey)
 	}
 	c.JSON(200, gin.H{"servers": out})
 }
@@ -745,7 +749,7 @@ func (h *Handlers) listServers(c *gin.Context) {
 func (h *Handlers) createServer(c *gin.Context) {
 	var sv Server
 	if err := c.ShouldBindJSON(&sv); err != nil {
-		fail(c, 400, "参数错误: "+err.Error())
+		protocol.Fail(c, 400, "参数错误: "+err.Error())
 		return
 	}
 	if sv.ID == "" {
@@ -757,11 +761,11 @@ func (h *Handlers) createServer(c *gin.Context) {
 	if sv.Status == "" {
 		sv.Status = "offline"
 	}
-	if sv.AuthKey == secretMaskValue {
+	if sv.AuthKey == security.SecretMaskValue {
 		sv.AuthKey = ""
 	}
 	h.store.UpsertServer(sv)
-	sv.AuthKey = MaskSecret(sv.AuthKey)
+	sv.AuthKey = security.MaskSecret(sv.AuthKey)
 	c.JSON(200, sv)
 }
 
@@ -769,31 +773,31 @@ func (h *Handlers) updateServer(c *gin.Context) {
 	id := c.Param("id")
 	sv, ok := h.store.GetServer(id)
 	if !ok {
-		fail(c, 404, "服务器不存在")
+		protocol.Fail(c, 404, "服务器不存在")
 		return
 	}
 	oldKey := sv.AuthKey // 凭据安全（P0-1）：保存旧密钥，掩码/空提交时保留
 	if err := c.ShouldBindJSON(&sv); err != nil {
-		fail(c, 400, "参数错误: "+err.Error())
+		protocol.Fail(c, 400, "参数错误: "+err.Error())
 		return
 	}
 	sv.ID = id
-	if sv.AuthKey == "" || sv.AuthKey == secretMaskValue {
+	if sv.AuthKey == "" || sv.AuthKey == security.SecretMaskValue {
 		sv.AuthKey = oldKey
 	}
 	h.store.UpsertServer(sv)
-	sv.AuthKey = MaskSecret(sv.AuthKey)
+	sv.AuthKey = security.MaskSecret(sv.AuthKey)
 	c.JSON(200, sv)
 }
 
 func (h *Handlers) deleteServer(c *gin.Context) {
 	id := c.Param("id")
 	if !h.store.DeleteServer(id) {
-		fail(c, 404, "服务器不存在")
+		protocol.Fail(c, 404, "服务器不存在")
 		return
 	}
 	h.remote.CloseConn(id)
-	auditDestructive(c, auditActionDestructiveDelete, "server:"+id, "ok")
+	security.AuditDestructive(c, security.AuditActionDestructiveDelete, "server:"+id, "ok")
 	c.JSON(200, gin.H{"ok": true})
 }
 
@@ -801,7 +805,7 @@ func (h *Handlers) testServer(c *gin.Context) {
 	id := c.Param("id")
 	sv, ok := h.store.GetServer(id)
 	if !ok {
-		fail(c, 404, "服务器不存在")
+		protocol.Fail(c, 404, "服务器不存在")
 		return
 	}
 
@@ -811,7 +815,7 @@ func (h *Handlers) testServer(c *gin.Context) {
 	if err != nil {
 		h.store.UpdateServerStatus(id, "offline")
 		h.hub.BroadcastNodeStatus(id, "offline", healthScoreUnknown, "连通性测试失败")
-		failWithCode(c, 200, "E_SERVER_OFFLINE", err.Error())
+		protocol.FailWithCode(c, 200, "E_SERVER_OFFLINE", err.Error())
 		return
 	}
 	h.store.UpdateServerStatus(id, "online")
@@ -828,7 +832,7 @@ func (h *Handlers) listProfiles(c *gin.Context) {
 func (h *Handlers) createProfile(c *gin.Context) {
 	var p Profile
 	if err := c.ShouldBindJSON(&p); err != nil {
-		fail(c, 400, "参数错误: "+err.Error())
+		protocol.Fail(c, 400, "参数错误: "+err.Error())
 		return
 	}
 	if p.ID == "" {
@@ -842,18 +846,18 @@ func (h *Handlers) updateProfile(c *gin.Context) {
 	id := c.Param("id")
 	p, ok := h.store.GetProfile(id)
 	if !ok {
-		fail(c, 404, "方案不存在")
+		protocol.Fail(c, 404, "方案不存在")
 		return
 	}
 	var updates map[string]interface{}
 	if err := c.ShouldBindJSON(&updates); err != nil {
-		fail(c, 400, "参数错误: "+err.Error())
+		protocol.Fail(c, 400, "参数错误: "+err.Error())
 		return
 	}
 	// P1-1: 59 块手写字段映射收敛为反射白名单 helper（applyjson.go），
 	// 白名单由 Profile 的 json tag 自动推导，保持部分更新语义。
 	delete(updates, "id") // 主键不可通过 update 修改（与旧行为一致）
-	applyJSONUpdates(&p, updates)
+	protocol.ApplyJSONUpdates(&p, updates)
 	h.store.UpsertProfile(p)
 	c.JSON(200, p)
 }
@@ -861,7 +865,7 @@ func (h *Handlers) updateProfile(c *gin.Context) {
 func (h *Handlers) deleteProfile(c *gin.Context) {
 	id := c.Param("id")
 	if !h.store.DeleteProfile(id) {
-		fail(c, 404, "方案不存在")
+		protocol.Fail(c, 404, "方案不存在")
 		return
 	}
 	c.JSON(200, gin.H{"ok": true})
@@ -882,49 +886,49 @@ func (h *Handlers) createTask(c *gin.Context) {
 		ProfileID  string `json:"profileId" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "参数错误: "+err.Error())
+		protocol.Fail(c, 400, "参数错误: "+err.Error())
 		return
 	}
 
 	// 路径安全校验（所有模式都需校验授权目录）
 	settings := h.store.GetSettings()
 	if err := h.pv.Validate(req.SourceFile); err != nil {
-		fail(c, 403, "源文件: "+err.Error())
+		protocol.Fail(c, 403, "源文件: "+err.Error())
 		return
 	}
 	if err := h.pv.Validate(req.OutputFile); err != nil {
-		fail(c, 403, "输出文件: "+err.Error())
+		protocol.Fail(c, 403, "输出文件: "+err.Error())
 		return
 	}
 
 	// 检查输出文件是否已存在
 	if _, err := os.Stat(req.OutputFile); err == nil {
-		fail(c, 409, "输出文件已存在: "+req.OutputFile)
+		protocol.Fail(c, 409, "输出文件已存在: "+req.OutputFile)
 		return
 	}
 
 	// 检查是否有其他非终态任务正在转码同一输出文件
 	for _, t := range h.store.GetTasks() {
 		if t.OutputFile == req.OutputFile && !t.Status.IsTerminal() {
-			fail(c, 409, "已有任务正在转码同一输出文件: "+req.OutputFile)
+			protocol.Fail(c, 409, "已有任务正在转码同一输出文件: "+req.OutputFile)
 			return
 		}
 	}
 
 	// SMB模式：额外校验路径是否在已共享目录内
-	if err := h.validateSMBPath(settings, req.SourceFile); err != nil {
-		if errors.Is(err, errSMBNotShared) {
-			fail(c, 403, "源文件不在SMB共享目录内，无法通过SMB模式访问")
+	if err := security.ValidateSMBPath(settings, req.SourceFile); err != nil {
+		if errors.Is(err, security.ErrSMBNotShared) {
+			protocol.Fail(c, 403, "源文件不在SMB共享目录内，无法通过SMB模式访问")
 		} else {
-			fail(c, 500, err.Error())
+			protocol.Fail(c, 500, err.Error())
 		}
 		return
 	}
-	if err := h.validateSMBPath(settings, req.OutputFile); err != nil {
-		if errors.Is(err, errSMBNotShared) {
-			fail(c, 403, "输出文件不在SMB共享目录内，无法通过SMB模式访问")
+	if err := security.ValidateSMBPath(settings, req.OutputFile); err != nil {
+		if errors.Is(err, security.ErrSMBNotShared) {
+			protocol.Fail(c, 403, "输出文件不在SMB共享目录内，无法通过SMB模式访问")
 		} else {
-			fail(c, 500, err.Error())
+			protocol.Fail(c, 500, err.Error())
 		}
 		return
 	}
@@ -943,7 +947,7 @@ func (h *Handlers) createTask(c *gin.Context) {
 		var ok bool
 		server, ok = h.store.GetServer(req.ServerID)
 		if !ok {
-			fail(c, 404, "服务器不存在")
+			protocol.Fail(c, 404, "服务器不存在")
 			return
 		}
 		if !server.IsLocal && server.Status == "offline" {
@@ -952,7 +956,7 @@ func (h *Handlers) createTask(c *gin.Context) {
 	}
 	profile, ok := h.store.GetProfile(req.ProfileID)
 	if !ok {
-		fail(c, 404, "转码方案不存在")
+		protocol.Fail(c, 404, "转码方案不存在")
 		return
 	}
 
@@ -1008,11 +1012,11 @@ func (h *Handlers) pauseTask(c *gin.Context) {
 	id := c.Param("id")
 	t, ok := h.store.GetTask(id)
 	if !ok {
-		fail(c, 404, "任务不存在")
+		protocol.Fail(c, 404, "任务不存在")
 		return
 	}
 	if t.Status.IsTerminal() {
-		fail(c, 400, "终态任务无法暂停")
+		protocol.Fail(c, 400, "终态任务无法暂停")
 		return
 	}
 
@@ -1047,11 +1051,11 @@ func (h *Handlers) resumeTask(c *gin.Context) {
 	id := c.Param("id")
 	t, ok := h.store.GetTask(id)
 	if !ok {
-		fail(c, 404, "任务不存在")
+		protocol.Fail(c, 404, "任务不存在")
 		return
 	}
 	if t.Status != StatusPaused && t.Status != StatusError {
-		fail(c, 400, "仅暂停/错误状态可恢复")
+		protocol.Fail(c, 400, "仅暂停/错误状态可恢复")
 		return
 	}
 
@@ -1075,11 +1079,11 @@ func (h *Handlers) cancelTask(c *gin.Context) {
 	id := c.Param("id")
 	t, ok := h.store.GetTask(id)
 	if !ok {
-		fail(c, 404, "任务不存在")
+		protocol.Fail(c, 404, "任务不存在")
 		return
 	}
 	if t.Status.IsTerminal() {
-		fail(c, 400, "终态任务无法取消")
+		protocol.Fail(c, 400, "终态任务无法取消")
 		return
 	}
 
@@ -1120,11 +1124,11 @@ func (h *Handlers) retryTask(c *gin.Context) {
 	id := c.Param("id")
 	t, ok := h.store.GetTask(id)
 	if !ok {
-		fail(c, 404, "任务不存在")
+		protocol.Fail(c, 404, "任务不存在")
 		return
 	}
 	if t.Status != StatusError {
-		fail(c, 400, "仅错误状态可重试")
+		protocol.Fail(c, 400, "仅错误状态可重试")
 		return
 	}
 
@@ -1142,7 +1146,7 @@ func (h *Handlers) deleteTask(c *gin.Context) {
 	id := c.Param("id")
 	t, _ := h.store.GetTask(id)
 	if !h.store.DeleteTask(id) {
-		fail(c, 404, "任务不存在")
+		protocol.Fail(c, 404, "任务不存在")
 		return
 	}
 	logger.Info("task", "deleted: id=%s file=%s", id, t.FileName)
@@ -1154,11 +1158,11 @@ func (h *Handlers) reorderTasks(c *gin.Context) {
 		TaskIDs []string `json:"taskIds" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, 400, "参数错误: "+err.Error())
+		protocol.Fail(c, 400, "参数错误: "+err.Error())
 		return
 	}
 	if err := h.store.ReorderTasks(req.TaskIDs); err != nil {
-		fail(c, 500, err.Error())
+		protocol.Fail(c, 500, err.Error())
 		return
 	}
 	c.JSON(200, gin.H{"ok": true})
@@ -1178,10 +1182,10 @@ func (h *Handlers) listHistory(c *gin.Context) {
 func (h *Handlers) deleteHistory(c *gin.Context) {
 	id := c.Param("id")
 	if !h.store.DeleteHistoryTask(id) {
-		fail(c, 404, "历史记录不存在")
+		protocol.Fail(c, 404, "历史记录不存在")
 		return
 	}
-	auditDestructive(c, auditActionDestructiveDelete, "history:"+id, "ok")
+	security.AuditDestructive(c, security.AuditActionDestructiveDelete, "history:"+id, "ok")
 	c.JSON(200, gin.H{"ok": true})
 }
 

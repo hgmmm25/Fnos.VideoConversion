@@ -1,6 +1,7 @@
 package main
 
-// P0-1 凭据加密测试：往返、旧明文兼容、脱敏、Store 落盘密文与读盘解密。
+// P0-1 凭据加密 Store 集成测试：落盘密文与读盘解密、旧明文自动迁移。
+// （crypto 纯单元测试已随实现迁入 internal/security，本文件随 store 迁移。）
 
 import (
 	"encoding/json"
@@ -8,73 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"fvcc/internal/security"
 )
-
-func TestCryptoRoundTrip(t *testing.T) {
-	key := []byte("0123456789abcdef0123456789abcdef") // 32B
-	enc, err := EncryptSecret(key, "s3cret-pass")
-	if err != nil {
-		t.Fatalf("EncryptSecret: %v", err)
-	}
-	if !strings.HasPrefix(enc, secretPrefix) {
-		t.Fatalf("密文缺少前缀: %q", enc)
-	}
-	if strings.Contains(enc, "s3cret-pass") {
-		t.Fatalf("密文中泄露明文")
-	}
-	dec, err := DecryptSecret(key, enc)
-	if err != nil {
-		t.Fatalf("DecryptSecret: %v", err)
-	}
-	if dec != "s3cret-pass" {
-		t.Fatalf("往返不一致: got %q want %q", dec, "s3cret-pass")
-	}
-	// 两次加密产出不同密文（随机 nonce）
-	enc2, _ := EncryptSecret(key, "s3cret-pass")
-	if enc == enc2 {
-		t.Fatalf("随机 nonce 失效：两次密文相同")
-	}
-}
-
-func TestCryptoLegacyPlaintext(t *testing.T) {
-	key := []byte("0123456789abcdef0123456789abcdef")
-	// 旧明文（无前缀）应原样返回，兼容迁移
-	dec, err := DecryptSecret(key, "plain-old-pass")
-	if err != nil {
-		t.Fatalf("DecryptSecret(plaintext): %v", err)
-	}
-	if dec != "plain-old-pass" {
-		t.Fatalf("旧明文未原样保留: got %q", dec)
-	}
-	if IsEncrypted("plain-old-pass") {
-		t.Fatalf("旧明文不应判定为密文")
-	}
-	// 空值
-	if enc, _ := EncryptSecret(key, ""); enc != "" {
-		t.Fatalf("空明文应返回空串, got %q", enc)
-	}
-	if dec, _ := DecryptSecret(key, ""); dec != "" {
-		t.Fatalf("空密文应返回空串, got %q", dec)
-	}
-}
-
-func TestCryptoBadKey(t *testing.T) {
-	key := []byte("0123456789abcdef0123456789abcdef")
-	enc, _ := EncryptSecret(key, "secret")
-	other := []byte("fedcba9876543210fedcba9876543210")
-	if _, err := DecryptSecret(other, enc); err == nil {
-		t.Fatalf("错误密钥应解密失败")
-	}
-}
-
-func TestCryptoMask(t *testing.T) {
-	if MaskSecret("") != "" {
-		t.Fatalf("空值脱敏应保持空")
-	}
-	if MaskSecret("abc") != secretMaskValue {
-		t.Fatalf("非空脱敏应为掩码")
-	}
-}
 
 func TestCryptoStorePersistence(t *testing.T) {
 	dir := t.TempDir()
@@ -83,7 +20,7 @@ func TestCryptoStorePersistence(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	// 主密钥应已生成
-	keyPath := filepath.Join(dir, secretKeyFile)
+	keyPath := filepath.Join(dir, security.SecretKeyFile)
 	if _, err := os.Stat(keyPath); err != nil {
 		t.Fatalf("主密钥文件未生成: %v", err)
 	}
@@ -98,13 +35,13 @@ func TestCryptoStorePersistence(t *testing.T) {
 	// 落盘文件应含密文前缀且不含明文
 	rawSettings, _ := os.ReadFile(filepath.Join(dir, "settings.json"))
 	rawServers, _ := os.ReadFile(filepath.Join(dir, "server.json"))
-	if !strings.Contains(string(rawSettings), secretPrefix) {
+	if !strings.Contains(string(rawSettings), security.SecretPrefix) {
 		t.Fatalf("settings.json 未加密落盘")
 	}
 	if strings.Contains(string(rawSettings), "smb-pass-123") {
 		t.Fatalf("settings.json 泄露明文 SMBPassword")
 	}
-	if !strings.Contains(string(rawServers), secretPrefix) {
+	if !strings.Contains(string(rawServers), security.SecretPrefix) {
 		t.Fatalf("server.json 未加密落盘")
 	}
 	if strings.Contains(string(rawServers), "auth-secret-456") {
@@ -152,7 +89,7 @@ func TestCryptoStoreLegacyMigration(t *testing.T) {
 	// 触发一次落盘后应自动加密迁移
 	s.SaveSettings(s.GetSettings())
 	raw, _ := os.ReadFile(filepath.Join(dir, "settings.json"))
-	if !strings.Contains(string(raw), secretPrefix) || strings.Contains(string(raw), "old-plain") {
+	if !strings.Contains(string(raw), security.SecretPrefix) || strings.Contains(string(raw), "old-plain") {
 		t.Fatalf("旧明文未自动加密迁移")
 	}
 }

@@ -1,6 +1,10 @@
-package main
+package store
 
 // trash_test.go — P2-5 删除回收站化单测：移动/恢复/清空/越权防护
+//
+// 随 P2-1 阶段 A 由 server/trash_test.go 迁入 internal/store；
+// 原测试通过 *Handlers 调用 moveToTrash，现直接以授权根列表调用
+// MoveToTrash（行为等价：函数仅依赖授权根集合）。
 
 import (
 	"os"
@@ -9,18 +13,8 @@ import (
 	"testing"
 )
 
-// newTrashTestHandlers 构造带授权根的回收站测试 Handler。
-func newTrashTestHandlers(t *testing.T, roots ...string) *Handlers {
-	t.Helper()
-	store := NewStore(filepath.Join(t.TempDir(), "test.db"))
-	pv := NewPathValidator(false, "")
-	pv.SetExtraPaths(roots)
-	return &Handlers{store: store, pv: pv, hub: NewHub()}
-}
-
 func TestMoveToTrashRestore(t *testing.T) {
 	root := t.TempDir()
-	h := newTrashTestHandlers(t, root)
 
 	src := filepath.Join(root, "movies", "a.mp4")
 	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
@@ -30,11 +24,11 @@ func TestMoveToTrashRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	trashPath, err := h.moveToTrash(src)
+	trashPath, err := MoveToTrash([]string{root}, src)
 	if err != nil {
-		t.Fatalf("moveToTrash: %v", err)
+		t.Fatalf("MoveToTrash: %v", err)
 	}
-	if !strings.Contains(trashPath, filepath.Join(root, trashDirName)) {
+	if !strings.Contains(trashPath, filepath.Join(root, TrashDirName)) {
 		t.Fatalf("trash path 不在回收站内: %s", trashPath)
 	}
 	if _, err := os.Stat(src); !os.IsNotExist(err) {
@@ -58,16 +52,14 @@ func TestMoveToTrashRestore(t *testing.T) {
 
 func TestMoveToTrashOutsideRoot(t *testing.T) {
 	root := t.TempDir()
-	h := newTrashTestHandlers(t, root)
 	outside := filepath.Join(t.TempDir(), "x.mp4")
-	if _, err := h.moveToTrash(outside); err == nil {
+	if _, err := MoveToTrash([]string{root}, outside); err == nil {
 		t.Fatal("越权路径移入回收站应报错")
 	}
 }
 
 func TestEmptyTrash(t *testing.T) {
 	root := t.TempDir()
-	h := newTrashTestHandlers(t, root)
 
 	src := filepath.Join(root, "sub", "b.mp4")
 	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
@@ -76,12 +68,12 @@ func TestEmptyTrash(t *testing.T) {
 	if err := os.WriteFile(src, []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.moveToTrash(src); err != nil {
-		t.Fatalf("moveToTrash: %v", err)
+	if _, err := MoveToTrash([]string{root}, src); err != nil {
+		t.Fatalf("MoveToTrash: %v", err)
 	}
 
 	// 直接清空目录内容（等价 emptyTrash 的核心逻辑）
-	trashRoot := filepath.Join(root, trashDirName)
+	trashRoot := filepath.Join(root, TrashDirName)
 	entries, err := os.ReadDir(trashRoot)
 	if err != nil {
 		t.Fatalf("read trash: %v", err)

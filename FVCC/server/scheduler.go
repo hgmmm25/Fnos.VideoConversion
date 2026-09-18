@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fvcc/internal/store"
 	"context"
 	"errors"
 	"fmt"
@@ -912,7 +913,7 @@ func (s *Scheduler) HandleRemoteProgress(serverID string, p RemoteProgress) {
 		return
 	}
 
-	updated, ok := s.store.ApplyRenderProgress(t.ID, RenderProgress{
+	updated, ok := s.store.ApplyRenderProgress(t.ID, store.RenderProgress{
 		Progress:  p.Progress,
 		Stage:     p.Stage,
 		SegIndex:  p.SegIndex,
@@ -1056,7 +1057,7 @@ func (s *Scheduler) failRenderTaskWithCooldown(t Task, code, msg string) {
 			fmt.Sprintf("重试次数用尽(%d/%d): %s", attempt, renderMaxRetryDefault, msg))
 		return
 	}
-	coolSec := CooldownBackoffSec(attempt)
+	coolSec := store.CooldownBackoffSec(attempt)
 	until := time.Now().Add(time.Duration(coolSec) * time.Second)
 	t.Status = StatusCooldown
 	t.RetryCount = attempt + 1

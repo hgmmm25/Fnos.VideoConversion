@@ -16,6 +16,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"fvcc/internal/security"
 )
 
 // withGlobalStore 在测试期间把审计目标指向指定 store。
@@ -23,12 +25,11 @@ func withGlobalStore(t *testing.T, s *Store) {
 	t.Helper()
 	prev := globalStore
 	globalStore = s
-	t.Cleanup(func() { globalStore = prev })
-}
-
-func resetAlertCounters() {
-	alertAssetScan = newSlidingWindowLimiter(alertAssetScanThreshold+1, alertWindow)
-	alertPayloadProbe = newSlidingWindowLimiter(alertPayloadProbeThreshold+1, alertWindow)
+	security.SetAuditSink(s.AppendAudit)
+	t.Cleanup(func() {
+		globalStore = prev
+		security.SetAuditSink(nil)
+	})
 }
 
 func TestD04ValidateRejectAudited(t *testing.T) {
@@ -42,9 +43,9 @@ func TestD04ValidateRejectAudited(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("名称超长应 400，实际 %d %s", w.Code, w.Body.String())
 	}
-	rejects := s.ListAudit(0, auditActionValidateReject)
+	rejects := s.ListAudit(0, security.AuditActionValidateReject)
 	if len(rejects) != 1 {
-		t.Fatalf("拒绝类错误应恰好记 1 条 %s，实际 %d 条", auditActionValidateReject, len(rejects))
+		t.Fatalf("拒绝类错误应恰好记 1 条 %s，实际 %d 条", security.AuditActionValidateReject, len(rejects))
 	}
 	if rejects[0].Result != errCodeEDLInvalid {
 		t.Fatalf("Result 应为 %s，实际 %q", errCodeEDLInvalid, rejects[0].Result)
@@ -58,7 +59,7 @@ func TestD04ValidateRejectAudited(t *testing.T) {
 		`{"rev":1,"name":"x","timeline":`+edlTimelineJSON+`}`); w.Code != http.StatusNotFound {
 		t.Fatalf("不存在项目应 404，实际 %d %s", w.Code, w.Body.String())
 	}
-	if got := len(s.ListAudit(0, auditActionValidateReject)); got != 1 {
+	if got := len(s.ListAudit(0, security.AuditActionValidateReject)); got != 1 {
 		t.Fatalf("非拒绝类错误不应记账，实际累计 %d 条", got)
 	}
 }
@@ -66,8 +67,8 @@ func TestD04ValidateRejectAudited(t *testing.T) {
 func TestD04AssetNotInRootRejectedAndAudited(t *testing.T) {
 	r, s, srcDir, _, _ := newD02RenderEnv(t)
 	withGlobalStore(t, s)
-	resetAlertCounters()
-	t.Cleanup(resetAlertCounters)
+	security.ResetAlertCounters()
+	t.Cleanup(security.ResetAlertCounters)
 
 	// 素材根内软链接指向授权根之外 → 严格分支（闸门 6）判为 E_ASSET_NOT_IN_ROOT。
 	// 说明：闸门 2 的项目内容校验按 03 §4.2 契约把路径类错误统一折叠为 E_EDL_INVALID，
@@ -98,16 +99,16 @@ func TestD04AssetNotInRootRejectedAndAudited(t *testing.T) {
 			errCodeAssetNotInRoot, resp.Code, w.Code, w.Body.String())
 	}
 
-	rejects := s.ListAudit(0, auditActionValidateReject)
+	rejects := s.ListAudit(0, security.AuditActionValidateReject)
 	if len(rejects) != 1 || rejects[0].Result != errCodeAssetNotInRoot {
 		t.Fatalf("越权扫描应写 1 条 %s(E_ASSET_NOT_IN_ROOT)，实际 %+v",
-			auditActionValidateReject, rejects)
+			security.AuditActionValidateReject, rejects)
 	}
 	if rejects[0].Target != p.ID {
 		t.Fatalf("target 应为项目 id %s，实际 %q", p.ID, rejects[0].Target)
 	}
 	// 单次不触发告警
-	if alerts := s.ListAudit(0, auditActionSecurityAlert); len(alerts) != 0 {
+	if alerts := s.ListAudit(0, security.AuditActionSecurityAlert); len(alerts) != 0 {
 		t.Fatalf("单次越权不应告警，实际 %d 条", len(alerts))
 	}
 }
@@ -115,16 +116,16 @@ func TestD04AssetNotInRootRejectedAndAudited(t *testing.T) {
 func TestD04AlertOnAssetScanThreshold(t *testing.T) {
 	_, s := newEDLTestRouter(t, t.TempDir())
 	withGlobalStore(t, s)
-	resetAlertCounters()
-	t.Cleanup(resetAlertCounters)
+	security.ResetAlertCounters()
+	t.Cleanup(security.ResetAlertCounters)
 
 	c := newAuditGinContext(t, "203.0.113.77")
-	for i := 0; i < alertAssetScanThreshold; i++ {
-		auditRejection(c, errCodeAssetNotInRoot)
+	for i := 0; i < security.AlertAssetScanThreshold; i++ {
+		security.AuditRejection(c, errCodeAssetNotInRoot)
 	}
-	alerts := s.ListAudit(0, auditActionSecurityAlert)
+	alerts := s.ListAudit(0, security.AuditActionSecurityAlert)
 	if len(alerts) != 1 {
-		t.Fatalf("达阈值应恰好 1 条 %s，实际 %d 条", auditActionSecurityAlert, len(alerts))
+		t.Fatalf("达阈值应恰好 1 条 %s，实际 %d 条", security.AuditActionSecurityAlert, len(alerts))
 	}
 	if alerts[0].Actor != "local" || alerts[0].Result != errCodeAssetNotInRoot {
 		t.Fatalf("告警审计字段异常: %+v", alerts[0])
@@ -134,14 +135,14 @@ func TestD04AlertOnAssetScanThreshold(t *testing.T) {
 	}
 
 	// 越权计数独立的载荷桶：未达 50 次不得告警
-	for i := 0; i < alertPayloadProbeThreshold-1; i++ {
-		auditRejection(c, errCodePayloadInvalid)
+	for i := 0; i < security.AlertPayloadProbeThreshold-1; i++ {
+		security.AuditRejection(c, errCodePayloadInvalid)
 	}
-	if got := len(s.ListAudit(0, auditActionSecurityAlert)); got != 1 {
+	if got := len(s.ListAudit(0, security.AuditActionSecurityAlert)); got != 1 {
 		t.Fatalf("载荷类未达阈值不应新增告警，实际 %d 条", got)
 	}
-	auditRejection(c, errCodePayloadInvalid)
-	if got := len(s.ListAudit(0, auditActionSecurityAlert)); got != 2 {
+	security.AuditRejection(c, errCodePayloadInvalid)
+	if got := len(s.ListAudit(0, security.AuditActionSecurityAlert)); got != 2 {
 		t.Fatalf("载荷类达阈值应新增 1 条告警，实际 %d 条", got)
 	}
 }
@@ -164,11 +165,11 @@ func TestP28DestructiveOpsAudited(t *testing.T) {
 
 	c := newAuditGinContext(t, "203.0.113.99")
 	c.Request.Header.Set("X-Trim-User-Name", "ops")
-	auditDestructive(c, auditActionDestructiveDelete, "server:srv1", "ok")
-	auditDestructive(c, auditActionDestructiveClear, "video_cache", "ok")
-	auditDestructive(c, auditActionDestructiveEmpty, "_trash", "removed=3")
+	security.AuditDestructive(c, security.AuditActionDestructiveDelete, "server:srv1", "ok")
+	security.AuditDestructive(c, security.AuditActionDestructiveClear, "video_cache", "ok")
+	security.AuditDestructive(c, security.AuditActionDestructiveEmpty, "_trash", "removed=3")
 
-	deletes := s.ListAudit(0, auditActionDestructiveDelete)
+	deletes := s.ListAudit(0, security.AuditActionDestructiveDelete)
 	if len(deletes) != 1 || deletes[0].Target != "server:srv1" {
 		t.Fatalf("删除类应记 1 条 destructive.delete，实际 %+v", deletes)
 	}
@@ -178,10 +179,10 @@ func TestP28DestructiveOpsAudited(t *testing.T) {
 	if !strings.Contains(deletes[0].Detail, "/api/edl/projects") || !strings.Contains(deletes[0].Detail, "203.0.113.99") {
 		t.Fatalf("Detail 应脱敏记录方法+路径+IP，实际 %q", deletes[0].Detail)
 	}
-	if got := len(s.ListAudit(0, auditActionDestructiveClear)); got != 1 {
+	if got := len(s.ListAudit(0, security.AuditActionDestructiveClear)); got != 1 {
 		t.Fatalf("清空类应记 1 条 destructive.clear，实际 %d", got)
 	}
-	if got := len(s.ListAudit(0, auditActionDestructiveEmpty)); got != 1 {
+	if got := len(s.ListAudit(0, security.AuditActionDestructiveEmpty)); got != 1 {
 		t.Fatalf("清空回收站应记 1 条 destructive.empty_trash，实际 %d", got)
 	}
 }

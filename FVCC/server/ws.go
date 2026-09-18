@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"fvcc/logger"
+	"fvcc/internal/security"
 )
 
 // ===== B-07：进度与事件聚合（06 §6）=====
@@ -158,7 +159,7 @@ func (h *Hub) HandleWS(c *gin.Context) {
 	h.mu.Unlock()
 
 	// 发送欢迎消息
-	user := getGatewayUser(c)
+	user := security.GetGatewayUser(c)
 	hello := InfoMsg{
 		Type: "hello",
 		Data: map[string]interface{}{
