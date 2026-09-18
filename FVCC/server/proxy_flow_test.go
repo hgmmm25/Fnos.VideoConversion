@@ -82,11 +82,11 @@ func newProxyFlowEnv(t *testing.T) *proxyFlowEnv {
 	hub := NewHub()
 	var mu sync.Mutex
 	var frames []string
-	hub.emitHook = func(b []byte) {
+	hub.SetEmitHook(func(b []byte) {
 		mu.Lock()
 		frames = append(frames, string(b))
 		mu.Unlock()
-	}
+	})
 	sch := NewScheduler(st, NewRemoteClient(), hub, nil)
 	return &proxyFlowEnv{sch: sch, store: st, hub: hub, root: root, frames: &frames, mu: &mu}
 }

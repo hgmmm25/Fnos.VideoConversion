@@ -27,7 +27,7 @@ func newB08Env(t *testing.T) (*Scheduler, *Store, *wsEventRecorder) {
 	s.UpsertServer(Server{ID: "srv_off", Name: "离线节点", Status: "offline"})
 	hub := NewHub()
 	rec := newWSRecorder()
-	hub.emitHook = rec.hook
+	hub.SetEmitHook(rec.hook)
 	return NewScheduler(s, NewRemoteClient(), hub, nil), s, rec
 }
 

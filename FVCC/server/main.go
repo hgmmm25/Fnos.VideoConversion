@@ -27,9 +27,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"fvcc/logger"
 	"fvcc/internal/security"
 	"fvcc/internal/version"
+	"fvcc/internal/ws"
+	"fvcc/logger"
 )
 
 const (
@@ -158,6 +159,8 @@ func main() {
 	pv.SetExtraPaths(store.GetSettings().AccessiblePaths)
 	hub := NewHub()
 	globalHub = hub
+	// P2-1 阶段 B：WS 快照注入（internal/ws 的 sendTaskSnapshot 经此取任务列表）。
+	ws.TaskSnapshotProvider = globalStore.GetTasks
 	remote := NewRemoteClient()
 	globalRemote = remote
 

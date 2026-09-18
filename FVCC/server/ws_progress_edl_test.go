@@ -15,7 +15,7 @@ import (
 func newWSProgressHub() (*Hub, *wsEventRecorder) {
 	hub := NewHub()
 	rec := newWSRecorder()
-	hub.emitHook = rec.hook
+	hub.SetEmitHook(rec.hook)
 	return hub, rec
 }
 

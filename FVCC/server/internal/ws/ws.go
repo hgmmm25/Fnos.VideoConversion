@@ -1,4 +1,4 @@
-package main
+package ws
 
 import (
 	"encoding/json"
@@ -10,21 +10,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
-	"fvcc/logger"
+	"fvcc/internal/protocol"
 	"fvcc/internal/security"
+	"fvcc/internal/store/model"
+	"fvcc/logger"
 )
 
 // ===== B-07：进度与事件聚合（06 §6）=====
 
 const (
-	// taskUpdateAggInterval task_update 服务端聚合窗口：同一任务在窗口内最多广播一次（取最新值）。
-	taskUpdateAggInterval = 500 * time.Millisecond
-	// proxyReadyDedupeWindow proxy_ready 去重窗口：同一 assetId 在窗口内只广播一次。
-	proxyReadyDedupeWindow = 10 * time.Second
-	// nodeHealthBandSize node_status 的 healthScore 分档粒度（跨 20 分档才广播）。
-	nodeHealthBandSize = 20
-	// healthScoreUnknown 健康分未知（B-08 落地前由调用方传入，不参与分档判断）。
-	healthScoreUnknown = -1
+	// TaskUpdateAggInterval task_update 服务端聚合窗口：同一任务在窗口内最多广播一次（取最新值）。
+	TaskUpdateAggInterval = 500 * time.Millisecond
+	// ProxyReadyDedupeWindow proxy_ready 去重窗口：同一 assetId 在窗口内只广播一次。
+	ProxyReadyDedupeWindow = 10 * time.Second
+	// NodeHealthBandSize node_status 的 healthScore 分档粒度（跨 20 分档才广播）。
+	NodeHealthBandSize = 20
+	// HealthScoreUnknown 健康分未知（B-08 落地前由调用方传入，不参与分档判断）。
+	HealthScoreUnknown = -1
 )
 
 // SegInfo 渲染分段进度（06 §6 BroadcastTaskUpdateFull 的 seg 参数）。
@@ -86,8 +88,8 @@ type Hub struct {
 	mu      sync.Mutex
 	clients map[*websocket.Conn]bool
 
-	// wsConns 浏览器维度连接计数（07 §4.5：浏览器 ≤ 5 条）；由 connRegistry 懒初始化。
-	wsConns *wsConnRegistry
+	// wsConns 浏览器维度连接计数（07 §4.5：浏览器 ≤ 5 条）；由 ConnRegistry 懒初始化。
+	wsConns *WSConnRegistry
 
 	// ===== B-07 事件聚合状态（06 §6）=====
 	aggMu     sync.Mutex
@@ -122,6 +124,10 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// TaskSnapshotProvider 由 main 注入：返回当前任务列表快照（sendTaskSnapshot 使用）。
+// nil 时跳过快照推送（单测 / 未注入场景）。
+var TaskSnapshotProvider func() []model.Task
+
 func NewHub() *Hub {
 	return &Hub{
 		clients:   make(map[*websocket.Conn]bool),
@@ -131,22 +137,28 @@ func NewHub() *Hub {
 	}
 }
 
+// SetClock 注入时间源（单测用）；nil 恢复 time.Now。
+func (h *Hub) SetClock(fn func() time.Time) { h.clock = fn }
+
+// SetEmitHook 注入广播出口钩子（单测用）；nil 恢复真实 WS 写。
+func (h *Hub) SetEmitHook(fn func([]byte)) { h.emitHook = fn }
+
 // HandleWS 处理浏览器 WebSocket 连接。
 // 07 §4.5：单浏览器（网关用户 / 来源 IP）并发连接 ≤ 5，超限直接 429。
 func (h *Hub) HandleWS(c *gin.Context) {
-	key := rateKey(c)
-	reg := h.connRegistry()
-	if !reg.acquire(key) {
-		logger.Warn("ws", "浏览器 WS 连接数超限: key=%v limit=%d", key, wsBrowserMaxConns)
+	key := security.RateKey(c)
+	reg := h.ConnRegistry()
+	if !reg.Acquire(key) {
+		logger.Warn("ws", "浏览器 WS 连接数超限: key=%v limit=%d", key, WSBrowserMaxConns)
 		c.JSON(http.StatusTooManyRequests, gin.H{
 			"ok":   false,
-			"code": errCodeRateLimited,
+			"code": protocol.ErrCodeRateLimited,
 			"msg":  "WebSocket 连接数过多，请复用已有连接",
 		})
 		c.Abort()
 		return
 	}
-	defer reg.release(key)
+	defer reg.Release(key)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -193,11 +205,10 @@ func (h *Hub) HandleWS(c *gin.Context) {
 
 // sendTaskSnapshot 发送当前任务列表快照。
 func (h *Hub) sendTaskSnapshot(conn *websocket.Conn) {
-	// 由 router 注入 store，通过全局变量访问
-	if globalStore == nil {
+	if TaskSnapshotProvider == nil {
 		return
 	}
-	tasks := globalStore.GetTasks()
+	tasks := TaskSnapshotProvider()
 	msg := InfoMsg{
 		Type: "snapshot",
 		Data: tasks,
@@ -253,7 +264,7 @@ func (h *Hub) BroadcastTaskUpdate(taskID, status string, progress float64, messa
 
 // BroadcastTaskUpdateFull 广播完整任务更新（06 §6，B-07）。
 //
-// 聚合规则：同一任务在 taskUpdateAggInterval（500ms）内最多广播一次，窗口内的多次调用
+// 聚合规则：同一任务在 TaskUpdateAggInterval（500ms）内最多广播一次，窗口内的多次调用
 // 只保留最新值并在窗口到期后补发（保证最终值不丢）；内容（状态/进度/阶段/分段/消息）
 // 与上次广播完全一致时不广播。
 // 线协议终态（SUCCESS/FAILED/CANCELED）为任务生命周期最后一帧，立即广播且不计入节流，
@@ -296,7 +307,7 @@ func (h *Hub) BroadcastTaskUpdateFull(taskID, status string, progress int, stage
 		return
 	}
 	terminal := isTerminalWireStatus(status)
-	if terminal || st.lastSentAt.IsZero() || now.Sub(st.lastSentAt) >= taskUpdateAggInterval {
+	if terminal || st.lastSentAt.IsZero() || now.Sub(st.lastSentAt) >= TaskUpdateAggInterval {
 		// 首帧 / 窗口已过 / 终态：立即广播，并丢弃更旧的待发内容。
 		st.lastSentAt = now
 		st.lastKey = key
@@ -315,7 +326,7 @@ func (h *Hub) BroadcastTaskUpdateFull(taskID, status string, progress int, stage
 	// 窗口内：暂存最新值，窗口到期后补发。
 	st.pending = &update
 	if st.timer == nil {
-		delay := taskUpdateAggInterval - now.Sub(st.lastSentAt)
+		delay := TaskUpdateAggInterval - now.Sub(st.lastSentAt)
 		st.timer = time.AfterFunc(delay, func() { h.flushTaskUpdate(taskID) })
 	}
 	h.aggMu.Unlock()
@@ -343,7 +354,7 @@ func (h *Hub) flushTaskUpdate(taskID string) {
 	h.broadcastJSON(msg)
 }
 
-// BroadcastProxyReady 广播代理就绪事件（06 §6）：同一 assetId 在 proxyReadyDedupeWindow
+// BroadcastProxyReady 广播代理就绪事件（06 §6）：同一 assetId 在 ProxyReadyDedupeWindow
 // （10s）内只广播一次。返回是否真正广播（去重命中返回 false）。
 func (h *Hub) BroadcastProxyReady(assetID string, data interface{}) bool {
 	if assetID == "" {
@@ -352,11 +363,11 @@ func (h *Hub) BroadcastProxyReady(assetID string, data interface{}) bool {
 	now := h.now()
 	h.aggMu.Lock()
 	for id, at := range h.proxySeen {
-		if now.Sub(at) >= proxyReadyDedupeWindow {
+		if now.Sub(at) >= ProxyReadyDedupeWindow {
 			delete(h.proxySeen, id)
 		}
 	}
-	if at, ok := h.proxySeen[assetID]; ok && now.Sub(at) < proxyReadyDedupeWindow {
+	if at, ok := h.proxySeen[assetID]; ok && now.Sub(at) < ProxyReadyDedupeWindow {
 		h.aggMu.Unlock()
 		return false
 	}
@@ -373,8 +384,8 @@ func (h *Hub) BroadcastProxyReady(assetID string, data interface{}) bool {
 }
 
 // BroadcastNodeStatus 广播渲染节点状态变化（06 §6）：status（online↔offline）变化，
-// 或 healthScore 跨 nodeHealthBandSize（20 分）档位时广播；healthScore 传
-// healthScoreUnknown 时不参与分档判断（B-08 健康分落地前）。返回是否真正广播。
+// 或 healthScore 跨 NodeHealthBandSize（20 分）档位时广播；healthScore 传
+// HealthScoreUnknown 时不参与分档判断（B-08 健康分落地前）。返回是否真正广播。
 func (h *Hub) BroadcastNodeStatus(serverID, status string, healthScore int, reason string) bool {
 	if serverID == "" || status == "" {
 		return false
@@ -384,7 +395,7 @@ func (h *Hub) BroadcastNodeStatus(serverID, status string, healthScore int, reas
 		if healthScore > 100 {
 			healthScore = 100
 		}
-		band = healthScore / nodeHealthBandSize
+		band = healthScore / NodeHealthBandSize
 	}
 	h.aggMu.Lock()
 	prev, seen := h.nodeState[serverID]

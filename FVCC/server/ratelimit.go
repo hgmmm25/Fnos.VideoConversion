@@ -17,19 +17,20 @@ package main
 // 预览并发上限由 streamLimiter 承担，本文件不重复实现。
 
 import (
-	"net"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"fvcc/logger"
+	"fvcc/internal/protocol"
 	"fvcc/internal/security"
+	"fvcc/logger"
 )
 
 const (
 	// errCodeRateLimited 限流拒绝错误码（07 §4.5；03 §5.3 未定义，实现补充）。
-	errCodeRateLimited = "E_RATE_LIMITED"
+	// P2-1 阶段 B：值收口到 internal/protocol.ErrCodeRateLimited。
+	errCodeRateLimited = protocol.ErrCodeRateLimited
 
 	// 07 §4.5 阈值
 	authFailMax      = 10               // 登录/鉴权失败次数
@@ -150,29 +151,13 @@ func authFailKey(c *gin.Context) string {
 }
 
 // rateKey 用户维度限流的 key：网关 UID → 用户名 → 来源 IP → anonymous（07 §4.5）。
+// P2-1 阶段 B：计算逻辑收口到 internal/security.RateKey，此处转发保留根包契约。
 func rateKey(c *gin.Context) string {
-	u := security.GetGatewayUser(c)
-	if u.UID != "" {
-		return "uid:" + u.UID
-	}
-	if u.Username != "" {
-		return "user:" + u.Username
-	}
-	if ip := clientIP(c); ip != "" {
-		return "ip:" + ip
-	}
-	return "anonymous"
+	return security.RateKey(c)
 }
 
 // clientIP 取来源 IP（剥端口）；解析失败回落原始 RemoteAddr。
+// P2-1 阶段 B：计算逻辑收口到 internal/security.ClientIP，此处转发保留根包契约。
 func clientIP(c *gin.Context) string {
-	if c == nil || c.Request == nil {
-		return ""
-	}
-	addr := c.Request.RemoteAddr
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr
-	}
-	return host
+	return security.ClientIP(c)
 }

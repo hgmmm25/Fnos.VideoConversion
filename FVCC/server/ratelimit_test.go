@@ -9,7 +9,6 @@ package main
 //  6) 浏览器 WS 连接上限（07 §4.5：浏览器 ≤ 5 条）。
 
 import (
-	"fvcc/internal/security"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +16,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"fvcc/internal/security"
+	"fvcc/internal/ws"
 )
 
 // resetRateLimiters 每个用例前重置全局限流器，避免用例间相互污染。
@@ -241,42 +243,42 @@ func TestD04FVCCRateKeys(t *testing.T) {
 // ===== 6. 浏览器 WS 连接上限 =====
 
 func TestD04FVCCWSConnRegistry(t *testing.T) {
-	reg := newWSConnRegistry()
+	reg := ws.NewWSConnRegistry()
 	key := "uid:u1"
 	for i := 0; i < wsBrowserMaxConns; i++ {
-		if !reg.acquire(key) {
+		if !reg.Acquire(key) {
 			t.Fatalf("第 %d 条连接应放行", i+1)
 		}
 	}
-	if reg.acquire(key) {
+	if reg.Acquire(key) {
 		t.Fatalf("超出 %d 条的连接应被拒绝", wsBrowserMaxConns)
 	}
 	// 其他浏览器（key）额度独立
-	if !reg.acquire("ip:10.0.0.2") {
+	if !reg.Acquire("ip:10.0.0.2") {
 		t.Fatalf("不同 key 额度应独立")
 	}
 	// 释放后可重新占用；计数归零时条目被清理
-	reg.release(key)
-	if !reg.acquire(key) {
+	reg.Release(key)
+	if !reg.Acquire(key) {
 		t.Fatalf("释放后应可重新占用")
 	}
-	if reg.count(key) != wsBrowserMaxConns {
-		t.Fatalf("释放再占用后计数应为 %d，实际 %d", wsBrowserMaxConns, reg.count(key))
+	if reg.Count(key) != wsBrowserMaxConns {
+		t.Fatalf("释放再占用后计数应为 %d，实际 %d", wsBrowserMaxConns, reg.Count(key))
 	}
 	for i := 0; i < wsBrowserMaxConns; i++ {
-		reg.release(key)
+		reg.Release(key)
 	}
-	if reg.count(key) != 0 || len(reg.conns) != 1 {
-		t.Fatalf("全部释放后应清理该 key，剩余条目 %d", len(reg.conns))
+	if reg.Count(key) != 0 || reg.Len() != 1 {
+		t.Fatalf("全部释放后应清理该 key，剩余条目 %d", reg.Len())
 	}
 }
 
 func TestD04FVCCHandleWSOverLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewHub()
-	reg := h.connRegistry()
+	reg := h.ConnRegistry()
 	for i := 0; i < wsBrowserMaxConns; i++ {
-		if !reg.acquire("ip:192.0.2.1") {
+		if !reg.Acquire("ip:192.0.2.1") {
 			t.Fatalf("预置第 %d 条连接失败", i+1)
 		}
 	}

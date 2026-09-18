@@ -89,7 +89,7 @@ func jsonStr(t *testing.T, m map[string]interface{}, key string) string {
 func TestB07TaskUpdateFullAggregation(t *testing.T) {
 	hub := NewHub()
 	rec := newWSRecorder()
-	hub.emitHook = rec.hook
+	hub.SetEmitHook(rec.hook)
 
 	// 首帧立即广播
 	hub.BroadcastTaskUpdateFull("t1", "RUNNING", 10, StagePrepare, nil, "准备中", 0, 0, "")
@@ -163,7 +163,7 @@ func TestB07TaskUpdateFullAggregation(t *testing.T) {
 func TestB07TaskUpdateFullGuards(t *testing.T) {
 	hub := NewHub()
 	rec := newWSRecorder()
-	hub.emitHook = rec.hook
+	hub.SetEmitHook(rec.hook)
 
 	// 空 taskID：直接丢弃
 	hub.BroadcastTaskUpdateFull("", "RUNNING", 10, StagePrepare, nil, "", 0, 0, "")
@@ -200,11 +200,11 @@ func TestB07TaskUpdateFullGuards(t *testing.T) {
 func TestB07ProxyReadyDedupe(t *testing.T) {
 	hub := NewHub()
 	rec := newWSRecorder()
-	hub.emitHook = rec.hook
+	hub.SetEmitHook(rec.hook)
 
 	base := time.Now()
 	cur := base
-	hub.clock = func() time.Time { return cur }
+	hub.SetClock(func() time.Time { return cur })
 
 	if !hub.BroadcastProxyReady("asset_1", map[string]interface{}{"proxyPath": "a_proxy.mp4"}) {
 		t.Fatal("首次 proxy_ready 应广播")
@@ -255,7 +255,7 @@ func TestB07ProxyReadyDedupe(t *testing.T) {
 func TestB07NodeStatusBroadcast(t *testing.T) {
 	hub := NewHub()
 	rec := newWSRecorder()
-	hub.emitHook = rec.hook
+	hub.SetEmitHook(rec.hook)
 
 	cases := []struct {
 		status string
