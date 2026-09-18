@@ -1,17 +1,6 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_76cfca40b29211f19369525400de85a5
-    ReservedCode1: 1MSIXUJf6PSWIi+TY+ZuPG6j485kvOOEffMCLZXgn7oUFFRJQlBepMgSFBwNLXZ6SXzZFGnHosrw1Um8rMlJw9IX++deAKOKJAlK+Zc9T1QD41qI9VrnR5NFFH25uKor5iME7uBr9wf22Qcy70IgDkJ8vgEaHPu/oLlQMPgzfbm6Lw8B+D78O6VLd5I=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_76cfca40b29211f19369525400de85a5
-    ReservedCode2: 1MSIXUJf6PSWIi+TY+ZuPG6j485kvOOEffMCLZXgn7oUFFRJQlBepMgSFBwNLXZ6SXzZFGnHosrw1Um8rMlJw9IX++deAKOKJAlK+Zc9T1QD41qI9VrnR5NFFH25uKor5iME7uBr9wf22Qcy70IgDkJ8vgEaHPu/oLlQMPgzfbm6Lw8B+D78O6VLd5I=
----
-
 # FVCC / FVCS 构建规范
 
-> 最后更新: 2026-09-17  
+> 最后更新: 2026-09-18  
 > 根目录: `D:\Fnos.VideoConversion`
 
 ## 目录
@@ -89,9 +78,9 @@ cd D:\Fnos.VideoConversion
 
 | 文件 | 当前值 |
 |------|--------|
-| `FVCC\manifest`（`version` 字段） | 1.4.0 |
-| `FVCC\ui-src\package.json`（`version` 字段） | 1.4.0 |
-| `FVCC\server\VERSION` | 1.4.0 |
+| `FVCC\manifest`（`version` 字段） | 1.4.1 |
+| `FVCC\ui-src\package.json`（`version` 字段） | 1.4.1 |
+| `FVCC\server\VERSION` | 1.4.1 |
 
 > 版本号不一致会导致 fpk 内 manifest 声明与实际产品版本不符，部署后难以排查。
 

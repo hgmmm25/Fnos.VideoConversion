@@ -110,13 +110,34 @@
 
 ---
 
+## 构建与部署
+
+- **构建**：见 [BUILD.md](./BUILD.md)（一键脚本 `.\build.ps1`，含 FVCC fpk 打包与 FVCS 构建全流程、版本同步清单、故障排查）。
+- **部署**：
+  - FVCC：fnOS 应用，构建产物 `FVCC\fvcc.fpk` 上传 NAS 安装；历史版本见 `archive/fpk/`。
+  - FVCS：Windows 常驻程序，`FVCS\fvcs-service.exe` 托盘运行，局域网被 FVCC 调度。
+  - 安全部署建议：公网环境禁止 `0.0.0.0` 监听，仅绑定内网网卡；数据面启用 WSS/HTTPS（自签证书即可）。
+
 ## 目录结构
 
 ```
 Fnos.VideoConversion/
-├── FVCS/        # 服务端源码（Go + Fyne UI）
-├── FVCC/        # 客户端源码（TypeScript + Vite + Tailwind）
-└── README.md    # 项目说明
+├── FVCS/                          # 渲染端源码（Go + Fyne UI + FFmpeg）
+│   ├── cmd/                       # 服务入口 / 桌面 UI
+│   └── pkg/                       # 业务逻辑（EDL、协议、任务）
+├── FVCC/                          # 调度端源码（Go gin + Vite/TS）
+│   ├── server/                    # Go 后端
+│   ├── ui-src/                    # 前端（Vite + TypeScript）
+│   ├── manifest                   # fnOS 应用清单
+│   └── README.md                  # FVCC 自包含说明与设计文档引用速查
+├── WebVideoEditor_Design/         # 设计规格文档（01~10 编号，代码注释按此引用）
+├── archive/                       # 仓库治理归档：历史 fpk / 旧工具 / 升级前备份
+├── build.ps1                      # 一键构建脚本
+├── build-env.ps1                  # 构建环境配置
+├── BUILD.md                       # 构建规范与故障排查
+├── FVCC_混乱度评价报告.md           # 混乱度基线报告（改进项编号 P0~P2 来源）
+├── 项目分析与改进方向.md            # 改进方向清单（P0~P3）
+└── README.md                      # 项目说明
 ```
 
-详细设计文档与对接协议见各模块目录下的说明文档。
+设计文档与对接协议见 [WebVideoEditor_Design](./WebVideoEditor_Design)（含 README 与 01~10 编号规格文档）；FVCC 内代码注释的章节引用规则见 [FVCC/README.md](./FVCC/README.md) 速查表。
