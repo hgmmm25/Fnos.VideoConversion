@@ -90,7 +90,7 @@ type wsCmd struct {
 	Payload       json.RawMessage `json:"Payload,omitempty"`
 	SMBOutputPath string          `json:"SMBOutputPath,omitempty"`
 	CredentialID  string          `json:"CredentialId,omitempty"`
-	TraceId       string          `json:"TraceId,omitempty"` // P2-1：跨端链路追踪 ID
+	TraceId       string          `json:"TraceId,omitempty"` // 可观测性（P2-1）：跨端链路追踪 ID
 }
 
 type wsResp struct {

@@ -66,7 +66,7 @@ func NewScheduler(store *Store, remote *RemoteClient, hub *Hub, pv *PathValidato
 		remote:    remote,
 		hub:       hub,
 		pv:        pv,
-		nodes:     make(map[string]*nodeMetrics), // B-08：节点指标窗口
+		nodes:     make(map[string]*nodeMetrics), // 节点选机与健康分（B-08）：节点指标窗口
 		chunkSize: 4 * 1024 * 1024,               // 4MB 分片
 	}
 }
@@ -847,7 +847,7 @@ func (s *Scheduler) dispatchRenderLike(t Task) {
 
 	var remoteTaskID string
 	var derr error
-	s.NoteNodeAttempt(server.ID, time.Now()) // B-08：失败率分母（06 §5.2）
+	s.NoteNodeAttempt(server.ID, time.Now()) // 节点选机与健康分（B-08）：失败率分母（06 §5.2）
 	if t.TaskType == TaskTypeGenProxy {
 		remoteTaskID, derr = s.dispatcher.CreateGenProxyWithTrace(server, t, t.TraceID)
 	} else {
@@ -859,7 +859,7 @@ func (s *Scheduler) dispatchRenderLike(t Task) {
 
 	if derr != nil {
 		code, retryable := classifyRenderError(derr)
-		s.NoteNodeFailure(server.ID, code, time.Now()) // B-08：健康分/熔断入账
+		s.NoteNodeFailure(server.ID, code, time.Now()) // 节点选机与健康分（B-08）：健康分/熔断入账
 		if !retryable {
 			s.failRenderTaskPermanent(t, code, derr.Error())
 			return

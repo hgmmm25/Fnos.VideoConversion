@@ -1,6 +1,6 @@
 package main
 
-// D-02：FVCC 侧 EDL 路径 / 输出名 / 载荷白名单校验（同规则双实现）
+// 安全任务（D-02）：FVCC 侧 EDL 路径 / 输出名 / 载荷白名单校验（同规则双实现）
 //
 // 规则唯一来源：WebVideoEditor_Design/07-安全校验与凭据管理细则.md §3.2、§3.5、§3.6。
 // 与 FVCS/pkg/protocol/edl_validate.go 为「同规则双实现」（07 §3.1 纵深防御：两侧不共享代码），

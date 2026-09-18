@@ -79,7 +79,7 @@ func (h *Handlers) info(c *gin.Context) {
 
 func (h *Handlers) getSettings(c *gin.Context) {
 	settings := h.store.GetSettings()
-	// P0-1：凭据不回显明文
+	// 凭据安全（P0-1）：凭据不回显明文
 	settings.SMBPassword = MaskSecret(settings.SMBPassword)
 	// merge authorized paths from PathValidator so frontend can use them as default scan roots
 	authorized := h.pv.AccessPaths()
@@ -168,7 +168,7 @@ func (h *Handlers) saveSettings(c *gin.Context) {
 	logger.SetLogLevel(logLevel)
 
 	resp := h.store.GetSettings()
-	resp.SMBPassword = MaskSecret(resp.SMBPassword) // P0-1：凭据不回显明文
+	resp.SMBPassword = MaskSecret(resp.SMBPassword) // 凭据安全（P0-1）：凭据不回显明文
 	c.JSON(200, gin.H{"settings": resp})
 }
 
@@ -732,7 +732,7 @@ func (h *Handlers) browseDirs(c *gin.Context) {
 
 func (h *Handlers) listServers(c *gin.Context) {
 	servers := h.store.GetServers()
-	// P0-1：凭据不回显明文
+	// 凭据安全（P0-1）：凭据不回显明文
 	out := make([]Server, len(servers))
 	copy(out, servers)
 	for i := range out {
@@ -771,7 +771,7 @@ func (h *Handlers) updateServer(c *gin.Context) {
 		fail(c, 404, "服务器不存在")
 		return
 	}
-	oldKey := sv.AuthKey // P0-1：保存旧密钥，掩码/空提交时保留
+	oldKey := sv.AuthKey // 凭据安全（P0-1）：保存旧密钥，掩码/空提交时保留
 	if err := c.ShouldBindJSON(&sv); err != nil {
 		fail(c, 400, "参数错误: "+err.Error())
 		return
