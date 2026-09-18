@@ -1,4 +1,4 @@
-package main
+package media
 
 import (
 	"bytes"
@@ -130,6 +130,15 @@ func GetLocalTranscodeProgress(taskID string) float64 {
 	defer process.mutex.Unlock()
 	return process.Progress
 }
+
+// RunningCount 返回当前运行中的本地转码任务数（并发安全）。
+func RunningCount() int32 { return atomic.LoadInt32(&runningCount) }
+
+// AddRunningCount 原子增减本地转码运行计数并返回新值。
+func AddRunningCount(delta int32) int32 { return atomic.AddInt32(&runningCount, delta) }
+
+// FindFFmpeg 查找可用的 ffmpeg 可执行文件路径（导出包装，供根包 shim 转发）。
+func FindFFmpeg() string { return findFFmpeg() }
 
 func findFFmpeg() string {
 	if path, err := exec.LookPath("ffmpeg"); err == nil {

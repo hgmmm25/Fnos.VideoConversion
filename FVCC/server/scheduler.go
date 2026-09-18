@@ -1,20 +1,19 @@
 package main
 
 import (
-	"fvcc/internal/store"
 	"context"
 	"errors"
 	"fmt"
-	"fvcc/smbshare"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	"fvcc/internal/store"
 	"fvcc/logger"
+	"fvcc/smbshare"
 )
 
 // Scheduler 任务调度器，每 1 秒执行一次状态分发。
@@ -1135,7 +1134,7 @@ func (s *Scheduler) handleLocalQueue(t Task, server Server) {
 		maxConcurrent = 1
 	}
 
-	currentRunning := int(atomic.LoadInt32(&runningCount))
+	currentRunning := int(RunningCount())
 	if currentRunning >= maxConcurrent {
 		logger.Info("scheduler", "Local transcode queue full: current=%d max=%d, task=%s waiting", currentRunning, maxConcurrent, t.ID)
 		t.Status = StatusQueue
@@ -1152,9 +1151,9 @@ func (s *Scheduler) handleLocalQueue(t Task, server Server) {
 	s.hub.BroadcastTaskUpdate(t.ID, string(StatusTranscoding), 0, "开始本地转码")
 
 	// 增加运行计数
-	atomic.AddInt32(&runningCount, 1)
+	AddRunningCount(1)
 
-	logger.Info("scheduler", "Starting local transcode for task %s (running=%d/%d)", t.ID, int(atomic.LoadInt32(&runningCount)), maxConcurrent)
+	logger.Info("scheduler", "Starting local transcode for task %s (running=%d/%d)", t.ID, int(RunningCount()), maxConcurrent)
 
 	err := StartLocalTranscode(
 		t.ID,

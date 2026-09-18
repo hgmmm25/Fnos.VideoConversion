@@ -1,4 +1,4 @@
-package main
+package media
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"fvcc/internal/store/model"
 	"fvcc/logger"
 )
 
@@ -53,9 +54,9 @@ func NewFFprobe() *FFprobe {
 func (f *FFprobe) Available() bool { return f.available }
 
 // Probe 提取视频元数据。ffprobe 不可用时返回基于文件信息的桩数据。
-func (f *FFprobe) Probe(path string) (VideoInfo, error) {
+func (f *FFprobe) Probe(path string) (model.VideoInfo, error) {
 	base := filepath.Base(path)
-	info := VideoInfo{Path: path, FileName: base, Probed: f.available}
+	info := model.VideoInfo{Path: path, FileName: base, Probed: f.available}
 
 	// 文件扩展名（格式）
 	ext := filepath.Ext(base)
@@ -121,7 +122,7 @@ func (f *FFprobe) Probe(path string) (VideoInfo, error) {
 
 	// 保存完整流信息
 	for _, st := range pr.Streams {
-		info.Streams = append(info.Streams, StreamInfo{
+		info.Streams = append(info.Streams, model.StreamInfo{
 			Index:         st.Index,
 			CodecType:     st.CodecType,
 			CodecName:     st.CodecName,
@@ -243,7 +244,7 @@ func (f *FFprobe) Probe(path string) (VideoInfo, error) {
 }
 
 // stubProbe 降级桩数据：按扩展名和文件大小生成模拟信息。
-func (f *FFprobe) stubProbe(info *VideoInfo) {
+func (f *FFprobe) stubProbe(info *model.VideoInfo) {
 	ext := strings.ToLower(filepath.Ext(info.FileName))
 	switch ext {
 	case ".mp4", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".ts", ".m4v":
