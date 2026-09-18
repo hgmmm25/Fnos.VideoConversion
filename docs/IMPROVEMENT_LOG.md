@@ -254,3 +254,56 @@ AIGC:
 | 仓库卫生 | server/fvcc.exe、nul.exe 构建产物 | 已加 .gitignore 但磁盘未清理，可在确定可重建后删除 |
 
 *（内容由AI生成，仅供参考）*
+
+---
+
+## 十、第五轮改进（2026-09-18）：P1-5 依赖瘦身 + P2-3 CI 流水线 + 混乱报告项收口核查
+
+### 10.1 背景
+
+混乱报告 P1-5（依赖瘦身）与 P2-3（CI 流水线）落地下轮；同时对 P0-2 仓库卫生做磁盘级复核，确认前三轮改动已收口。
+
+### 10.2 本轮改动
+
+1. **P1-5 前端依赖瘦身**：`ui-src/src/main.ts` 字体引入由 `@fontsource/*/{400,500,600}.css`（全字符集）改为 `/latin-*.css` 子集，打包字体文件 **56 → 10 个**，体积 **0.65MB → 192KB**（约 -70%），`npm run build` 全绿。
+2. **P1-5 后端依赖核查**：`go mod tidy` 无净变化；`go mod why` 确认 mongo-driver（gin/binding→bson）与 quic-go（gin→http3）均为 gin 传递依赖，非残留垃圾；进一步瘦身需评估替换 gin（架构决策，留待 P2-1）。
+3. **P2-3 CI 流水线**：新增 `.github/workflows/fvcc-ci.yml`（GitHub Actions），FVCC 相关路径 push/PR 触发；后端 `go vet + go test -race ./...`，前端 `npm ci + npm run build`（含 tsc 与 check:design 门禁）。
+4. **P0-2 磁盘残留复核**：`server/fvcc.exe`、`server/nul.exe`、`server/build_err.txt`、`server/out.txt`、`ui-src/{all,err,out}.txt`、`temp/` 均已在磁盘清零；本轮顺带清理 `server/t1.txt`、`server/test_out.txt` 两个测试输出残留。
+
+### 10.3 验证结果
+
+1. `server`: `go build ./...` ✅、`go vet ./...` ✅、trash 单测 3 用例 PASS ✅。
+2. `ui-src`: `npm run build` ✅（tsc + design gate + vite）。
+3. 提交：`6df8b4a`（P2-5 收口）、`7a2794d`（P1-5 字体）、`50dcafa`（P2-3 CI）。
+
+### 10.4 混乱报告项当前收口状态
+
+| 编号 | 内容 | 状态 |
+|---|---|---|
+| P0-1 | 凭据加密落库 | ✅ |
+| P0-2 | 清理残留 + .gitignore | ✅ |
+| P0-3 | git init 版本控制 | ✅ |
+| P1-1 | updateProfile 反射重构 | ✅ |
+| P1-2 | SMB 校验 helper | ✅ |
+| P1-3 | 文档落地 | ✅ |
+| P1-4 | manifest 修复 | ✅ |
+| P1-5 | 依赖瘦身 | ✅（前端子集 + 后端核查） |
+| P2-1 | 后端 internal 分层 | 🔶 待做（架构演进） |
+| P2-2 | 前端组件化 | 🔶 待做（架构演进） |
+| P2-3 | CI 流水线 | ✅ 本轮 |
+| P2-4 | API 契约统一 | 🔶 待做（78 处 {error} → {code,msg,detail}） |
+| P2-5 | 删除回收站化 | ✅ |
+| P2-6 | AIGC 残留清理 | ✅ |
+
+### 10.5 未落实项（延续至后续迭代）
+
+| 编号 | 未落实内容 | 原因 |
+|---|---|---|
+| P0-2 | JSON 文件存储迁 SQLite | 结构性重构，需独立里程碑 |
+| P1-1 完整版 | 1s ticker 改纯事件驱动调度 | 调度内核重构，与既有验收强耦合 |
+| P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策 |
+| P2-1 | 后端 internal 分层 | 大工程（handlers 1765 行等），1~2 月级 |
+| P2-2 | 前端组件化 | 大工程（profiles/scanner 1100+ 行），1~2 月级 |
+| P2-4 | API 契约统一 | 78 处错误格式迁移 + 字段命名规范，需分批复核 |
+
+*（内容由AI生成，仅供参考）*
