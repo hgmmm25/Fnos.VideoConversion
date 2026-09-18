@@ -253,6 +253,8 @@ distributor = ??
 | P2-4 | **统一 API 契约与命名** | 新旧错误格式并存、JSON tag 大小写混用 | 全面迁移 `{error}` → `{code,msg,detail}`（前端适配层过渡）；协议层统一 snake_case 或 camelCase 并加 `json` tag 规范文档 |
 | P2-5 | **删除操作回收站化** | `deleteVideo` 直接 `os.Remove`，NAS 误删不可恢复 | 改为移入 `<素材根>/_trash`（受 `_` 前缀保留规则保护）或系统回收站；提供清空/恢复入口 |
 | P2-6 | **清理 AIGC 残留与任务编号注释** | PRODUCT.md 混入 AI 元数据；`B-04/M4/修复⑤/126` 等编号无解释 | 移除 PRODUCT.md frontmatter 残留；注释中的任务编号统一替换为可读语义（或附任务名映射表） |
+| P2-7 | **测试文件命名规范化** | 测试文件以票号/契约后缀命名（`genproxy_share_cred_126_test.go`、`handlers_edl_list_contract_test.go` 等），与实现文件对应关系不直观（见 2.2 证据 4） | 按被测对象统一命名（如 `handlers_genproxy_test.go`），迁移时保留测试逻辑与 git 历史可追溯 |
+| P2-8 | **破坏性操作审计闭环** | audit_log 模型已存在，但删除/清缓存等破坏性操作的审计记录未形成统一强制（见 2.9 硬伤 4） | 新增统一 `audit()` helper，删除/清缓存/清回收站/重命名等破坏性操作强制写入 audit_log；前端提供审计记录查询入口 |
 
 ---
 
