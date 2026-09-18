@@ -38,7 +38,12 @@ func gatewayUser() gin.HandlerFunc {
 	}
 }
 
+// errCodeForbidden 权限拒绝错误码（07 §4.2；03 §5.3 未定义，实现补充，见 10 号台账）。
+const errCodeForbidden = "E_FORBIDDEN"
+
 // requireAdmin 中间件：要求管理员权限（独立模式放行）。
+// 依据 07 §4.2 / §7：提交渲染（/render）、生成代理（/proxy）、删除类（DELETE）等写操作仅 admin；
+// 无网关身份（独立 / 内网直连模式）时放行，行为与改造前一致；拒绝响应对齐 03 §4.1 统一失败契约。
 func requireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := getGatewayUser(c)
@@ -48,7 +53,7 @@ func requireAdmin() gin.HandlerFunc {
 			return
 		}
 		if !user.IsAdmin {
-			c.JSON(403, gin.H{"error": "需要管理员权限"})
+			c.JSON(403, gin.H{"ok": false, "code": errCodeForbidden, "msg": "需要管理员权限"})
 			c.Abort()
 			return
 		}

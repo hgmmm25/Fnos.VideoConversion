@@ -3,7 +3,6 @@ package winapi
 import (
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"syscall"
 	"unsafe"
@@ -19,6 +18,7 @@ var (
 	setInformationJobObjectProc  = kernel32.NewProc("SetInformationJobObject")
 	assignProcessToJobObjectProc = kernel32.NewProc("AssignProcessToJobObject")
 	terminateJobObjectProc       = kernel32.NewProc("TerminateJobObject")
+	isProcessInJobProc           = kernel32.NewProc("IsProcessInJob")
 	closeHandleProc              = kernel32.NewProc("CloseHandle")
 	createMutexProc              = kernel32.NewProc("CreateMutexW")
 	releaseMutexProc             = kernel32.NewProc("ReleaseMutex")
@@ -127,32 +127,80 @@ func CreateJobObject() (JobHandle, error) {
 		},
 	}
 
-	_, _, err = setInformationJobObjectProc.Call(
+	// 修复（2026-09-16）：旧实现忽略该调用结果，若设置失败仍返回可用句柄，
+	// 会导致 KILL_ON_JOB_CLOSE 静默失效（服务退出后 ffmpeg 子进程残留）。
+	ret, _, callErr := setInformationJobObjectProc.Call(
 		uintptr(handle),
 		uintptr(9),
 		uintptr(unsafe.Pointer(&extendedInfo)),
 		uintptr(unsafe.Sizeof(extendedInfo)),
 	)
+	if ret == 0 {
+		closeHandleProc.Call(uintptr(handle))
+		return 0, fmt.Errorf("SetInformationJobObject 失败: %w", callErr)
+	}
 
 	return JobHandle(handle), nil
 }
 
+// AssignProcessToJob 把 processID 对应的进程加入 jobHandle 指定的 Job 对象。
+//
+// 修复（2026-09-16）：AssignProcessToJobObject 的第二个参数要求**进程句柄**而非 PID。
+// 旧实现用 os.FindProcess(pid) 取到的是 Go 侧的进程记录（其 Pid 仍是 PID），
+// 直接当句柄传入会被系统判为非法句柄，返回 ERROR_INVALID_HANDLE，
+// 日志表现为 `Failed to assign process <pid> to job object: The handle is invalid.`，
+// ffmpeg 子进程实际从未纳入 Job 管控（KILL_ON_JOB_CLOSE 失效）。
+// 现改为先用 OpenProcess 取得具备 PROCESS_SET_QUOTA|PROCESS_TERMINATE 权限的真实句柄，
+// 分配完成后立即归还句柄。
 func AssignProcessToJob(jobHandle JobHandle, processID int) error {
-	process, err := os.FindProcess(processID)
-	if err != nil {
-		return err
+	if jobHandle == 0 {
+		return fmt.Errorf("job handle 无效（可能未成功创建 Job 对象）")
+	}
+	if processID <= 0 {
+		return fmt.Errorf("进程 ID 无效: %d", processID)
 	}
 
-	_, _, err = assignProcessToJobObjectProc.Call(
-		uintptr(jobHandle),
-		uintptr(process.Pid),
+	hProc, err := windows.OpenProcess(
+		windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE,
+		false,
+		uint32(processID),
 	)
+	if err != nil {
+		return fmt.Errorf("OpenProcess(%d) 失败: %w", processID, err)
+	}
+	defer windows.CloseHandle(hProc)
 
-	if err != nil && err.Error() != "The operation completed successfully." {
-		return err
+	ret, _, callErr := assignProcessToJobObjectProc.Call(
+		uintptr(jobHandle),
+		uintptr(hProc),
+	)
+	if ret == 0 {
+		return fmt.Errorf("AssignProcessToJobObject 失败: %w", callErr)
 	}
 
 	return nil
+}
+
+// IsProcessInJob 判断进程是否已处于指定 Job 对象中（jobHandle 传 0 表示查询其所属的任意 Job）。
+// 主要用于调用侧复核分配结果，避免再次出现「静默未生效」。
+func IsProcessInJob(processID int, jobHandle JobHandle) (bool, error) {
+	hProc, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(processID))
+	if err != nil {
+		return false, fmt.Errorf("OpenProcess(%d) 失败: %w", processID, err)
+	}
+	defer windows.CloseHandle(hProc)
+
+	var inJob int32
+	ret, _, callErr := isProcessInJobProc.Call(
+		uintptr(hProc),
+		uintptr(jobHandle),
+		uintptr(unsafe.Pointer(&inJob)),
+	)
+	if ret == 0 {
+		return false, fmt.Errorf("IsProcessInJob 失败: %w", callErr)
+	}
+
+	return inJob != 0, nil
 }
 
 func TerminateJob(jobHandle JobHandle) error {

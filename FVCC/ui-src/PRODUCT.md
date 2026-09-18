@@ -1,0 +1,40 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 839b5d1d4fff15220193598838e6072d_24ab9783b27f11f19369525400de85a5
+    ReservedCode1: ABk7it1/XUfh0x/djnUnHhzjEPRqbOIqD+6YozF6SCseVZ+fbkC3fvmhDJY/OlpN3jbYA68oapBrPZCo8HF1R34LN55ml9EMOV13nMh3qFnzW8BTwwX6wkDgXaxDNy7bFYa2T3VBTku0fcHKZCZw43Q6tDZcGSg/qew7Ow9dx+OU7Y4+9VNGsUbTniw=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 839b5d1d4fff15220193598838e6072d_24ab9783b27f11f19369525400de85a5
+    ReservedCode2: ABk7it1/XUfh0x/djnUnHhzjEPRqbOIqD+6YozF6SCseVZ+fbkC3fvmhDJY/OlpN3jbYA68oapBrPZCo8HF1R34LN55ml9EMOV13nMh3qFnzW8BTwwX6wkDgXaxDNy7bFYa2T3VBTku0fcHKZCZw43Q6tDZcGSg/qew7Ow9dx+OU7Y4+9VNGsUbTniw=
+---
+
+# FVCC Web UI — 产品定位
+
+## 用户
+
+- 主用户：**NAS 自托管用户 / 小型工作室**，把视频转码、代理生成、分发当作"必须可靠跑完"的批处理任务，而不是花时间欣赏界面的操作。
+- 场景：深夜挂机批量转码；清晨起来看队列与成品；局域网点开页面检查节点健康；偶尔在移动端（手机/平板）确认任务状态或补一次重试。
+- 熟练度：低到中。不写配置文件的用户靠默认值能跑；进阶用户需要看到节点、方案、日志这类**可诊断信息**。
+
+## 定位
+
+- **NAS 调度端 Web UI**：编排"视频文件 → 转码方案 → 渲染节点 → 任务队列 → 成品"整条链路。
+- 与 freecut（上游参照）的关系：**借设计语言与设计契约范式，不借功能与框架**。freecut 是浏览器内剪辑器（前端渲染、always-dark、多轨编辑）；FVCC 是"调度端 + 局域网渲染"（`/stream` 票据预览、WS 状态、服务器集群），保留亮色主题与移动端适配。
+- 设计语调：**器材感、克制、数据可读**。素材信息、进度、日志是最亮的"内容"，界面本身退后。
+
+## 反参照（不是我们要成为的东西）
+
+- ❌ 不是消费级视频 App（剪映/必剪的糖果风、模板营销位）。
+- ❌ 不是炫技 SaaS 仪表盘（渐变头图、glassmorphism、大数字 KPI 卡）。
+- ❌ 不是通用后台面板模板（蓝色主色 + slate 中性 + 7 类语义胶囊 badge 的"多色后台"观感）。
+- ❌ 不是老式 NLE 专业工具的重灰堆叠界面（信息无层次）。
+- ❌ 不是浏览器内剪辑器（不做 WebGPU 渲染、不做多轨精剪交互）。
+
+## 设计承诺
+
+1. **状态永远可见**：加载有骨架、空态有下一步、批量有逐项结果、异常有人话。
+2. **信息可诊断**：时间码/数字等宽对齐；日志 ANSI 语义色是唯一被登记的 hex 豁免。
+3. **键盘与读屏友好**：全部自建浮层满足 dialog 语义；焦点可见；状态不单靠颜色。
+4. **改动可守约**：`DESIGN.md` 命名规则 + `npm run check:design` 门禁，防止契约随页面迭代腐化。
+*（内容由AI生成，仅供参考）*

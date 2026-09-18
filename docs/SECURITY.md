@@ -2,12 +2,14 @@
 AIGC:
     Label: "1"
     ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_3b7f345db2ba11f1839d525400cd780f
-    ReservedCode1: ghg5gZnm6jDhCU5F8RlOJuFkL3KO+pFniexzO72jtfHP2o0BdBWqlPNLrnLBbwFR9MCsGbYxHd71nP64q9lJYcp7GHd+BeqHbwP2vVR2J5weYgGTA0dqyByoeObMBU4ZTw6d2I3WeXO+GxdNIKA+tWhHyj06uSRoyep9b+mIzWPVRTivMFUuYhlQJE4=
+    ProduceID: 839b5d1d4fff15220193598838e6072d_f8c02069b2bc11f1839d525400cd780f
+    ReservedCode1: CJpsUcpb8yjAL43/4Nc7+IxH+YQDyOlSR3ED4ud8sbYGi6v4VQkP1wHthpxbRwf8Zjf+6yElUSwUwga7weOlp2WLTrZEQiP1AmPH/PPq26H/bpqOPHfa4PV9GrUcwp5ro/xgIHnyKQsE8pi+hzPDVACN+rfesSYNpO/+BHVWLIHtdfey2JyhfkLdx2E=
     ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_3b7f345db2ba11f1839d525400cd780f
-    ReservedCode2: ghg5gZnm6jDhCU5F8RlOJuFkL3KO+pFniexzO72jtfHP2o0BdBWqlPNLrnLBbwFR9MCsGbYxHd71nP64q9lJYcp7GHd+BeqHbwP2vVR2J5weYgGTA0dqyByoeObMBU4ZTw6d2I3WeXO+GxdNIKA+tWhHyj06uSRoyep9b+mIzWPVRTivMFUuYhlQJE4=
+    PropagateID: 839b5d1d4fff15220193598838e6072d_f8c02069b2bc11f1839d525400cd780f
+    ReservedCode2: CJpsUcpb8yjAL43/4Nc7+IxH+YQDyOlSR3ED4ud8sbYGi6v4VQkP1wHthpxbRwf8Zjf+6yElUSwUwga7weOlp2WLTrZEQiP1AmPH/PPq26H/bpqOPHfa4PV9GrUcwp5ro/xgIHnyKQsE8pi+hzPDVACN+rfesSYNpO/+BHVWLIHtdfey2JyhfkLdx2E=
 ---
+
+
 
 # FVCC / FVCS 数据面安全策略
 
@@ -58,4 +60,5 @@ WSS 启用前（明文链路），不得将 FVCS 端口暴露到不可信网络�
 2. ✅ FVCC `models.Server` 新增 `useWSS` / `tlsCACert` / `tlsSkipVerify`；`remote` 按节点配置选择 `wss://`，支持 CA PEM 文件注入与系统根证书池；`tlsSkipVerify=true` 输出 WARN；
 3. ✅ 握手失败走既有重连逻辑（指数退避），日志含 URL 与 TLS 错误明细，可据此区分 TLS 与业务错误；
 4. ✅ `项目分析与改进方向.md` 中 P1-3 数据面条目已勾销（见 IMPROVEMENT_LOG §二）。
+*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*

@@ -130,8 +130,12 @@ type Task struct {
 	OutTimeMs       int64     `json:"outTimeMs,omitempty"`       // 最近一次进度上报的输出时间（毫秒）
 	Speed           string    `json:"speed,omitempty"`           // 最近一次上报的 ffmpeg 倍速
 	CooldownReason  string    `json:"cooldownReason,omitempty"`  // 冷却原因（对应 cooldown_reason；到期时间见 CoolDownUntil）
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	// ===== P2-1：可观测性（trace ID 贯穿任务全生命周期 + 耗时指标）=====
+	TraceID    string     `json:"traceId,omitempty"`    // 任务链路追踪 ID（下发到 FVCS 透传，跨端日志聚合）
+	StartedAt  *time.Time `json:"startedAt,omitempty"`  // 首次进入执行态（RUNNING/本地转码）时刻，nil=未开始
+	FinishedAt *time.Time `json:"finishedAt,omitempty"` // 终态（完成/失败）时刻，nil=未结束
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 // Server 转码服务器。

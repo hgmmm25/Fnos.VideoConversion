@@ -32,10 +32,11 @@ import (
 
 const (
 	appName  = "fvcc"
-	appVer   = "1.0.0"
 	gwPrefix = "/app/fvcc"
 	sockName = "app.sock"
 )
+
+// appVer 由 version.go 从 VERSION 文件注入（go:embed），勿在此另写版本字面量。
 
 // Config 保存服务运行配置。
 type Config struct {
@@ -155,29 +156,26 @@ func main() {
 	remote := NewRemoteClient()
 	globalRemote = remote
 
-	remote.OnPushProgress = func(serverID, remoteTaskID string, progress float64) {
-		if progress <= 0 || progress > 100 {
-			return
-		}
-		tasks := store.GetTasks()
-		for _, t := range tasks {
-			if t.ServerID == serverID && t.RemoteTaskID == remoteTaskID && !t.Status.IsTerminal() {
-				if t.Progress >= progress {
-					return
-				}
-				store.UpdateTaskStatus(t.ID, t.Status, progress, "")
-				hub.BroadcastTaskUpdate(t.ID, string(t.Status), progress, "")
-				return
-			}
-		}
+	// 启动调度器
+	scheduler := NewScheduler(store, remote, hub, pv)
+	// B-06 装配：渲染下发通道（remote.go 实现 RenderDispatcher）+ 共享根解析所需的设置读取器
+	remote.SetSettingsProvider(store.GetSettings)
+	scheduler.SetRenderDispatcher(remote)
+
+	// B-07 装配：FVCS 经 WS 回传的进度统一交给调度侧（反查任务 → 落库 stage/seg → 500ms 聚合广播）
+	remote.OnPushProgress = func(serverID string, p RemoteProgress) {
+		scheduler.HandleRemoteProgress(serverID, p)
 	}
 	remote.OnDisconnect = func(serverID string) {
 		logger.Info("main", "server %s disconnected, marking as offline", serverID)
 		store.UpdateServerStatus(serverID, "offline")
+		// B-08：按真实健康分广播（离线罚分 −20 已计入，06 §5.2）
+		scheduler.BroadcastNodeStatus(serverID, "offline", scheduler.HealthScoreOf(serverID), "WS 连接断开")
 	}
-
-	// 启动调度器
-	scheduler := NewScheduler(store, remote, hub, pv)
+	// B-08 装配：节点 Hello 能力上报 → node_caps 落库 + node_status 广播（06 §5.1）
+	remote.OnPushHello = func(serverID string, caps NodeCaps) {
+		scheduler.ApplyNodeHello(caps, time.Now())
+	}
 	go scheduler.Start()
 
 	// 构建路由
@@ -194,6 +192,12 @@ func main() {
 	ln, err := buildListener(cfg)
 	if err != nil {
 		logger.Fatal("main", "build listener: %v", err)
+	}
+	// P1-3 数据面安全加固：开发模式若监听非回环地址（0.0.0.0 或局域网网卡），
+	// 输出风险告警。生产环境（fnOS Unix Socket 网关）不应直接暴露 TCP；若确需
+	// 远程调试，仅绑定内网网卡并配合防火墙，详见 docs/SECURITY.md。
+	if cfg.DevMode && !isLoopbackAddr(cfg.DevAddr) {
+		logger.Warn("main", "DEV 模式监听非回环地址 %s：公网/不可信网络下禁止此配置（见 docs/SECURITY.md）", cfg.DevAddr)
 	}
 
 	// 优雅退出
@@ -221,6 +225,24 @@ func main() {
 		_ = os.Remove(cfg.SockPath)
 	}
 	logger.Info("main", "stopped.")
+}
+
+// isLoopbackAddr 判断监听地址是否仅绑定回环（127.0.0.1 / ::1 / localhost）。
+// P1-3 安全加固：仅回环地址视为安全默认，其余（0.0.0.0、内网 IP 等）触发告警。
+func isLoopbackAddr(addr string) bool {
+	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	// 非 IP 字面量（如主机名）无法静态判定，保守视为非回环
+	return false
 }
 
 // buildListener 根据模式创建 Unix Socket 或 TCP 监听器。

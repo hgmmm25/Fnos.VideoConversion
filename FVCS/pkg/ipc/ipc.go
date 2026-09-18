@@ -175,6 +175,12 @@ func handleStartService(conn net.Conn) {
 		return
 	}
 
+	// 凭据档案库（07 §5.3）先于任务加载就绪：任务恢复执行时才可解密挂载
+	if err := server.InitCredentialAdmin(); err != nil {
+		sendResponse(conn, -1, "Failed to init credential store: "+err.Error(), nil)
+		return
+	}
+
 	if err := task.Init(); err != nil {
 		sendResponse(conn, -1, "Failed to init task manager: "+err.Error(), nil)
 		return

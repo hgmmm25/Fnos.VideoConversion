@@ -40,10 +40,13 @@ start_process() {
         return 0
     fi
 
-    if [ ! -x "${BIN}" ]; then
-        log_msg "Binary not found or not executable: ${BIN}"
+    if [ ! -f "${BIN}" ]; then
+        log_msg "Binary not found: ${BIN}"
         return 1
     fi
+
+    # 兼容性兜底：部分打包/安装流程可能不保留执行位，启动前主动补齐
+    [ -x "${BIN}" ] || chmod +x "${BIN}" 2>/dev/null
 
     # 清理可能残留的 socket 文件
     rm -f "${SOCK}"

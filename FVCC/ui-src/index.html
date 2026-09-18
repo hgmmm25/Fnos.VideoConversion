@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>视频转码</title>
+    <script>
+      (function () {
+        var m = localStorage.getItem('fnos-theme-mode');
+        if (m === '20') document.documentElement.setAttribute('data-theme', 'dark');
+        else if (m === '10') document.documentElement.removeAttribute('data-theme');
+        else if (window.matchMedia('(prefers-color-scheme:dark)').matches)
+          document.documentElement.setAttribute('data-theme', 'dark');
+      })();
+    </script>
+  </head>
+  <!-- P0-1：body 去 slate 硬编码，收敛为主题令牌（亮 bg-page/text-ink，暗色由 data-theme 驱动） -->
+  <body class="bg-page text-ink">
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

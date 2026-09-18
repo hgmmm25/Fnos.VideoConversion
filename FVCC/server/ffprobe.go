@@ -122,25 +122,25 @@ func (f *FFprobe) Probe(path string) (VideoInfo, error) {
 	// 保存完整流信息
 	for _, st := range pr.Streams {
 		info.Streams = append(info.Streams, StreamInfo{
-			Index:            st.Index,
-			CodecType:        st.CodecType,
-			CodecName:        st.CodecName,
-			CodecLongName:    st.CodecLongName,
-			Width:            st.Width,
-			Height:           st.Height,
-			RFrameRate:       st.RFrameRate,
-			BitRate:          st.BitRate,
-			SampleRate:       st.SampleRate,
-			Channels:         st.Channels,
-			ChannelLayout:    st.ChannelLayout,
-			Tags:             st.Tags,
+			Index:         st.Index,
+			CodecType:     st.CodecType,
+			CodecName:     st.CodecName,
+			CodecLongName: st.CodecLongName,
+			Width:         st.Width,
+			Height:        st.Height,
+			RFrameRate:    st.RFrameRate,
+			BitRate:       st.BitRate,
+			SampleRate:    st.SampleRate,
+			Channels:      st.Channels,
+			ChannelLayout: st.ChannelLayout,
+			Tags:          st.Tags,
 		})
 	}
 
 	// 解析 streams（视频流取第一个，音频流优先取AAC）
 	var gotVideo, gotAudio bool
 	var videoBitrateBps int64
-	
+
 	// 优先查找AAC音频流
 	var aacStream *probeStream
 	for i := range pr.Streams {
@@ -149,7 +149,7 @@ func (f *FFprobe) Probe(path string) (VideoInfo, error) {
 			break
 		}
 	}
-	
+
 	for _, st := range pr.Streams {
 		if st.CodecType == "video" && !gotVideo {
 			info.Codec = st.CodecName

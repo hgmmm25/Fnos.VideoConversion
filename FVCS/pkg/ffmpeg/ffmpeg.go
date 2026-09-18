@@ -263,6 +263,12 @@ func startTranscodeInternal(taskInfo TaskInfo, inputPath, outputPath string) err
 
 	args := BuildFFmpegCommand(taskInfo, inputPath, outputPath)
 
+	// 自动硬件加速：检测到 GPU 且本任务仍在使用软件编码器时，升级为对应硬件编码器；
+	// 显式选择硬件编码器、或设置环境变量 FVCS_DISABLE_AUTO_GPU=1 时保持原样。
+	if os.Getenv("FVCS_DISABLE_AUTO_GPU") != "1" {
+		args = optimizeForHardware(args, DetectHardwareAccel(), cfg.FFmpegPath)
+	}
+
 	cmd := exec.Command(cfg.FFmpegPath, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
@@ -393,7 +399,7 @@ func monitorProgress(taskID string, process *FFmpegProcess) {
 			process.mutex.Unlock()
 
 			if currentProgress < 1 {
-				logger.Warn("ffmpeg", "Progress stuck, marking task as failed: ", taskID)
+				logger.Warn("ffmpeg", "Progress stuck, marking task as failed: %v", taskID)
 				StopTranscode(taskID)
 				return
 			}
@@ -422,12 +428,12 @@ func waitForCompletion(taskID string, cmd *exec.Cmd, outputPath string, process 
 	process.mutex.Unlock()
 
 	if err != nil {
-		logger.Error("ffmpeg", "Transcode failed for task ", taskID, ": ", err)
+		logger.Error("ffmpeg", "Transcode failed for task %s: %v", taskID, err)
 		process.bufMutex.Lock()
 		stderrOutput := process.stderrBuf.String()
 		process.bufMutex.Unlock()
 		if stderrOutput != "" {
-			logger.Error("ffmpeg", "FFmpeg stderr output:\n", stderrOutput)
+			logger.Error("ffmpeg", "FFmpeg stderr output:\n%s", stderrOutput)
 		}
 		process.mutex.Lock()
 		if process.Progress > 99 {
@@ -444,7 +450,7 @@ func waitForCompletion(taskID string, cmd *exec.Cmd, outputPath string, process 
 	}
 
 	if _, err := os.Stat(outputPath); err != nil {
-		logger.Error("ffmpeg", "Output file not found: ", outputPath)
+		logger.Error("ffmpeg", "Output file not found: %s", outputPath)
 		processMutex.Lock()
 		delete(processes, taskID)
 		processMutex.Unlock()
@@ -464,7 +470,7 @@ func waitForCompletion(taskID string, cmd *exec.Cmd, outputPath string, process 
 	if onSuccess != nil {
 		onSuccess(taskID, outputPath)
 	}
-	logger.Info("ffmpeg", "Transcode completed successfully: ", taskID)
+	logger.Info("ffmpeg", "Transcode completed successfully: %v", taskID)
 }
 
 func StopTranscode(taskID string) {
@@ -520,4 +526,171 @@ func StopAll() {
 	for _, taskID := range taskIDs {
 		StopTranscode(taskID)
 	}
+}
+
+// ---- 硬件编码自动升级（软编 -> 硬编） ----
+
+var (
+	encoderSet     map[string]bool
+	encoderSetOnce sync.Once
+)
+
+// queryEncoders 查询并缓存当前 ffmpeg 支持的编码器名集合（-encoders 输出解析）。
+func queryEncoders(ffmpegPath string) map[string]bool {
+	encoderSetOnce.Do(func() {
+		encoderSet = make(map[string]bool)
+		cmd := exec.Command(ffmpegPath, "-encoders")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			logger.Warn("ffmpeg", "queryEncoders: 无法查询编码器列表: %v", err)
+			return
+		}
+		// 行格式示例: " V....D h264_nvenc  NVIDIA NVENC H.264 encoder (codec h264)"
+		// 第一列为能力标记（含 V 表示视频编码器），第二列为编码器名
+		for _, line := range strings.Split(string(output), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && strings.Contains(fields[0], "V") {
+				encoderSet[fields[1]] = true
+			}
+		}
+		logger.Info("ffmpeg", "queryEncoders: 当前 ffmpeg 视频编码器 %d 个", len(encoderSet))
+	})
+	return encoderSet
+}
+
+func hasEncoder(ffmpegPath, name string) bool {
+	encs := queryEncoders(ffmpegPath)
+	_, ok := encs[name]
+	return ok
+}
+
+// isHwPresetOK 判断 x264/x265 preset 名是否可安全用于硬件编码器。
+// NVENC 接受 slow/medium/fast 及 p1-p7/hq/hp 等；AMF/QSV 不使用 x264 preset 体系。
+func isHwPresetOK(accel HardwareAccelType, preset string) bool {
+	if accel == AccelNVENC {
+		switch preset {
+		case "default", "slow", "medium", "fast", "hp", "hq", "bd", "ll", "llhq", "llhp",
+			"lossless", "losslesshp", "p1", "p2", "p3", "p4", "p5", "p6", "p7":
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+// optimizeForHardware 将任务参数中的软件视频编码器自动升级为检测到的硬件编码器：
+//   - libx264/libx265/av1 等软编 → 同代际 NVENC/AMF/QSV 硬编（需当前 ffmpeg 真实支持）
+//   - -crf 转为硬件编码器对应的质量参数（NVENC -cq / AMF -qp / QSV -global_quality）
+//   - 剔除 x264/x265 专属参数（-tune/-sc_threshold/-x264-opts/-x265-params 及不适用的 -preset）
+//   - 若参数已显式使用硬件编码器、或目标硬编不存在（如旧版 ffmpeg 无 av1_nvenc），保持原样软编兜底
+func optimizeForHardware(args []string, accel HardwareAccelType, ffmpegPath string) []string {
+	if accel == AccelNone || accel == AccelVAAPI {
+		return args
+	}
+
+	cIdx := -1
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "-c:v" {
+			cIdx = i
+			break
+		}
+	}
+	if cIdx < 0 {
+		return args
+	}
+	codec := args[cIdx+1]
+	if codec == "copy" {
+		return args
+	}
+	// 已是硬件编码器：显式选择，保持原样
+	if strings.Contains(codec, "_nvenc") || strings.Contains(codec, "_qsv") ||
+		strings.Contains(codec, "_amf") || strings.Contains(codec, "_vaapi") {
+		return args
+	}
+
+	var (
+		target     string
+		qualityOpt string
+		ok         bool
+	)
+	switch accel {
+	case AccelNVENC:
+		target, ok = map[string]string{
+			"libx264": "h264_nvenc", "libx265": "hevc_nvenc",
+			"av1": "av1_nvenc", "libaom-av1": "av1_nvenc", "libsvtav1": "av1_nvenc",
+		}[codec]
+		qualityOpt = "-cq"
+	case AccelAMF:
+		target, ok = map[string]string{
+			"libx264": "h264_amf", "libx265": "hevc_amf",
+			"av1": "av1_amf", "libaom-av1": "av1_amf", "libsvtav1": "av1_amf",
+		}[codec]
+		qualityOpt = "-qp"
+	case AccelQSV:
+		target, ok = map[string]string{
+			"libx264": "h264_qsv", "libx265": "hevc_qsv",
+			"av1": "av1_qsv", "libaom-av1": "av1_qsv", "libsvtav1": "av1_qsv",
+		}[codec]
+		qualityOpt = "-global_quality"
+	}
+	if !ok {
+		return args
+	}
+	if !hasEncoder(ffmpegPath, target) {
+		logger.Warn("ffmpeg", "硬件编码器 %s 不可用，保持软件编码 %s（如需硬件加速请升级 ffmpeg）", target, codec)
+		return args
+	}
+
+	// 逐 token 改写：替换编码器、转换质量参数、剔除软编专属参数
+	newArgs := make([]string, 0, len(args))
+	replaced := false
+	for i := 0; i < len(args); i++ {
+		if i == cIdx {
+			newArgs = append(newArgs, "-c:v", target)
+			replaced = true
+			i++ // 跳过 codec
+			continue
+		}
+		cur := args[i]
+		if !strings.HasPrefix(cur, "-") {
+			newArgs = append(newArgs, cur)
+			continue
+		}
+		hasVal := i+1 < len(args) && !strings.HasPrefix(args[i+1], "-")
+		switch cur {
+		case "-crf":
+			if hasVal {
+				newArgs = append(newArgs, qualityOpt, args[i+1])
+			}
+			if hasVal {
+				i++
+			}
+		case "-preset":
+			if hasVal {
+				if isHwPresetOK(accel, args[i+1]) {
+					newArgs = append(newArgs, cur, args[i+1])
+				} else {
+					logger.Info("ffmpeg", "移除不适用于硬件编码的 -preset %s", args[i+1])
+				}
+				i++
+			}
+		case "-tune", "-sc_threshold", "-x264-opts", "-x265-params":
+			logger.Info("ffmpeg", "移除软件编码专属参数 %s（硬件编码不适用）", cur)
+			if hasVal {
+				i++
+			}
+		default:
+			newArgs = append(newArgs, cur)
+			if hasVal {
+				newArgs = append(newArgs, args[i+1])
+				i++
+			}
+		}
+	}
+	if !replaced {
+		return args
+	}
+	logger.Info("ffmpeg", "自动启用硬件编码: %s -> %s (accel=%s)", codec, target, accel)
+	logger.Info("ffmpeg", "硬件加速后参数: %v", newArgs)
+	return newArgs
 }

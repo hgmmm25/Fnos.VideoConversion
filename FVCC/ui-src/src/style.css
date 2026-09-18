@@ -1,0 +1,350 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== 主题颜色变量（集中管理，便于未来扩展） ===== */
+/* 颜色以 RGB 通道值定义，配合 Tailwind <alpha-value> 支持透明度 */
+/* 明亮主题（默认） */
+:root {
+  /* 主色 / 品牌 */
+  --c-primary: 59 130 246;           /* #3b82f6 */
+  --c-primary-hover: 37 99 235;      /* #2563eb */
+  --c-primary-soft: 219 234 254;     /* #dbeafe */
+  --c-primary-soft-text: 29 78 216;  /* #1d4ed8 */
+
+  /* 成功 */
+  --c-success: 34 197 94;            /* #22c55e */
+  --c-success-soft: 220 252 231;     /* #dcfce7 */
+  --c-success-soft-text: 21 128 61;  /* #15803d */
+
+  /* 危险 */
+  --c-danger: 239 68 68;             /* #ef4444 */
+  --c-danger-hover: 220 38 38;       /* #dc2626 */
+  --c-danger-soft: 254 226 226;      /* #fee2e2 */
+  --c-danger-soft-text: 185 28 28;   /* #b91c1c */
+
+  /* 警告 */
+  --c-warning: 245 158 11;           /* #f59e0b */
+  --c-warning-soft: 254 243 199;     /* #fef3c7 */
+  --c-warning-soft-text: 180 83 9;   /* #b45309 */
+
+  /* P1-1：信号色（进行中/活动态统一单一信号色） */
+  --c-signal: 99 102 241;            /* #6366f1 */
+  --c-signal-soft: 224 231 255;      /* #e0e7ff */
+  --c-signal-soft-text: 67 56 202;   /* #4338ca */
+
+  /* 中性状态（排队 / 暂停 / 取消）；P1-1：色相偏移至蓝灰 */
+  --c-neutral: 143 159 184;          /* #8f9fb8 */
+  --c-neutral-soft: 222 230 242;     /* #dee6f2 */
+  --c-neutral-soft-text: 66 82 106;  /* #42526a */
+
+  /* 表面 / 背景（P1-1：page 降一档明度、surface 纯白 —— 卡片以明度差而非描边/阴影区分） */
+  --c-page: 244 246 251;             /* #f4f6fb */
+  --c-surface: 255 255 255;          /* #ffffff */
+  --c-surface-hover: 240 245 250;    /* #f0f5fa */
+  --c-surface-alt: 249 250 252;      /* #f9fafc 内嵌面（明度介于 surface 与 page） */
+  --c-line: 222 230 242;             /* #dee6f2 */
+  --c-line-subtle: 240 245 250;      /* #f0f5fa */
+
+  /* 文字（P1-1：ink 更深更蓝，muted 对比度 ≥4.5:1） */
+  --c-ink: 23 37 58;                 /* #17253a */
+  --c-ink-muted: 91 107 138;         /* #5b6b8a */
+  --c-ink-subtle: 140 158 184;       /* #8c9eb8 */
+
+  /* P1-3：字体栈（IBM Plex 西文 + 系统中文字体回退） */
+  --font-sans: 'IBM Plex Sans', -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'Cascadia Mono', Consolas, monospace;
+
+  /* P0-1：预览区恒定深底（亮/暗主题下保持一致，收敛为令牌，替代 layout.ts 硬编码 #000） */
+  /* P1-5：预览底由纯黑 #0a0b0d 提为中位深阶 #0f1115，避免纯黑与整体层级割裂，仍保持恒定深色基调 */
+  --c-preview-bg: 15 17 21;          /* #0f1115 */
+  /* P0-1：预览区深底上的辅助文字（preview.ts 空状态等） */
+  --c-preview-ink: 203 213 225;      /* #cbd5e1 */
+
+  /* P1-5：时间线 clip 数据色（类型承载语义；与列表页状态色 signal/success/danger 彻底解耦） */
+  --c-clip-video: 66 133 244;        /* #4285f4 视频 */
+  --c-clip-audio: 38 166 91;         /* #26a65b 音频 */
+  --c-clip-image: 245 158 11;        /* #f59e0b 图像 */
+  --c-clip-text: 139 92 246;         /* #8b5cf6 文字 */
+  --c-clip-marker: 236 72 88;        /* #ec4858 标记 */
+
+  /* P0-1：日志面板背景（settings.ts 硬编码 rgba(0,0,0,0.03) 收敛） */
+  --c-log-bg: rgba(0, 0, 0, 0.03);
+  /* P0-1：拖拽落点指示线（tasks.ts border-t-2 硬编码 primary 收敛；线宽见 --drop-line-width） */
+  --c-drop-line: 37 99 235;          /* #2563eb */
+
+  /* P0-3：缓动 token（动画类统一引用） */
+  --ease-out-strong: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-strong: cubic-bezier(0.65, 0, 0.35, 1);
+  --drop-line-width: 2px;
+
+  /* P0-1：ANSI 终端语义色（日志渲染专用登记，非界面配色；完整颜色值，直接用于 var()） */
+  --ansi-fg-30: #000000;  --ansi-fg-31: #FF0000;  --ansi-fg-32: #00FF00;
+  --ansi-fg-33: #FFFF00;  --ansi-fg-34: #0000FF;  --ansi-fg-35: #FF00FF;
+  --ansi-fg-36: #00FFFF;  --ansi-fg-37: #FFFFFF;
+  --ansi-bg-40: #000000;  --ansi-bg-41: #FF0000;  --ansi-bg-42: #00FF00;
+  --ansi-bg-43: #FFFF00;  --ansi-bg-44: #0000FF;  --ansi-bg-45: #FF00FF;
+  --ansi-bg-46: #00FFFF;  --ansi-bg-47: #FFFFFF;
+}
+
+/* 暗黑主题 */
+[data-theme="dark"] {
+  --c-primary: 59 130 246;
+  --c-primary-hover: 37 99 235;
+  --c-primary-soft: 23 37 84;        /* #172554 */
+  --c-primary-soft-text: 147 197 253;/* #93c5fd */
+
+  --c-success: 34 197 94;
+  --c-success-soft: 20 83 45;        /* #14532d */
+  --c-success-soft-text: 134 239 172;/* #86efac */
+
+  --c-danger: 239 68 68;
+  --c-danger-hover: 220 38 38;
+  --c-danger-soft: 69 10 10;         /* #450a0a */
+  --c-danger-soft-text: 252 165 165; /* #fca5a5 */
+
+  --c-warning: 245 158 11;
+  --c-warning-soft: 69 26 3;         /* #451a03 */
+  --c-warning-soft-text: 252 211 77; /* #fcd34d */
+
+  --c-signal: 99 102 241;
+  --c-signal-soft: 49 46 129;        /* #312e81 */
+  --c-signal-soft-text: 165 180 252; /* #a5b4fc */
+
+  --c-neutral: 103 119 143;          /* #67778f */
+  --c-neutral-soft: 49 63 82;        /* #313f52 */
+  --c-neutral-soft-text: 196 208 222;/* #c4d0de */
+
+  --c-page: 15 23 42;                /* #0f172a */
+  --c-surface: 30 41 59;             /* #1e293b */
+  --c-surface-hover: 49 63 82;       /* #313f52 */
+  --c-surface-alt: 23 31 48;         /* #171f30（内嵌面略深） */
+  --c-line: 47 60 78;                /* #2f3c4e */
+  --c-line-subtle: 43 55 72;         /* #2b3748 */
+
+  --c-ink: 244 248 252;              /* #f4f8fc */
+  --c-ink-muted: 196 208 222;        /* #c4d0de */
+  --c-ink-subtle: 105 121 146;       /* #697992 */
+
+  /* P0-1：暗色下预览区保持深底，辅助文字沿用亮灰 */
+  --c-preview-bg: 15 17 21;
+  --c-preview-ink: 203 213 225;
+
+  /* P1-5：暗色下 clip 数据色提亮（深底对比 ≥3:1），色相与亮色一致 */
+  --c-clip-video: 96 165 250;        /* #60a5fa 视频 */
+  --c-clip-audio: 74 222 128;        /* #4ade80 音频 */
+  --c-clip-image: 251 191 36;        /* #fbbf24 图像 */
+  --c-clip-text: 167 139 250;        /* #a78bfa 文字 */
+  --c-clip-marker: 251 113 133;      /* #fb7185 标记 */
+
+  /* P0-1：暗色下日志面板底色改为白色低透明度叠加 */
+  --c-log-bg: rgba(255, 255, 255, 0.04);
+  /* P0-1：暗色下拖拽落点线用亮蓝，保证在深色面板上可见 */
+  --c-drop-line: 96 165 250;         /* #60a5fa */
+
+  /* P0-1：暗色下 ANSI 语义色柔和化（黑/白及高亮色避免刺眼且保持可读） */
+  --ansi-fg-30: #94a3b8;  --ansi-fg-31: #f87171;  --ansi-fg-32: #4ade80;
+  --ansi-fg-33: #fde047;  --ansi-fg-34: #93c5fd;  --ansi-fg-35: #f0abfc;
+  --ansi-fg-36: #67e8f9;  --ansi-fg-37: #f8fafc;
+  --ansi-bg-40: #334155;  --ansi-bg-41: #7f1d1d;  --ansi-bg-42: #14532d;
+  --ansi-bg-43: #713f12;  --ansi-bg-44: #1e3a8a;  --ansi-bg-45: #701a75;
+  --ansi-bg-46: #155e75;  --ansi-bg-47: #475569;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { @apply bg-neutral-soft rounded; }
+::-webkit-scrollbar-track { @apply bg-transparent; }
+
+/* 组件类 */
+@layer components {
+  /* P0-2：.btn 补全 hover / active / focus-visible / disabled 四态 + 统一 2px 焦点环 */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1 px-3 py-1.5 text-sm rounded
+           bg-surface-hover hover:bg-neutral-soft active:bg-neutral
+           text-ink-muted hover:text-ink
+           transition-colors
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-hover active:brightness-90 text-white;
+  }
+  .btn-danger {
+    @apply bg-danger hover:bg-danger-hover active:brightness-90 text-white;
+  }
+  /* P0-4：桌面保持紧凑；移动端（<768px）可点区域强制 ≥44px */
+  .btn-sm { @apply px-2 py-1 text-xs; }
+  @media (max-width: 767px) {
+    .btn-sm {
+      min-height: 44px;
+      padding-top: 0.65rem;
+      padding-bottom: 0.65rem;
+    }
+  }
+  .input {
+    @apply w-full px-3 py-1.5 text-sm rounded border border-line
+           bg-surface text-ink placeholder-ink-muted
+           focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
+  }
+  /* P1-2：卡片以明度分层（page→surface）代替描边+阴影；浮动层（弹窗/抽屉）才保留阴影 */
+  .card {
+    @apply bg-surface rounded-lg;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium;
+  }
+}
+
+/* 动画类 */
+/* P0-3：slide-down/up 弃用 max-height（解除 300px 截断），改用 transform+opacity；
+   配合 .animate-slide-down/up 上的 overflow-y:auto 保持长内容滚动可见 */
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes progress-stripes {
+  0% { background-position: 1rem 0; }
+  100% { background-position: 0 0; }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.2s var(--ease-out-strong) forwards;
+  overflow-y: auto;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.2s var(--ease-in-out-strong) forwards;
+  overflow-y: auto;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s var(--ease-out-strong) forwards;
+  opacity: 0;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s var(--ease-out-strong) forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s var(--ease-out-strong) forwards;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s var(--ease-in-out-strong) infinite;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s var(--ease-out-strong) forwards;
+}
+
+.progress-animate {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.15) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.15) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+  animation: progress-stripes 1s linear infinite;
+}
+
+/* P2-1：骨架屏（列表/表单加载态；动画只动 transform，随 prefers-reduced-motion 全局降级） */
+@keyframes skeleton-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--c-surface-hover);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: skeleton-shimmer 1.4s var(--ease-in-out-strong) infinite;
+}
+[data-theme='dark'] .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+}
+
+/* P0-3：prefers-reduced-motion 全局降级（所有动画/过渡收束为瞬时） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
