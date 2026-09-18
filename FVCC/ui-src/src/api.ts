@@ -98,8 +98,10 @@ export const api = {
           } else if (data.type === 'error') {
             eventSource?.close()
             eventSource = null
-            if (onError) onError(data.error)
-            else reject(new Error(data.error))
+            // P2-4：统一后 SSE 错误为 {type:'error', code, msg}；兼容旧 {error}
+            const errMsg = data.msg || data.error
+            if (onError) onError(errMsg)
+            else reject(new Error(errMsg))
           }
         } catch (err) {
           eventSource?.close()
@@ -157,7 +159,7 @@ export const api = {
     request<Server>(`/servers/${id}`, { method: 'PUT', body: JSON.stringify(sv) }),
   deleteServer: (id: string) => request<{ ok: boolean }>(`/servers/${id}`, { method: 'DELETE' }),
   testServer: (id: string) =>
-    request<{ ok: boolean; status?: string; error?: string }>(`/servers/${id}/test`, {
+    request<{ ok: boolean; status?: string; msg?: string; error?: string }>(`/servers/${id}/test`, {
       method: 'POST',
     }),
 

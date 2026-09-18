@@ -116,7 +116,7 @@ export function renderServers(container: HTMLElement) {
       try {
         const r = await api.testServer(s.id)
         if (r.ok) toast('连接成功', 'success')
-        else toast(`连接失败: ${r.error}`, 'error')
+        else toast(`连接失败: ${r.msg ?? r.error}`, 'error')
         await store.loadServers()
         render()
       } catch (err) {
