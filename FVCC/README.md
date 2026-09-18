@@ -117,6 +117,17 @@ go test ./...
 | 混乱度评价报告 | `../FVCC_混乱度评价报告_细化版.md` | 项目治理台账（P0/P1/P2 计划与状态） |
 | TASK_REFERENCE.md | `../docs/TASK_REFERENCE.md` | 任务编号语义登记（B/C/D/M4/修复/Px-x） |
 
+## 前端公共模块速查（ui-src/src/lib/，P2-2 新增）
+
+| 模块 | 职责 | 消费方 |
+|------|------|--------|
+| `crudActions.ts` | CRUD 四件套统一封装（confirmDialog → api → toast → reload），只依赖 ApiError | profiles / servers / tasks / history |
+| `scrollPos.ts` | 按 key 隔离保存/恢复列表滚动位置 | profiles |
+| `useListPage.ts` | 列表页公共流程（订阅 store → 拉数据 → 渲染 → 错误处理 → refresh/dispose） | tasks / servers / history / profiles / scanner |
+| `formBuilder.ts` | 表单 label+input 生成、collect/fill/validate（a11y：label 关联 input） | settings / profiles |
+
+> P2-2 落地状态：2026-09-18 已收口（6 页 CRUD/滚动/订阅/表单样板收敛；main.ts 路由切换接入 dispose 防泄漏）。
+
 ## 治理计划状态（P1-1 ~ P1-5）
 
 依据 `FVCC_混乱度评价报告_细化版.md` §4 的 P1 组计划项，2026-09-18 复核状态：
