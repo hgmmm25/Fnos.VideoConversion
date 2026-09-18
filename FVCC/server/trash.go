@@ -123,7 +123,7 @@ func (h *Handlers) restoreTrash(c *gin.Context) {
 		Path string `json:"path" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "参数错误"})
+		fail(c, 400, "参数错误")
 		return
 	}
 	// 安全校验：仅允许回收站目录内的路径
@@ -134,7 +134,7 @@ func (h *Handlers) restoreTrash(c *gin.Context) {
 	}
 	abs, err := filepath.Abs(req.Path)
 	if err != nil {
-		c.JSON(400, gin.H{"error": "路径无效"})
+		fail(c, 400, "路径无效")
 		return
 	}
 	for _, tp := range trashPaths {
@@ -145,11 +145,11 @@ func (h *Handlers) restoreTrash(c *gin.Context) {
 		}
 	}
 	if !allowed {
-		c.JSON(403, gin.H{"error": "仅支持恢复回收站内的文件"})
+		fail(c, 403, "仅支持恢复回收站内的文件")
 		return
 	}
 	if _, err := os.Stat(abs); os.IsNotExist(err) {
-		c.JSON(404, gin.H{"error": "回收站文件不存在"})
+		fail(c, 404, "回收站文件不存在")
 		return
 	}
 	// 恢复目标 = 回收站路径去掉 _trash 前缀
@@ -159,7 +159,7 @@ func (h *Handlers) restoreTrash(c *gin.Context) {
 		if strings.HasPrefix(abs, tp+string(filepath.Separator)) {
 			rel, rerr := filepath.Rel(tp, abs)
 			if rerr != nil {
-				c.JSON(500, gin.H{"error": rerr.Error()})
+				fail(c, 500, rerr.Error())
 				return
 			}
 			root := strings.TrimSuffix(tp, trashDirName)
@@ -169,19 +169,19 @@ func (h *Handlers) restoreTrash(c *gin.Context) {
 		}
 	}
 	if orig == "" {
-		c.JSON(500, gin.H{"error": "无法推导原始路径"})
+		fail(c, 500, "无法推导原始路径")
 		return
 	}
 	if _, err := os.Stat(orig); err == nil {
-		c.JSON(409, gin.H{"error": fmt.Sprintf("原始位置已存在同名文件，无法恢复: %s", orig)})
+		fail(c, 409, fmt.Sprintf("原始位置已存在同名文件，无法恢复: %s", orig))
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(orig), 0o755); err != nil {
-		c.JSON(500, gin.H{"error": "恢复失败: " + err.Error()})
+		fail(c, 500, "恢复失败: "+err.Error())
 		return
 	}
 	if err := os.Rename(abs, orig); err != nil {
-		c.JSON(500, gin.H{"error": "恢复失败: " + err.Error()})
+		fail(c, 500, "恢复失败: "+err.Error())
 		return
 	}
 	c.JSON(200, gin.H{"ok": true, "path": orig})
@@ -204,7 +204,7 @@ func (h *Handlers) emptyTrash(c *gin.Context) {
 			full := filepath.Join(trashRoot, e.Name())
 			removed = append(removed, full)
 			if err := os.RemoveAll(full); err != nil {
-				c.JSON(500, gin.H{"error": "清空回收站失败: " + err.Error()})
+				fail(c, 500, "清空回收站失败: "+err.Error())
 				return
 			}
 		}
