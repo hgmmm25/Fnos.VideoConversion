@@ -1,4 +1,4 @@
-package main
+package edl
 
 // 安全任务（D-02）：FVCC 侧 EDL 路径 / 输出名 / 载荷白名单校验（同规则双实现）
 //
@@ -30,6 +30,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+
+	"fvcc/internal/store/model"
 )
 
 // ===== 约束（07 §3.2 / §3.6）=====
@@ -322,8 +324,8 @@ func validatePayloadLimits(raw []byte) *edlValidationError {
 // ============================================================
 
 // decodeRenderPayloadStrict 严格解码：未知字段即拒绝（S6 filters / S12 凭据字段均由
-// DisallowUnknownFields 拦截，RenderTaskPayload 不声明任何 filters/secret 字段）。
-func decodeRenderPayloadStrict(raw json.RawMessage) (*RenderTaskPayload, *edlValidationError) {
+// DisallowUnknownFields 拦截，model.RenderTaskPayload 不声明任何 filters/secret 字段）。
+func decodeRenderPayloadStrict(raw json.RawMessage) (*model.RenderTaskPayload, *edlValidationError) {
 	if len(raw) == 0 {
 		return nil, newEDLValidationErr(errCodePayloadInvalid, "", "payload 缺失", -1)
 	}
@@ -332,7 +334,7 @@ func decodeRenderPayloadStrict(raw json.RawMessage) (*RenderTaskPayload, *edlVal
 	}
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
-	var p RenderTaskPayload
+	var p model.RenderTaskPayload
 	if err := dec.Decode(&p); err != nil {
 		return nil, newEDLValidationErr(errCodePayloadInvalid, "", "载荷解析失败: "+err.Error(), -1)
 	}
@@ -340,7 +342,7 @@ func decodeRenderPayloadStrict(raw json.RawMessage) (*RenderTaskPayload, *edlVal
 }
 
 // validateRenderTimeline 时间线数值校验（03 §5.2；不做缺省回填，与 FVCS 侧一致）
-func validateRenderTimeline(t *Timeline) *edlValidationError {
+func validateRenderTimeline(t *model.Timeline) *edlValidationError {
 	if t.FPS < 1 || t.FPS > 120 {
 		return newEDLValidationErr(errCodeEDLInvalid, "timeline.fps", "帧率必须在 1..120", -1)
 	}
@@ -358,7 +360,7 @@ func validateRenderTimeline(t *Timeline) *edlValidationError {
 
 // validateRenderProfile 渲染方案校验（03 §5.2 + P0 预留字段拒绝）。
 // presetKey 命中 12 项枚举表即通过（proxy_* 的用途限制属 handler 闸门，见 handlers_render.go）。
-func validateRenderProfile(p *RenderProfile) *edlValidationError {
+func validateRenderProfile(p *model.RenderProfile) *edlValidationError {
 	if _, ok := edlRenderPresetTable[p.PresetKey]; !ok {
 		return newEDLValidationErr(errCodeProfileInvalid, "profile.presetKey", "presetKey 不在服务端枚举表", -1)
 	}
@@ -382,7 +384,7 @@ func validateRenderProfile(p *RenderProfile) *edlValidationError {
 
 // validateRenderEDLPayload 载荷白名单校验（FVCC 侧闸门；与 FVCS ValidateRenderEDLPayload 同规则）。
 // 校验通过时会就地补全 TotalMs（若为 0），并把缺省 speed（0）回填为 1.0。
-func validateRenderEDLPayload(p *RenderTaskPayload) *edlValidationError {
+func validateRenderEDLPayload(p *model.RenderTaskPayload) *edlValidationError {
 	if p == nil {
 		return newEDLValidationErr(errCodePayloadInvalid, "", "载荷为空", -1)
 	}

@@ -38,32 +38,14 @@ import (
 	"fvcc/logger"
 )
 
-// ===== 错误码（03 §5.3；E_PROFILE_INVALID / E_NODE_OFFLINE / E_ASSET_MISSING 由 B-04 首次使用）=====
-const (
-	errCodeProfileInvalid = "E_PROFILE_INVALID"
-	errCodeNodeOffline    = "E_NODE_OFFLINE"
-	errCodeAssetMissing   = "E_ASSET_MISSING"
-	// E_ASSET_NOT_IN_ROOT（403）由 B-06 下发前二次校验使用，P0 不在提交侧触发。
-	errCodeAssetNotInRoot = "E_ASSET_NOT_IN_ROOT"
-)
-
 // ===== 输出名与载荷约束（03 §4.4 / 07 §3.5 / 05 §5.1）=====
 const (
-	renderPayloadType    = "RenderEDL"
-	renderOutputExt      = ".mp4"
 	renderOutputBaseMax  = 80
 	renderOutputMaxTries = 99 // 07 §3.5：重名追加 _1.._99，禁止覆盖
-	renderContainerMP4   = "mp4"
-	renderAudioCodecAAC  = "aac"
 	renderVideoPixFmt    = "yuv420p"
 	renderAudioKbps      = "192k"
 	renderAudioChannels  = 2
 )
-
-// fvcsSampleRates FVCS ValidateRenderEDLPayload 允许的采样率集合（03 §5.1 第三道闸门）。
-// 注：03 §2.5 写 8000~192000，与 FVCS 白名单不一致，此处按 FVCS 收紧并在提交时拒绝，
-// 避免「保存成功但下发必败」；已记入 10 号台账「文档缺口对齐」。
-var fvcsSampleRates = map[int]bool{32000: true, 44100: true, 48000: true, 96000: true}
 
 // reOutputBase 输出名基本名白名单（07 §3.5：单段、无路径分隔符）。
 // 首字符与后续字符均允许中英文/数字/_，中段另允许 - 与 .；与 07 §3.5 的 \p{Han} 首字符口径一致。
@@ -84,30 +66,6 @@ type renderSubmitInput struct {
 	OutputName string `json:"outputName"`
 	ServerID   string `json:"serverId"`
 	Force      bool   `json:"force"` // true 跳过幂等检查，强制重渲染（06 §4.4）
-}
-
-// edlPresetSpec 05 §5.1 presetKey 枚举表（成片导出用；proxy_* 仅用于 04 §3 代理生成）。
-type edlPresetSpec struct {
-	Codec     string
-	CRF       int
-	Encoder   string // 编码器 preset（h264_nvenc 的 p5 / libx264 的 medium 等）
-	ProxyOnly bool
-}
-
-// edlRenderPresetTable 与 FVCS/pkg/protocol.ValidPresetKeys 同集（12 项）。
-var edlRenderPresetTable = map[string]edlPresetSpec{
-	"copy_same_source":  {Codec: "copy"},
-	"h264_nvenc_p5":     {Codec: "h264_nvenc", CRF: 18, Encoder: "p5"},
-	"h264_nvenc_p7":     {Codec: "h264_nvenc", CRF: 16, Encoder: "p7"},
-	"hevc_nvenc_p5":     {Codec: "hevc_nvenc", CRF: 20, Encoder: "p5"},
-	"h264_qsv_balanced": {Codec: "h264_qsv", CRF: 20, Encoder: "medium"},
-	"hevc_qsv_balanced": {Codec: "hevc_qsv", CRF: 22, Encoder: "medium"},
-	"h264_amf_balanced": {Codec: "h264_amf", CRF: 20, Encoder: "balanced"},
-	"libx264_medium":    {Codec: "libx264", CRF: 18, Encoder: "medium"},
-	"libx264_slow":      {Codec: "libx264", CRF: 16, Encoder: "slow"},
-	"libx265_medium":    {Codec: "libx265", CRF: 20, Encoder: "medium"},
-	"proxy_720p_h264":   {Codec: "libx264", CRF: 23, Encoder: "veryfast", ProxyOnly: true},
-	"proxy_720p_nvenc":  {Codec: "h264_nvenc", CRF: 23, Encoder: "p5", ProxyOnly: true},
 }
 
 // ===== Handler =====
@@ -763,46 +721,6 @@ func msToTimecode(ms int64) string {
 	s := (ms % 60000) / 1000
 	rem := ms % 1000
 	return fmt.Sprintf("%02d:%02d:%02d.%03d", h, m, s, rem)
-}
-
-// parseTimecode "HH:MM:SS.mmm" → 毫秒（03 §2.4，容忍 "H:MM:SS.mmm" 的少位小时）。
-func parseTimecode(tc string) (int64, error) {
-	dot := strings.IndexByte(tc, '.')
-	if dot < 0 {
-		return 0, errors.New("时间码缺少毫秒部分")
-	}
-	hhmmss := strings.Split(tc[:dot], ":")
-	if len(hhmmss) != 3 {
-		return 0, errors.New("时间码格式非法")
-	}
-	vals := make([]int64, 3)
-	for i, part := range hhmmss {
-		if part == "" {
-			return 0, errors.New("时间码字段为空")
-		}
-		var n int64
-		for j := 0; j < len(part); j++ {
-			ch := part[j]
-			if ch < '0' || ch > '9' {
-				return 0, errors.New("时间码含非数字字符")
-			}
-			n = n*10 + int64(ch-'0')
-		}
-		vals[i] = n
-	}
-	msPart := tc[dot+1:]
-	if len(msPart) != 3 {
-		return 0, errors.New("毫秒必须为 3 位")
-	}
-	var millis int64
-	for i := 0; i < len(msPart); i++ {
-		ch := msPart[i]
-		if ch < '0' || ch > '9' {
-			return 0, errors.New("毫秒含非数字字符")
-		}
-		millis = millis*10 + int64(ch-'0')
-	}
-	return ((vals[0]*60+vals[1])*60+vals[2])*1000 + millis, nil
 }
 
 // newRenderTaskID 生成渲染任务 ID：t_<unix秒>_<6 位十六进制>（03 §4.4 示例形态）。

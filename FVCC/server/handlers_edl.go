@@ -22,8 +22,6 @@ import (
 
 // ===== 错误码（03 §5.3）=====
 const (
-	errCodeEDLInvalid     = "E_EDL_INVALID"
-	errCodeEDLTooLarge    = "E_EDL_TOO_LARGE"
 	errCodeRevConflict    = "E_REV_CONFLICT"
 	errCodeProjectMissing = "E_PROJECT_NOT_FOUND" // 03 §5.3 未定义，实现补充（见 10 号台账）
 	errCodeProjectNameUse = "E_PROJECT_NAME_USED" // 同上，对应 store.ErrProjectNameUsed
@@ -31,23 +29,8 @@ const (
 
 // ===== 约束（03 §2.5 / 07 §3.6）=====
 const (
-	edlMaxClips     = 200
-	edlMinClipMs    = 100
-	edlMaxTotalMs   = 6 * 60 * 60 * 1000 // 6 小时
-	edlMaxNameLen   = 64
-	edlMaxBodyBytes = 256 * 1024
+	edlMaxNameLen = 64
 )
-
-// edlErr 统一失败响应。
-func edlErr(c *gin.Context, status int, code, msg string, detail gin.H) {
-	// D-04：拒绝类错误码集中记账（07 §7）
-	security.AuditRejection(c, code)
-	body := gin.H{"ok": false, "code": code, "msg": msg}
-	if detail != nil {
-		body["detail"] = detail
-	}
-	c.JSON(status, body)
-}
 
 // edlProjectInput 新建/保存项目的请求体（03 §4.2）。
 type edlProjectInput struct {
