@@ -1,11 +1,11 @@
 appname               = fvcc
 version               = 1.4.1
 display_name          = FVCC
-desc                  = Fnos Video Conversion Client - ????????????????
+desc                  = Fnos Video Conversion Client - 视频转码任务调度与远程服务器管理
 arch                  = x86_64
 platform              = x86
 source                = thirdparty
-maintainer            = ??
-distributor           = ??
+maintainer            = fvcc
+distributor           = fvcc
 desktop_uidir         = ui
 desktop_applaunchname = fvcc.Application

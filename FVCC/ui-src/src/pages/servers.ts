@@ -170,7 +170,7 @@ function editForm(s: Server | undefined, onBack: () => void): HTMLElement {
   const nameInput = el('input', { class: 'input', placeholder: '服务器名称', value: s?.name ?? '' }) as HTMLInputElement
   const ipInput = el('input', { class: 'input', placeholder: 'IP 地址，如 192.168.1.100', value: s?.ip ?? '' }) as HTMLInputElement
   const portInput = el('input', { type: 'number', class: 'input', placeholder: '端口', value: s ? String(s.port) : '8080' }) as HTMLInputElement
-  const keyInput = el('input', { class: 'input', placeholder: 'API 密钥', value: s?.authKey ?? '' }) as HTMLInputElement
+  const keyInput = el('input', { type: 'password', class: 'input', placeholder: '已保存，留空则不修改', value: '' }) as HTMLInputElement
   const lockInput = el('input', { type: 'number', class: 'input', placeholder: '锁自动过期(秒)', value: s ? String(s.lockExpireSec || 120) : '120' }) as HTMLInputElement
 
   const field = (label: string, control: HTMLElement, description?: string) => {

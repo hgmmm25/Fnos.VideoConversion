@@ -18,6 +18,7 @@ import (
 type Store struct {
 	mu         sync.RWMutex
 	dataDir    string
+	secretKey  []byte // P0-1 凭据主密钥（AES-256，0600 落盘 <dataDir>/secret.key）
 	tasks      []Task
 	history    []Task
 	servers    []Server
@@ -50,16 +51,24 @@ func (s *Store) Load() error {
 		return err
 	}
 
+	// P0-1：加载凭据主密钥（不存在则生成），后续 settings/server 解密依赖它。
+	key, err := loadOrCreateSecretKey(s.dataDir)
+	if err != nil {
+		logger.Error("store", "加载凭据主密钥失败: %v", err)
+		return err
+	}
+	s.secretKey = key
+
 	// tasks.json 采用严格加载 + 列迁移（06 §2.2）：解析失败或版本过高直接拒绝启动，
 	// 禁止静默降级为"空任务列表"而丢失用户任务。
 	if err := s.loadTasksLocked(); err != nil {
 		return err
 	}
 	s.history = loadJSON[HistoryFile](s.path("history_tasks.json"), HistoryFile{Version: 1, Tasks: []Task{}}).Tasks
-	s.servers = loadJSON[ServersFile](s.path("server.json"), ServersFile{Version: 1, Servers: []Server{}}).Servers
+	s.servers = decryptServersOnLoad(key, loadJSON[ServersFile](s.path("server.json"), ServersFile{Version: 1, Servers: []Server{}}).Servers)
 	s.profiles = loadJSON[ProfilesFile](s.path("transcode_profile.json"), ProfilesFile{Version: 1, Profiles: []Profile{}}).Profiles
 	s.locks = loadJSON[LocksFile](s.path("locks.json"), LocksFile{Version: 1, Locks: []Lock{}}).Locks
-	s.settings = loadJSON[SettingsFile](s.path("settings.json"), SettingsFile{Version: 1, Settings: DefaultSettings()}).Settings
+	s.settings = decryptSettingsOnLoad(key, loadJSON[SettingsFile](s.path("settings.json"), SettingsFile{Version: 1, Settings: DefaultSettings()}).Settings)
 	s.videoCache = loadJSON[VideoCacheFile](s.path("video_cache.json"), VideoCacheFile{Version: 1, Entries: []VideoInfoCache{}}).Entries
 	// B-01 新增集合（06 §2.1）：不存在时按空集合初始化，不阻断启动。
 	s.projects = loadJSON[ProjectsFile](s.path("projects.json"), ProjectsFile{Version: 1, Projects: []Project{}}).Projects
@@ -611,7 +620,7 @@ func (s *Store) persistHistory() {
 	saveJSON(s.path("history_tasks.json"), HistoryFile{Version: 1, Tasks: s.history})
 }
 func (s *Store) persistServers() {
-	saveJSON(s.path("server.json"), ServersFile{Version: 1, Servers: s.servers})
+	saveJSON(s.path("server.json"), ServersFile{Version: 1, Servers: encryptServersForDisk(s.secretKey, s.servers)})
 }
 func (s *Store) persistProfiles() {
 	saveJSON(s.path("transcode_profile.json"), ProfilesFile{Version: 1, Profiles: s.profiles})
@@ -636,7 +645,7 @@ func (s *Store) SaveSettings(v Settings) {
 }
 
 func (s *Store) persistSettings() {
-	saveJSON(s.path("settings.json"), SettingsFile{Version: 1, Settings: s.settings})
+	saveJSON(s.path("settings.json"), SettingsFile{Version: 1, Settings: encryptSettingsForDisk(s.secretKey, s.settings)})
 }
 
 // ===== VideoCache =====

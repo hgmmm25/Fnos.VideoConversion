@@ -1,0 +1,28 @@
+# ---- 构建产物 ----
+*.exe
+*.fpk
+*.tsbuildinfo
+app/ui/
+dist/
+
+# ---- 依赖 ----
+node_modules/
+
+# ---- 打包测试残留 ----
+temp/
+
+# ---- 日志与运行时数据 ----
+logs/
+*.log
+server/out.txt
+server/build_err.txt
+ui-src/all.txt
+ui-src/err.txt
+ui-src/out.txt
+
+# ---- 编辑器/系统 ----
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+app/fvcc

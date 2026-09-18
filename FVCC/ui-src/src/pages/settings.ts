@@ -96,7 +96,7 @@ export function renderSettings(container: HTMLElement) {
       class: 'input', value: s.smbUser || '', placeholder: 'SMB用户名',
     }) as HTMLInputElement
     const smbPasswordInput = el('input', {
-      type: 'password', class: 'input', value: s.smbPassword || '', placeholder: 'SMB密码',
+      type: 'password', class: 'input', value: '', placeholder: '已保存，留空则不修改',
     }) as HTMLInputElement
 
     const smbSettings = el('div', { class: 'mt-3 space-y-3' }, [

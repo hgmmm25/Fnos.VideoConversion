@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"fvcc/smbshare"
 	"io"
@@ -78,6 +79,8 @@ func (h *Handlers) info(c *gin.Context) {
 
 func (h *Handlers) getSettings(c *gin.Context) {
 	settings := h.store.GetSettings()
+	// P0-1：凭据不回显明文
+	settings.SMBPassword = MaskSecret(settings.SMBPassword)
 	// merge authorized paths from PathValidator so frontend can use them as default scan roots
 	authorized := h.pv.AccessPaths()
 	for _, p := range authorized {
@@ -121,6 +124,10 @@ func (h *Handlers) saveSettings(c *gin.Context) {
 	}
 	// B-04：videoRoot/exportRoot 不在设置页表单内，为空时沿用既有值，避免被覆盖成空
 	old := h.store.GetSettings()
+	// P0-1：SMBPassword 为空或掩码时保留旧值（前端不回显明文，密码框留空表示不修改）
+	if s.SMBPassword == "" || s.SMBPassword == secretMaskValue {
+		s.SMBPassword = old.SMBPassword
+	}
 	if strings.TrimSpace(s.VideoRoot) == "" || strings.TrimSpace(s.ExportRoot) == "" {
 		if strings.TrimSpace(s.VideoRoot) == "" {
 			s.VideoRoot = old.VideoRoot
@@ -160,7 +167,9 @@ func (h *Handlers) saveSettings(c *gin.Context) {
 	}
 	logger.SetLogLevel(logLevel)
 
-	c.JSON(200, gin.H{"settings": h.store.GetSettings()})
+	resp := h.store.GetSettings()
+	resp.SMBPassword = MaskSecret(resp.SMBPassword) // P0-1：凭据不回显明文
+	c.JSON(200, gin.H{"settings": resp})
 }
 
 func (h *Handlers) getLog(c *gin.Context) {
@@ -318,12 +327,8 @@ func (h *Handlers) doScanDirectory(path string, onProgress func([]VideoInfo) boo
 	}
 
 	settings := h.store.GetSettings()
-	if settings.TransferMode == "smb" && settings.SMBUser != "" {
-		if ok, err := smbshare.IsPathShared(settings.SMBUser, path); err != nil {
-			return fmt.Errorf("校验共享状态失败: %v", err)
-		} else if !ok {
-			return fmt.Errorf("该目录未通过SMB共享，SMB模式下不可访问")
-		}
+	if err := h.validateSMBPath(settings, path); err != nil {
+		return err
 	}
 
 	info, err := os.Stat(path)
@@ -469,14 +474,13 @@ func (h *Handlers) probeVideo(c *gin.Context) {
 
 	// SMB 模式：额外校验路径是否在已共享目录内
 	settings := h.store.GetSettings()
-	if settings.TransferMode == "smb" && settings.SMBUser != "" {
-		if ok, err := smbshare.IsPathShared(settings.SMBUser, req.Path); err != nil {
-			c.JSON(500, gin.H{"error": "校验共享状态失败: " + err.Error()})
-			return
-		} else if !ok {
+	if err := h.validateSMBPath(settings, req.Path); err != nil {
+		if errors.Is(err, errSMBNotShared) {
 			c.JSON(403, gin.H{"error": "该文件未通过SMB共享，SMB模式下不可访问"})
-			return
+		} else {
+			c.JSON(500, gin.H{"error": err.Error()})
 		}
+		return
 	}
 
 	info, err := h.probe.Probe(req.Path)
@@ -655,14 +659,13 @@ func (h *Handlers) browseDirs(c *gin.Context) {
 	}
 
 	// SMB 模式：额外校验路径是否在已共享目录内
-	if isSMB {
-		if ok, err := smbshare.IsPathShared(settings.SMBUser, pathParam); err != nil {
-			c.JSON(500, gin.H{"error": "校验共享状态失败: " + err.Error()})
-			return
-		} else if !ok {
+	if err := h.validateSMBPath(settings, pathParam); err != nil {
+		if errors.Is(err, errSMBNotShared) {
 			c.JSON(403, gin.H{"error": "该目录未通过SMB共享，SMB模式下不可访问"})
-			return
+		} else {
+			c.JSON(500, gin.H{"error": err.Error()})
 		}
+		return
 	}
 
 	info, err := os.Stat(pathParam)
@@ -725,7 +728,14 @@ func (h *Handlers) browseDirs(c *gin.Context) {
 // ===== 服务器管理 =====
 
 func (h *Handlers) listServers(c *gin.Context) {
-	c.JSON(200, gin.H{"servers": h.store.GetServers()})
+	servers := h.store.GetServers()
+	// P0-1：凭据不回显明文
+	out := make([]Server, len(servers))
+	copy(out, servers)
+	for i := range out {
+		out[i].AuthKey = MaskSecret(out[i].AuthKey)
+	}
+	c.JSON(200, gin.H{"servers": out})
 }
 
 func (h *Handlers) createServer(c *gin.Context) {
@@ -743,7 +753,11 @@ func (h *Handlers) createServer(c *gin.Context) {
 	if sv.Status == "" {
 		sv.Status = "offline"
 	}
+	if sv.AuthKey == secretMaskValue {
+		sv.AuthKey = ""
+	}
 	h.store.UpsertServer(sv)
+	sv.AuthKey = MaskSecret(sv.AuthKey)
 	c.JSON(200, sv)
 }
 
@@ -754,12 +768,17 @@ func (h *Handlers) updateServer(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "服务器不存在"})
 		return
 	}
+	oldKey := sv.AuthKey // P0-1：保存旧密钥，掩码/空提交时保留
 	if err := c.ShouldBindJSON(&sv); err != nil {
 		c.JSON(400, gin.H{"error": "参数错误: " + err.Error()})
 		return
 	}
 	sv.ID = id
+	if sv.AuthKey == "" || sv.AuthKey == secretMaskValue {
+		sv.AuthKey = oldKey
+	}
 	h.store.UpsertServer(sv)
+	sv.AuthKey = MaskSecret(sv.AuthKey)
 	c.JSON(200, sv)
 }
 
@@ -826,301 +845,10 @@ func (h *Handlers) updateProfile(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "参数错误: " + err.Error()})
 		return
 	}
-	if v, ok := updates["name"]; ok {
-		if s, ok := v.(string); ok {
-			p.Name = s
-		}
-	}
-	if v, ok := updates["customFfmpeg"]; ok {
-		if b, ok := v.(bool); ok {
-			p.CustomFfmpeg = b
-		}
-	}
-	if v, ok := updates["customFfmpegArgs"]; ok {
-		if s, ok := v.(string); ok {
-			p.CustomFfmpegArgs = s
-		}
-	}
-	if v, ok := updates["outputPath"]; ok {
-		if s, ok := v.(string); ok {
-			p.OutputPath = s
-		}
-	}
-	if v, ok := updates["deleteSource"]; ok {
-		if b, ok := v.(bool); ok {
-			p.DeleteSource = b
-		}
-	}
-	if v, ok := updates["vcodec"]; ok {
-		if s, ok := v.(string); ok {
-			p.Vcodec = s
-		}
-	}
-	if v, ok := updates["acodec"]; ok {
-		if s, ok := v.(string); ok {
-			p.Acodec = s
-		}
-	}
-	if v, ok := updates["width"]; ok {
-		if f, ok := v.(float64); ok {
-			p.Width = int(f)
-		}
-	}
-	if v, ok := updates["height"]; ok {
-		if f, ok := v.(float64); ok {
-			p.Height = int(f)
-		}
-	}
-	if v, ok := updates["aspectRatio"]; ok {
-		if s, ok := v.(string); ok {
-			p.AspectRatio = s
-		}
-	}
-	if v, ok := updates["fps"]; ok {
-		if s, ok := v.(string); ok {
-			p.Fps = s
-		}
-	}
-	if v, ok := updates["fpsCustom"]; ok {
-		if f, ok := v.(float64); ok {
-			p.FpsCustom = int(f)
-		}
-	}
-	if v, ok := updates["rateControl"]; ok {
-		if s, ok := v.(string); ok {
-			p.RateControl = s
-		}
-	}
-	if v, ok := updates["crf"]; ok {
-		if f, ok := v.(float64); ok {
-			p.Crf = int(f)
-		}
-	}
-	if v, ok := updates["bitrate"]; ok {
-		if s, ok := v.(string); ok {
-			p.Bitrate = s
-		}
-	}
-	if v, ok := updates["qualityControl"]; ok {
-		if s, ok := v.(string); ok {
-			p.QualityControl = s
-		}
-	}
-	if v, ok := updates["constantQuality"]; ok {
-		if f, ok := v.(float64); ok {
-			p.ConstantQuality = int(f)
-		}
-	}
-	if v, ok := updates["preset"]; ok {
-		if s, ok := v.(string); ok {
-			p.Preset = s
-		}
-	}
-	if v, ok := updates["pixFmt"]; ok {
-		if s, ok := v.(string); ok {
-			p.PixFmt = s
-		}
-	}
-	if v, ok := updates["profile"]; ok {
-		if s, ok := v.(string); ok {
-			p.Profile = s
-		}
-	}
-	if v, ok := updates["tune"]; ok {
-		if s, ok := v.(string); ok {
-			p.Tune = s
-		}
-	}
-	if v, ok := updates["rotate"]; ok {
-		if f, ok := v.(float64); ok {
-			p.Rotate = int(f)
-		}
-	}
-	if v, ok := updates["gop"]; ok {
-		if f, ok := v.(float64); ok {
-			p.Gop = int(f)
-		}
-	}
-	if v, ok := updates["bframes"]; ok {
-		if f, ok := v.(float64); ok {
-			p.Bframes = int(f)
-		}
-	}
-	if v, ok := updates["scaleAlgo"]; ok {
-		if s, ok := v.(string); ok {
-			p.ScaleAlgo = s
-		}
-	}
-	if v, ok := updates["videoMaxRate"]; ok {
-		if f, ok := v.(float64); ok {
-			p.VideoMaxRate = int(f)
-		}
-	}
-	if v, ok := updates["videoBufSize"]; ok {
-		if f, ok := v.(float64); ok {
-			p.VideoBufSize = int(f)
-		}
-	}
-	if v, ok := updates["videoBrightness"]; ok {
-		if f, ok := v.(float64); ok {
-			p.VideoBrightness = f
-		}
-	}
-	if v, ok := updates["videoContrast"]; ok {
-		if f, ok := v.(float64); ok {
-			p.VideoContrast = f
-		}
-	}
-	if v, ok := updates["videoSaturation"]; ok {
-		if f, ok := v.(float64); ok {
-			p.VideoSaturation = f
-		}
-	}
-	if v, ok := updates["enableYadif"]; ok {
-		if b, ok := v.(bool); ok {
-			p.EnableYadif = b
-		}
-	}
-	if v, ok := updates["enableUnsharp"]; ok {
-		if b, ok := v.(bool); ok {
-			p.EnableUnsharp = b
-		}
-	}
-	if v, ok := updates["unsharpStrength"]; ok {
-		if f, ok := v.(float64); ok {
-			p.UnsharpStrength = f
-		}
-	}
-	if v, ok := updates["colorSpace"]; ok {
-		if s, ok := v.(string); ok {
-			p.ColorSpace = s
-		}
-	}
-	if v, ok := updates["videoRefs"]; ok {
-		if f, ok := v.(float64); ok {
-			p.VideoRefs = int(f)
-		}
-	}
-	if v, ok := updates["x264AQStrength"]; ok {
-		if f, ok := v.(float64); ok {
-			p.X264AQStrength = f
-		}
-	}
-	if v, ok := updates["nvencSpatialAQ"]; ok {
-		if b, ok := v.(bool); ok {
-			p.NvencSpatialAQ = b
-		}
-	}
-	if v, ok := updates["nvencTemporalAQ"]; ok {
-		if b, ok := v.(bool); ok {
-			p.NvencTemporalAQ = b
-		}
-	}
-	if v, ok := updates["videoScThreshold"]; ok {
-		if f, ok := v.(float64); ok {
-			p.VideoScThreshold = int(f)
-		}
-	}
-	if v, ok := updates["ctuSize"]; ok {
-		if f, ok := v.(float64); ok {
-			p.CtuSize = int(f)
-		}
-	}
-	if v, ok := updates["rdLevel"]; ok {
-		if f, ok := v.(float64); ok {
-			p.RdLevel = int(f)
-		}
-	}
-	if v, ok := updates["channels"]; ok {
-		if s, ok := v.(string); ok {
-			p.Channels = s
-		}
-	}
-	if v, ok := updates["sampleRate"]; ok {
-		if s, ok := v.(string); ok {
-			p.SampleRate = s
-		}
-	}
-	if v, ok := updates["sampleRateCustom"]; ok {
-		if f, ok := v.(float64); ok {
-			p.SampleRateCustom = int(f)
-		}
-	}
-	if v, ok := updates["audioBitrate"]; ok {
-		if s, ok := v.(string); ok {
-			p.AudioBitrate = s
-		}
-	}
-	if v, ok := updates["audioBitrateCustom"]; ok {
-		if f, ok := v.(float64); ok {
-			p.AudioBitrateCustom = int(f)
-		}
-	}
-	if v, ok := updates["sampleFmt"]; ok {
-		if s, ok := v.(string); ok {
-			p.SampleFmt = s
-		}
-	}
-	if v, ok := updates["aacProfile"]; ok {
-		if s, ok := v.(string); ok {
-			p.AacProfile = s
-		}
-	}
-	if v, ok := updates["volume"]; ok {
-		if f, ok := v.(float64); ok {
-			p.Volume = f
-		}
-	}
-	if v, ok := updates["silence"]; ok {
-		if b, ok := v.(bool); ok {
-			p.Silence = b
-		}
-	}
-	if v, ok := updates["audioDynNorm"]; ok {
-		if b, ok := v.(bool); ok {
-			p.AudioDynNorm = b
-		}
-	}
-	if v, ok := updates["audioCutoff"]; ok {
-		if f, ok := v.(float64); ok {
-			p.AudioCutoff = int(f)
-		}
-	}
-	if v, ok := updates["opusCompLevel"]; ok {
-		if f, ok := v.(float64); ok {
-			p.OpusCompLevel = int(f)
-		}
-	}
-	if v, ok := updates["audioSyncOffset"]; ok {
-		if f, ok := v.(float64); ok {
-			p.AudioSyncOffset = int(f)
-		}
-	}
-	if v, ok := updates["hwAccel"]; ok {
-		if s, ok := v.(string); ok {
-			p.HwAccel = s
-		}
-	}
-	if v, ok := updates["movFastStart"]; ok {
-		if b, ok := v.(bool); ok {
-			p.MovFastStart = b
-		}
-	}
-	if v, ok := updates["threadCount"]; ok {
-		if s, ok := v.(string); ok {
-			p.ThreadCount = s
-		}
-	}
-	if v, ok := updates["outputSuffix"]; ok {
-		if s, ok := v.(string); ok {
-			p.OutputSuffix = s
-		}
-	}
-	if v, ok := updates["extraArgs"]; ok {
-		if s, ok := v.(string); ok {
-			p.ExtraArgs = s
-		}
-	}
+	// P1-1: 59 块手写字段映射收敛为反射白名单 helper（applyjson.go），
+	// 白名单由 Profile 的 json tag 自动推导，保持部分更新语义。
+	delete(updates, "id") // 主键不可通过 update 修改（与旧行为一致）
+	applyJSONUpdates(&p, updates)
 	h.store.UpsertProfile(p)
 	c.JSON(200, p)
 }
@@ -1179,21 +907,21 @@ func (h *Handlers) createTask(c *gin.Context) {
 	}
 
 	// SMB模式：额外校验路径是否在已共享目录内
-	if settings.TransferMode == "smb" && settings.SMBUser != "" {
-		if ok, err := smbshare.IsPathShared(settings.SMBUser, req.SourceFile); err != nil {
-			c.JSON(500, gin.H{"error": "校验源文件共享状态失败: " + err.Error()})
-			return
-		} else if !ok {
+	if err := h.validateSMBPath(settings, req.SourceFile); err != nil {
+		if errors.Is(err, errSMBNotShared) {
 			c.JSON(403, gin.H{"error": "源文件不在SMB共享目录内，无法通过SMB模式访问"})
-			return
+		} else {
+			c.JSON(500, gin.H{"error": err.Error()})
 		}
-		if ok, err := smbshare.IsPathShared(settings.SMBUser, req.OutputFile); err != nil {
-			c.JSON(500, gin.H{"error": "校验输出文件共享状态失败: " + err.Error()})
-			return
-		} else if !ok {
+		return
+	}
+	if err := h.validateSMBPath(settings, req.OutputFile); err != nil {
+		if errors.Is(err, errSMBNotShared) {
 			c.JSON(403, gin.H{"error": "输出文件不在SMB共享目录内，无法通过SMB模式访问"})
-			return
+		} else {
+			c.JSON(500, gin.H{"error": err.Error()})
 		}
+		return
 	}
 
 	var server Server
