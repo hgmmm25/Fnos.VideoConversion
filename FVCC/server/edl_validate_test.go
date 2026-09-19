@@ -15,6 +15,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"fvcc/internal/security"
 )
 
 func TestD02PathValidatorValidateRel(t *testing.T) {
@@ -29,7 +31,7 @@ func TestD02PathValidatorValidateRel(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte(root), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pv := NewPathValidator(false, cfg)
+	pv := security.NewPathValidator(false, cfg)
 
 	abs, e := pv.ValidateRel(root, "videos/a.mp4", edlAllowedSourceExt)
 	if e != nil {
@@ -50,7 +52,7 @@ func TestD02PathValidatorValidateRel(t *testing.T) {
 		t.Fatal("非白名单扩展名必须被拒")
 	}
 
-	pvEmpty := NewPathValidator(false, filepath.Join(t.TempDir(), "missing.txt"))
+	pvEmpty := security.NewPathValidator(false, filepath.Join(t.TempDir(), "missing.txt"))
 	if _, e := pvEmpty.ValidateRel(root, "videos/a.mp4", nil); e == nil || e.Code != errCodeAssetNotInRoot {
 		t.Fatalf("未配置授权目录时必须拒绝（%s），实际 %v", errCodeAssetNotInRoot, e)
 	}
@@ -78,7 +80,7 @@ func TestD02PathValidatorPrefixBoundary(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte(allow), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pv := NewPathValidator(false, cfg)
+	pv := security.NewPathValidator(false, cfg)
 
 	if err := pv.Validate(inside); err != nil {
 		t.Fatalf("授权目录内的文件应通过：%v", err)
@@ -119,7 +121,7 @@ func newD02RenderEnv(t *testing.T) (r *gin.Engine, s *Store, srcDir, destDir, ro
 	cfg.ExportRoot = toPOSIXRoot(destDir)
 	s.SaveSettings(cfg)
 
-	pv := NewPathValidator(false, "")
+	pv := security.NewPathValidator(false, "")
 	pv.SetExtraPaths([]string{root})
 	h := &Handlers{store: s, hub: NewHub(), pv: pv}
 	return newRouter(Config{}, h), s, srcDir, destDir, root

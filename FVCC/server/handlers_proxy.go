@@ -27,6 +27,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fvcc/internal/media"
 	"fvcc/internal/security"
 	"fvcc/logger"
 )
@@ -89,7 +90,7 @@ func (h *Handlers) handleProxyRequest(c *gin.Context) {
 	}
 	// 代理只针对源素材生成（04 §3.1）；root 缺省即 src。
 	// 修复①：root 亦接受「授权素材根本地绝对路径」，剪辑页据此对各授权目录下的素材生成代理。
-	root := normalizeMediaRoot(in.Root)
+	root := media.NormalizeMediaRoot(in.Root)
 	if root == "proxy" || root == "dest" {
 		edlErr(c, http.StatusBadRequest, errCodeRootUnknown, "代理仅支持对源素材生成（root=src）",
 			gin.H{"field": "root", "root": root})

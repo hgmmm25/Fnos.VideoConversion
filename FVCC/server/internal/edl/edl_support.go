@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-
-	"fvcc/internal/security"
 )
 
 // ===== 错误码（03 §5.3）=====
@@ -108,8 +106,8 @@ func parseTimecode(tc string) (int64, error) {
 
 // edlErr 统一失败响应。
 func edlErr(c *gin.Context, status int, code, msg string, detail gin.H) {
-	// D-04：拒绝类错误码集中记账（07 §7）
-	security.AuditRejection(c, code)
+	// D-04：拒绝类错误码集中记账（07 §7）——经根包注入的审计钩子转发
+	auditRejection(c, code)
 	body := gin.H{"ok": false, "code": code, "msg": msg}
 	if detail != nil {
 		body["detail"] = detail

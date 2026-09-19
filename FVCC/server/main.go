@@ -154,7 +154,7 @@ func main() {
 	if cfg.DataDir != "" {
 		envFile = filepath.Join(cfg.DataDir, "accessible_paths.env")
 	}
-	pv := NewPathValidator(cfg.DevMode, envFile)
+	pv := security.NewPathValidator(cfg.DevMode, envFile)
 	// 从已保存的设置中加载手动配置的授权目录
 	pv.SetExtraPaths(store.GetSettings().AccessiblePaths)
 	hub := NewHub()

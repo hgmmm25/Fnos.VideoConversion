@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -47,7 +46,7 @@ type MediaProber interface {
 type Handlers struct {
 	store     *Store
 	probe     MediaProber
-	pv        *PathValidator
+	pv        *security.PathValidator
 	remote    *RemoteClient
 	hub       *Hub
 	scheduler *Scheduler
@@ -1021,9 +1020,7 @@ func (h *Handlers) pauseTask(c *gin.Context) {
 	}
 
 	if h.scheduler != nil {
-		if cancel, ok := h.scheduler.cancelMap.LoadAndDelete(id); ok {
-			cancel.(context.CancelFunc)()
-		}
+		h.scheduler.CancelUpload(id)
 	}
 
 	server, _ := h.store.GetServer(t.ServerID)
@@ -1088,9 +1085,7 @@ func (h *Handlers) cancelTask(c *gin.Context) {
 	}
 
 	if h.scheduler != nil {
-		if cancel, ok := h.scheduler.cancelMap.LoadAndDelete(id); ok {
-			cancel.(context.CancelFunc)()
-		}
+		h.scheduler.CancelUpload(id)
 	}
 
 	server, _ := h.store.GetServer(t.ServerID)
@@ -1114,7 +1109,7 @@ func (h *Handlers) cancelTask(c *gin.Context) {
 	logger.Info("task", "cancelled: id=%s file=%s", t.ID, t.FileName)
 
 	if h.scheduler != nil {
-		h.scheduler.cleanupIncompleteFiles(t)
+		h.scheduler.CleanupIncompleteFiles(t)
 	}
 
 	c.JSON(200, t)

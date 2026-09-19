@@ -10,7 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"fvcc/internal/edl"
+	"fvcc/internal/security"
 )
+
+// init 注入拒绝类错误码审计钩子（D-04，07 §7）：edl 校验域经此回调完成审计记账，
+// 避免校验域反向依赖安全审计域形成 import cycle。
+func init() {
+	edl.SetAuditRejectionHook(security.AuditRejection)
+}
 
 // 错误码转发（03 §5.3）
 const (

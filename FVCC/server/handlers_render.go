@@ -177,7 +177,7 @@ func (h *Handlers) renderEDLProject(c *gin.Context) {
 			gin.H{"field": "outputName"})
 		return
 	}
-	if h.pv != nil && localDest != "" && h.pv.hasAuthorizedRootFor(localDest) {
+	if h.pv != nil && localDest != "" && h.pv.HasAuthorizedRootFor(localDest) {
 		if _, e := h.pv.ValidateRel(localDest, output, nil); e != nil {
 			edlErrFromValidation(c, "destRoot", e)
 			return
@@ -466,7 +466,7 @@ func (h *Handlers) precheckAssets(localSource string, clips []EDLClip) (string, 
 	if localSource == "" {
 		return "", 0, nil
 	}
-	strict := h.pv != nil && h.pv.hasAuthorizedRootFor(localSource)
+	strict := h.pv != nil && h.pv.HasAuthorizedRootFor(localSource)
 	for i := range clips {
 		rel := clips[i].File
 		if rel == "" {
