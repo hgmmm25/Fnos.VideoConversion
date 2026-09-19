@@ -28,3 +28,5 @@ func RunningCount() int32 { return media.RunningCount() }
 
 // AddRunningCount 原子增减本地转码运行计数（转发至 internal/media）。
 func AddRunningCount(delta int32) int32 { return media.AddRunningCount(delta) }
+
+// SetProxyProbe 注入代理校验探测通道（转发至 internal/media.ProxyWorkflow；单测/装配入口）。

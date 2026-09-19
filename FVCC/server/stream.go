@@ -12,24 +12,17 @@ package main
 // FVCC/FVCS 为独立二进制、无共享包，故复制实现而非跨机复用），并补齐 ETag/Last-Modified/If-Range。
 
 import (
-	"bytes"
-	"context"
-	"crypto/rand"
-	"crypto/sha1"
-	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"fvcc/internal/media"
 	"fvcc/logger"
 
 	"github.com/gin-gonic/gin"
@@ -52,52 +45,19 @@ const (
 	streamGlobalMax      = 64                 // 全局并行 Range 上限
 	streamPerFileMax     = 4                  // 单文件并行 Range 上限
 	streamCopyChunk      = 256 * 1024         // 分段写出块大小
-	thumbWidth           = 320                // 缩略图宽
-	thumbHeight          = 180                // 缩略图高
-	thumbQuality         = 3                  // ffmpeg -q:v（≈ JPEG 质量 80）
+	thumbWidth           = media.ThumbWidth    // 缩略图宽（04 §2.4）
+	thumbHeight          = media.ThumbHeight   // 缩略图高
+	thumbQuality         = media.ThumbQuality  // ffmpeg -q:v（≈ JPEG 质量 80）
 	thumbGlobalMax       = 2                  // 抽帧全局并发
 	thumbQueueTimeout    = 30 * time.Second   // 抽帧排队超时
-	thumbGenTimeout      = 30 * time.Second   // 单次抽帧超时
+	thumbGenTimeout      = media.ThumbGenTimeout // 单次抽帧超时
 	thumbHTTPMaxAge      = 7 * 24 * time.Hour // 缩略图浏览器缓存（键含 mtime/size）
-	maxMediaRelPathLen   = 512                // 相对路径长度上限
+	maxMediaRelPathLen   = media.MaxMediaRelPathLen // 相对路径长度上限
 )
 
 // streamErr 统一失败响应（03 §4.1：{ok:false, code, msg}）。
 func streamErr(c *gin.Context, status int, code, msg string) {
 	c.JSON(status, gin.H{"ok": false, "code": code, "msg": msg})
-}
-
-// normalizeMediaRoot root 参数归一化（空 → src，04 §2.6）。
-func normalizeMediaRoot(root string) string {
-	r := strings.TrimSpace(root)
-	if r == "" {
-		return "src"
-	}
-	return r
-}
-
-// sanitizeRelPath 相对路径四层校验（04 §2.6）：拒绝 NUL/控制字符 → 拒绝反斜杠/绝对路径
-// → path.Clean 后拒绝 .. 越界 → 长度上限。成功返回相对当前根的 POSIX 路径。
-func sanitizeRelPath(raw string) (string, string) {
-	if raw == "" || len(raw) > maxMediaRelPathLen {
-		return "", errCodeAssetNotInRoot
-	}
-	for _, r := range raw {
-		if r == 0 || r < 0x20 || r == 0x7f {
-			return "", errCodeAssetNotInRoot
-		}
-	}
-	if strings.Contains(raw, `\`) || strings.HasPrefix(raw, "/") {
-		return "", errCodeAssetNotInRoot
-	}
-	clean := path.Clean(raw)
-	if clean == "." || clean == ".." || clean == "/" || strings.HasPrefix(clean, "../") {
-		return "", errCodeAssetNotInRoot
-	}
-	if len(clean) > 255 {
-		return "", errCodeAssetNotInRoot
-	}
-	return clean, ""
 }
 
 // mediaErrStatus 错误码 → HTTP 状态（04 §2.2）。
@@ -171,15 +131,6 @@ func newTicketStore() *ticketStore {
 }
 
 // randHex16 生成 16 字节随机数的 32 位十六进制串（tk_<32hex>）。
-func randHex16() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		// crypto/rand 失败属系统级异常，退化为时间派生值（仍不可预测地唯一）
-		return fmt.Sprintf("%032x", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)
-}
-
 // issue 发放票据；超出单 IP 配额返回 ok=false（04 §2.3：单 IP 60s ≤ 60 个）。
 func (ts *ticketStore) issue(relPath, root, ip string) (*streamTicket, bool) {
 	now := ts.now()
@@ -319,111 +270,6 @@ func (l *streamLimiter) release(key string) {
 	}
 }
 
-// ===== MIME（04 §2.2：按扩展名映射，mp4 → video/mp4）=====
-
-var streamMimeTypes = map[string]string{
-	".mp4":  "video/mp4",
-	".m4v":  "video/mp4",
-	".mov":  "video/quicktime",
-	".mkv":  "video/x-matroska",
-	".webm": "video/webm",
-	".avi":  "video/x-msvideo",
-	".mxf":  "application/mxf",
-	".ts":   "video/mp2t",
-	".mp3":  "audio/mpeg",
-	".m4a":  "audio/mp4",
-	".aac":  "audio/aac",
-	".wav":  "audio/wav",
-	".flac": "audio/flac",
-}
-
-func mimeByExt(name string) string {
-	ext := strings.ToLower(filepath.Ext(name))
-	if m, ok := streamMimeTypes[ext]; ok {
-		return m
-	}
-	return "application/octet-stream"
-}
-
-// ===== Range 解析（04 §2.2）=====
-
-// parseRangeHeader 解析单区间 Range 头。
-// 返回 hasRange=false 表示无 Range（或语法非法，按忽略处理 → 200 全量）；
-// hasRange=true 且 satisfiable=false 表示范围不可满足 → 416。
-func parseRangeHeader(header string, size int64) (start, end int64, hasRange, satisfiable bool) {
-	h := strings.TrimSpace(header)
-	if h == "" || !strings.HasPrefix(h, "bytes=") {
-		return 0, 0, false, false
-	}
-	spec := strings.TrimPrefix(h, "bytes=")
-	if i := strings.Index(spec, ","); i >= 0 { // 多区间只服务第一段（浏览器播放器实际只发单区间）
-		spec = spec[:i]
-	}
-	spec = strings.TrimSpace(spec)
-	dash := strings.Index(spec, "-")
-	if dash < 0 {
-		return 0, 0, false, false
-	}
-	startStr, endStr := strings.TrimSpace(spec[:dash]), strings.TrimSpace(spec[dash+1:])
-
-	switch {
-	case startStr == "" && endStr == "": // "bytes=-"
-		return 0, 0, false, false
-	case startStr == "": // 后缀区间 "bytes=-N"
-		n, err := strconv.ParseInt(endStr, 10, 64)
-		if err != nil || n <= 0 {
-			return 0, 0, false, false
-		}
-		if n > size {
-			n = size
-		}
-		if size == 0 {
-			return 0, 0, true, false
-		}
-		return size - n, size - 1, true, true
-	default:
-		s, err := strconv.ParseInt(startStr, 10, 64)
-		if err != nil || s < 0 {
-			return 0, 0, false, false
-		}
-		if s >= size {
-			return 0, 0, true, false
-		}
-		e := size - 1
-		if endStr != "" {
-			ev, err := strconv.ParseInt(endStr, 10, 64)
-			if err != nil || ev < s {
-				return 0, 0, false, false
-			}
-			if ev < e {
-				e = ev
-			}
-		}
-		return s, e, true, true
-	}
-}
-
-// etagFor 生成 "size-mtime" 派生的强 ETag（04 §2.2 要点 3）。
-func etagFor(size int64, mtime time.Time) string {
-	sum := sha1.Sum([]byte(strconv.FormatInt(size, 10) + "-" + strconv.FormatInt(mtime.UnixNano(), 10)))
-	return `"` + hex.EncodeToString(sum[:8]) + `"`
-}
-
-// ifRangeMatches If-Range 校验：素材被替换时不返回脏数据（04 §2.2 要点 3）。
-func ifRangeMatches(ifRange, etag string, mtime time.Time) bool {
-	v := strings.TrimSpace(ifRange)
-	if v == "" {
-		return true
-	}
-	if strings.HasPrefix(v, `"`) || strings.HasPrefix(v, "W/") {
-		return v == etag
-	}
-	if t, err := http.ParseTime(v); err == nil {
-		return t.Unix() == mtime.Truncate(time.Second).Unix()
-	}
-	return false
-}
-
 // ===== POST /api/stream/ticket（04 §2.3）=====
 
 type streamTicketInput struct {
@@ -438,8 +284,8 @@ func (h *Handlers) handleStreamTicket(c *gin.Context) {
 		streamErr(c, http.StatusBadRequest, errCodeEDLInvalid, "请求体解析失败: "+err.Error())
 		return
 	}
-	root := normalizeMediaRoot(in.Root)
-	clean, code := sanitizeRelPath(strings.TrimSpace(in.Path))
+	root := media.NormalizeMediaRoot(in.Root)
+	clean, code := media.SanitizeRelPath(strings.TrimSpace(in.Path))
 	if code != "" {
 		streamErr(c, http.StatusForbidden, code, "素材路径不在授权范围内")
 		return
@@ -489,8 +335,8 @@ func (h *Handlers) handleStream(c *gin.Context) {
 		return
 	}
 
-	root := normalizeMediaRoot(c.Query("root"))
-	clean, code := sanitizeRelPath(strings.TrimSpace(c.Query("path")))
+	root := media.NormalizeMediaRoot(c.Query("root"))
+	clean, code := media.SanitizeRelPath(strings.TrimSpace(c.Query("path")))
 	if code != "" {
 		streamErr(c, http.StatusForbidden, code, "素材路径不在授权范围内")
 		return
@@ -528,19 +374,19 @@ func (h *Handlers) handleStream(c *gin.Context) {
 
 	size := fi.Size()
 	mtime := fi.ModTime()
-	etag := etagFor(size, mtime)
+	etag := media.EtagFor(size, mtime)
 
-	c.Header("Content-Type", mimeByExt(abs))
+	c.Header("Content-Type", media.MimeByExt(abs))
 	c.Header("Accept-Ranges", "bytes")
 	c.Header("ETag", etag)
 	c.Header("Last-Modified", mtime.UTC().Format(http.TimeFormat))
 	c.Header("Cache-Control", "private, max-age=0, must-revalidate")
 
 	rangeHdr := c.GetHeader("Range")
-	if !ifRangeMatches(c.GetHeader("If-Range"), etag, mtime) {
+	if !media.IfRangeMatches(c.GetHeader("If-Range"), etag, mtime) {
 		rangeHdr = "" // 素材已替换：忽略 Range，返回最新全量（防脏数据）
 	}
-	start, end, hasRange, satisfiable := parseRangeHeader(rangeHdr, size)
+	start, end, hasRange, satisfiable := media.ParseRangeHeader(rangeHdr, size)
 	if hasRange && !satisfiable {
 		c.Header("Content-Range", fmt.Sprintf("bytes */%d", size))
 		c.Status(http.StatusRequestedRangeNotSatisfiable)
@@ -572,12 +418,6 @@ func (h *Handlers) handleStream(c *gin.Context) {
 	}
 	// 不缓存到内存：直接 Seek + 定长流式写出，块大小 256 KB（04 §2.2 要点 2）
 	_, _ = io.CopyBuffer(c.Writer, io.LimitReader(f, length), make([]byte, streamCopyChunk))
-}
-
-// hashForLog 日志用的路径哈希（04 §2.2 要点 4：不记录完整绝对路径）。
-func hashForLog(relPath string) string {
-	sum := sha1.Sum([]byte(relPath))
-	return hex.EncodeToString(sum[:8])
 }
 
 // ===== GET /api/thumb（04 §2.4）=====
@@ -619,31 +459,9 @@ func (tc *thumbCache) do(key string, fn func() (string, error)) (string, error) 
 	return call.file, call.err
 }
 
-// thumbCacheKey 缓存键 sha1(root|path|t|mtime|size)（04 §2.4）。
+// thumbCacheKey 缓存键 sha1(root|path|t|mtime|size)（04 §2.4，实现收口至 internal/media）。
 func thumbCacheKey(root, relPath string, tMs int64, mtime time.Time, size int64) string {
-	raw := fmt.Sprintf("%s|%s|%d|%d|%d", root, relPath, tMs, mtime.UnixNano(), size)
-	sum := sha1.Sum([]byte(raw))
-	return hex.EncodeToString(sum[:16]) + ".jpg"
-}
-
-// buildThumbArgs 构造抽帧命令参数（04 §2.4：320×180 等比缩放后居中裁剪，质量 80）。
-func buildThumbArgs(src, dst string, atMs int64) []string {
-	sec := float64(atMs) / 1000.0
-	if sec < 0 {
-		sec = 0
-	}
-	vf := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d",
-		thumbWidth, thumbHeight, thumbWidth, thumbHeight)
-	return []string{
-		"-hide_banner", "-nostdin", "-y",
-		"-ss", strconv.FormatFloat(sec, 'f', 3, 64),
-		"-i", src,
-		"-frames:v", "1",
-		"-vf", vf,
-		"-q:v", strconv.Itoa(thumbQuality),
-		"-f", "image2",
-		dst,
-	}
+	return media.ThumbCacheKey(root, relPath, tMs, mtime, size)
 }
 
 // h.ffmpegPath 返回抽帧用 ffmpeg 路径（可注入，便于单测）。
@@ -654,35 +472,9 @@ func (h *Handlers) ffmpegPath() string {
 	return findFFmpeg()
 }
 
-// generateThumb 调用 ffmpeg 抽帧并原子落盘。
+// generateThumb 调用 ffmpeg 抽帧并原子落盘（实现收口至 internal/media.GenerateThumb）。
 func (h *Handlers) generateThumb(src, dst string, atMs int64) error {
-	ffmpeg := h.ffmpegPath()
-	if ffmpeg == "" {
-		return fmt.Errorf("ffmpeg 不可用")
-	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	tmp := dst + ".tmp" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	ctx, cancel := context.WithTimeout(context.Background(), thumbGenTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, ffmpeg, buildThumbArgs(src, tmp, atMs)...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("抽帧失败: %v: %s", err, trimForLog(stderr.String(), 200))
-	}
-	fi, err := os.Stat(tmp)
-	if err != nil || fi.Size() == 0 {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("抽帧输出为空")
-	}
-	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return media.GenerateThumb(h.ffmpegPath(), src, dst, atMs)
 }
 
 func trimForLog(s string, n int) string {
@@ -693,34 +485,15 @@ func trimForLog(s string, n int) string {
 	return s[:n]
 }
 
-// transparentJPEG 1×1 透明 JPEG 占位（04 §2.4：抽帧失败返回 200 + 占位，禁止 5xx）。
-const transparentJPEGBase64 = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=="
-
-var (
-	transparentJPEGOnce  sync.Once
-	transparentJPEGBytes []byte
-)
-
-func transparentJPEG() []byte {
-	transparentJPEGOnce.Do(func() {
-		b, err := base64.StdEncoding.DecodeString(transparentJPEGBase64)
-		if err != nil || len(b) == 0 {
-			b = []byte{}
-		}
-		transparentJPEGBytes = b
-	})
-	return transparentJPEGBytes
-}
-
 // writePlaceholderThumb 失败兜底：200 + 1×1 透明 JPEG（不缓存）。
 func writePlaceholderThumb(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
-	c.Data(http.StatusOK, "image/jpeg", transparentJPEG())
+	c.Data(http.StatusOK, "image/jpeg", media.TransparentJPEG())
 }
 
 func (h *Handlers) handleThumb(c *gin.Context) {
-	root := normalizeMediaRoot(c.Query("root"))
-	clean, code := sanitizeRelPath(strings.TrimSpace(c.Query("path")))
+	root := media.NormalizeMediaRoot(c.Query("root"))
+	clean, code := media.SanitizeRelPath(strings.TrimSpace(c.Query("path")))
 	if code != "" {
 		streamErr(c, http.StatusForbidden, code, "素材路径不在授权范围内")
 		return

@@ -17,6 +17,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"fvcc/internal/security"
 )
 
 type m4Env struct {
@@ -38,7 +40,7 @@ func newM4Env(t *testing.T) *m4Env {
 	}
 	st.SaveSettings(Settings{VideoRoot: toPOSIXRoot(root)})
 
-	pv := NewPathValidator(false, "")
+	pv := security.NewPathValidator(false, "")
 	extra := []string{root}
 	if realRoot, err := filepath.EvalSymlinks(root); err == nil && realRoot != root {
 		extra = append(extra, realRoot)
