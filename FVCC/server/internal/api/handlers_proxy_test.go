@@ -1,4 +1,4 @@
-package main
+package api
 
 // M4 代理提交与素材扫描验收测试：
 //  1) POST /proxy 契约（04 §3.2）：入参 {assetId,file,root?}，出参 {taskId,status,proxyFile}；

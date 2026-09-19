@@ -1,4 +1,4 @@
-package main
+package api
 
 // B-01 验收测试（06 §2 持久化模型）：
 //  1) 旧库（version 1，无 task_type）加载后列迁移成功且幂等，重启不改写文件；

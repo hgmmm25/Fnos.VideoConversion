@@ -1,4 +1,4 @@
-package main
+package api
 
 // P2-1 B轮：MediaProber 测试桩（随 proxy_flow_test.go 迁入 internal/media 后，
 // 根包 M4 网关验收测试（stream_test.go）仍需注入探测通道，此处按根包

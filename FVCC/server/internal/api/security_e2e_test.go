@@ -1,4 +1,4 @@
-package main
+package api
 
 // D-04 端到端安全链验收（10 §3「下一步」E2E-08）：
 // 在「完整生产路由（含 securityHeaders / 鉴权限流 / 渲染提交限流）+ D-02 严格闸门环境 +

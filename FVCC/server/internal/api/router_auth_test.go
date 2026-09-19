@@ -1,4 +1,4 @@
-package main
+package api
 
 // B-09 权限中间件验收测试（08 §4.2 / 07 §4.2、§7、§9 S10）：
 //  1) 写操作（/render、DELETE 类）非 admin → 403，且响应体为 03 §4.1 统一失败契约（E_FORBIDDEN）；

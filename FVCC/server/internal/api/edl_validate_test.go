@@ -1,4 +1,4 @@
-package main
+package api
 
 // D-02 测试：FVCC 侧 EDL 白名单校验（集成部分）。
 // P2-1 B轮：纯校验单测已迁入 internal/edl；本文件保留依赖根包装配的集成用例。

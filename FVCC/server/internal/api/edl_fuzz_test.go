@@ -1,4 +1,4 @@
-package main
+package api
 
 // P2-2 测试补强（2026-09-17）：EDL 校验模糊测试。
 // fuzz 目标覆盖三个纯校验入口：

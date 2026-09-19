@@ -1,4 +1,4 @@
-package main
+package api
 
 // P2-1 可观测性端点验证（2026-09-17）：
 // 1) GET /metrics 扩展字段（activeTasks/queuedTasks/failedTasks/completedTotal/

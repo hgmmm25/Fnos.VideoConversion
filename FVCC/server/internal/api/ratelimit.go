@@ -1,4 +1,4 @@
-package main
+package api
 
 // 安全响应头与限流中间件（07 §4.4 / §4.5，D-04）
 //

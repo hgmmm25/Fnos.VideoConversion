@@ -1,4 +1,4 @@
-package main
+package api
 
 // 预览网关/代理工作流模块（M4）：代理提交侧，见 WebVideoEditor_Design/04-预览网关与代理工作流设计.md §3.2 / §3.5。
 //

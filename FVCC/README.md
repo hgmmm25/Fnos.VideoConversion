@@ -6,40 +6,23 @@
 
 ```
 FVCC/
-├── server/              # Go 后端（package main，单模块 fvcc）
-│   ├── main.go              # 入口与路由挂载
-│   ├── router.go            # 路由注册（含 auth 中间件）
-│   ├── handlers.go          # HTTP 处理器组（任务/节点/设置）
-│   ├── handlers_edl.go      # EDL 任务处理器
-│   ├── handlers_proxy.go    # 代理/票据处理器
-│   ├── handlers_render.go   # 渲染进度/控制处理器
-│   ├── store.go             # JSON 文件存储（任务/设置/Profile）
-│   ├── store_edl.go         # EDL 任务持久化
-│   ├── store_proxy.go       # 代理状态持久化
-│   ├── scheduler.go         # 任务调度（选机、健康分、熔断）
-│   ├── node_select.go       # 节点选择策略
-│   ├── applyjson.go         # Profile 反射白名单更新 helper（P1-1）
-│   ├── smb_validate.go      # SMB 路径校验 helper（P1-2）
-│   ├── crypto.go            # 凭据落盘加密与 API 脱敏（P0-1）
-│   ├── security.go          # 安全校验与凭据管理
-│   ├── security_audit.go    # 审计日志（P2-8）
-│   ├── trash.go             # 回收站（P2-5）
-│   ├── edl_validate.go      # EDL 载荷校验（与 FVCS 双实现）
-│   ├── ffprobe.go           # 素材探测（ffprobe）
-│   ├── gateway.go           # 预览网关
-│   ├── proxy_flow.go        # 代理生成流程
-│   ├── localtranscode.go    # 本地转码（含 windows 系统调用适配）
-│   ├── ratelimit.go         # 限流
-│   ├── remote.go            # FVCS 远程连接（WSS 数据面）
-│   ├── stream.go            # /stream 票据预览流
-│   ├── ws.go / ws_limit.go  # WebSocket 推送与限流
-│   ├── apierr.go            # API 错误码
-│   ├── models.go            # 数据模型
-│   ├── version.go           # 版本信息
+├── server/              # Go 后端（单模块 fvcc）
+│   ├── main.go              # 入口与装配（组件注入、优雅退出）
+│   ├── internal/            # 分层内部包（P2-1 后端分层收口）
+│   │   ├── api/             # HTTP 处理器组/路由/票据流/缩略图/回收站/限流（handlers*、router、stream、trash、security_roots、hashutil、ratelimit）
+│   │   ├── edl/             # EDL 载荷校验（与 FVCS 双实现）
+│   │   ├── media/           # ffprobe 探测 / 本地转码 / 代理流程 / 流媒体与缩略图工具
+│   │   ├── node/            # 节点选择策略
+│   │   ├── protocol/        # API 错误码与 JSON 应用 helper
+│   │   ├── remote/          # FVCS 远程连接（WSS 数据面）与渲染分发
+│   │   ├── scheduler/       # 任务调度（选机、健康分、熔断）
+│   │   ├── security/        # 凭据加密/审计/网关鉴权/限流核心/路径校验
+│   │   ├── store/           # JSON 文件存储 + model 数据模型域
+│   │   ├── version/         # 版本信息（go:embed，VERSION 单一来源）
+│   │   └── ws/              # WebSocket 推送与限流
 │   ├── logger/              # 日志
 │   ├── smbshare/            # SMB 共享能力
-│   ├── VERSION              # 版本号（与 manifest/package.json 三处同步）
-│   └── *_test.go            # 单测（后端覆盖率基线约 56%）
+│   └── go.mod / go.sum
 ├── ui-src/              # 前端源码（Vite + TS，零框架 el() 手工 DOM）
 │   ├── DESIGN.md            # 设计契约（Named Rules + check:design 门禁）
 │   ├── PRODUCT.md           # 产品定位与反参照

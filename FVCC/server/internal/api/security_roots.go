@@ -1,4 +1,4 @@
-package main
+package api
 
 // P2-1 B轮：本文件保留 M4 预览网关三根解析（04 §2.4、§2.6）中与 Handlers
 // 组装逻辑耦合的根解析方法；三根解析实现已随 media 域迁入

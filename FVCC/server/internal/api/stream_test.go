@@ -1,4 +1,4 @@
-package main
+package api
 
 // M4 预览网关验收测试（04 §2.2 Range / §2.3 票据 / §2.4 缩略图 / §2.6 三根白名单）：
 //  1) 票据签发：路径越界 / 素材缺失拒绝，正常签发 tk_<32hex> 且带 expiresAt；

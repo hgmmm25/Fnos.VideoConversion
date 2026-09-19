@@ -1,4 +1,4 @@
-package main
+package api
 
 // D-04 验收测试（FVCC 侧审计与告警）：07 §7 拒绝记账 + 突增告警。
 //  1) EDL 域拒绝类错误码（E_EDL_INVALID / E_PAYLOAD_INVALID / E_ASSET_NOT_IN_ROOT）经 edlErr 集中写 audit_log；
@@ -20,14 +20,17 @@ import (
 	"fvcc/internal/security"
 )
 
+// testAuditStore 审计测试的包级 store 引用（替代原 main 包 globalStore，测试时 main 不运行）。
+var testAuditStore *Store
+
 // withGlobalStore 在测试期间把审计目标指向指定 store。
 func withGlobalStore(t *testing.T, s *Store) {
 	t.Helper()
-	prev := globalStore
-	globalStore = s
+	prev := testAuditStore
+	testAuditStore = s
 	security.SetAuditSink(s.AppendAudit)
 	t.Cleanup(func() {
-		globalStore = prev
+		testAuditStore = prev
 		security.SetAuditSink(nil)
 	})
 }

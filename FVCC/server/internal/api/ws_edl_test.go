@@ -1,4 +1,4 @@
-package main
+package api
 
 // B-07 验收测试之一（06 §6 进度与事件聚合）：
 //  1) BroadcastTaskUpdateFull：500ms 聚合节流（窗口内不追加发送、到期补发最新值）、

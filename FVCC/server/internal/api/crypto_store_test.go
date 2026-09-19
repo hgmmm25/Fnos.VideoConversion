@@ -1,4 +1,4 @@
-package main
+package api
 
 // P0-1 凭据加密 Store 集成测试：落盘密文与读盘解密、旧明文自动迁移。
 // （crypto 纯单元测试已随实现迁入 internal/security，本文件随 store 迁移。）

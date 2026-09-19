@@ -1,4 +1,4 @@
-package main
+package api
 
 // B-04：渲染提交（POST /app/fvcc/api/edl/projects/:id/render）。
 //

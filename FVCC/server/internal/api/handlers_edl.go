@@ -1,4 +1,4 @@
-package main
+package api
 
 // B-03：EDL 项目 CRUD（03 §4.2 / §4.3）。
 //

@@ -1,4 +1,4 @@
-package main
+package api
 
 // B-04 验收测试（03 §4.4 / §5、06 §4.4 / §5.3、07 §3.5）：
 //  1) 提交契约：200 + {taskId,status,serverId,output,totalMs,fastCopyAllowed}，任务入队 QUEUE 并冻结 rev；

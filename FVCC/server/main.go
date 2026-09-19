@@ -27,7 +27,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fvcc/internal/api"
+	"fvcc/internal/media"
+	remotepkg "fvcc/internal/remote"
+	"fvcc/internal/scheduler"
 	"fvcc/internal/security"
+	"fvcc/internal/store"
+	"fvcc/internal/store/model"
 	"fvcc/internal/version"
 	"fvcc/internal/ws"
 	"fvcc/logger"
@@ -35,23 +41,13 @@ import (
 
 const (
 	appName  = "fvcc"
-	gwPrefix = "/app/fvcc"
 	sockName = "app.sock"
 )
 
 // AppVer 由 internal/version 从 VERSION 文件注入（go:embed），勿在此另写版本字面量。
 
-// Config 保存服务运行配置。
-type Config struct {
-	SockPath string // Unix Socket 路径 (生产)
-	UIDir    string // 前端静态资源目录
-	DataDir  string // 数据目录
-	DevMode  bool   // 是否本地开发模式
-	DevAddr  string // 开发模式 TCP 监听地址
-}
-
-func loadConfig() Config {
-	c := Config{
+func loadConfig() api.Config {
+	c := api.Config{
 		SockPath: os.Getenv("FVCC_SOCK"),
 		UIDir:    os.Getenv("FVCC_UIDIR"),
 		DataDir:  os.Getenv("FVCC_DATADIR"),
@@ -65,7 +61,7 @@ func loadConfig() Config {
 }
 
 // applyDevDefaults 填充开发模式下的默认值，便于直接 `go run . -dev`。
-func applyDevDefaults(c *Config) {
+func applyDevDefaults(c *api.Config) {
 	if !c.DevMode {
 		return
 	}
@@ -95,9 +91,9 @@ func absPath(p string) string {
 
 // 全局组件
 var (
-	globalHub    *Hub
-	globalStore  *Store
-	globalRemote *RemoteClient
+	globalHub    *ws.Hub
+	globalStore  *store.Store
+	globalRemote *remotepkg.RemoteClient
 )
 
 func main() {
@@ -122,7 +118,7 @@ func main() {
 	}
 
 	// 初始化组件
-	store := NewStore(cfg.DataDir)
+	store := store.NewStore(cfg.DataDir)
 	if err := store.Load(); err != nil {
 		logger.Fatal("main", "load store: %v", err)
 	}
@@ -149,7 +145,7 @@ func main() {
 	logger.SetLogLevel(logLevel)
 	logger.Info("main", "log level set to %s", settings.LogLevel)
 
-	probe := NewFFprobe()
+	probe := media.NewFFprobe()
 	envFile := ""
 	if cfg.DataDir != "" {
 		envFile = filepath.Join(cfg.DataDir, "accessible_paths.env")
@@ -157,21 +153,21 @@ func main() {
 	pv := security.NewPathValidator(cfg.DevMode, envFile)
 	// 从已保存的设置中加载手动配置的授权目录
 	pv.SetExtraPaths(store.GetSettings().AccessiblePaths)
-	hub := NewHub()
+	hub := ws.NewHub()
 	globalHub = hub
 	// P2-1 阶段 B：WS 快照注入（internal/ws 的 sendTaskSnapshot 经此取任务列表）。
 	ws.TaskSnapshotProvider = globalStore.GetTasks
-	remote := NewRemoteClient()
+	remote := remotepkg.NewRemoteClient()
 	globalRemote = remote
 
 	// 启动调度器
-	scheduler := NewScheduler(store, remote, hub, pv)
+	scheduler := scheduler.NewScheduler(store, remote, hub, pv)
 	// B-06 装配：渲染下发通道（remote.go 实现 RenderDispatcher）+ 共享根解析所需的设置读取器
 	remote.SetSettingsProvider(store.GetSettings)
 	scheduler.SetRenderDispatcher(remote)
 
 	// B-07 装配：FVCS 经 WS 回传的进度统一交给调度侧（反查任务 → 落库 stage/seg → 500ms 聚合广播）
-	remote.OnPushProgress = func(serverID string, p RemoteProgress) {
+	remote.OnPushProgress = func(serverID string, p remotepkg.RemoteProgress) {
 		scheduler.HandleRemoteProgress(serverID, p)
 	}
 	remote.OnDisconnect = func(serverID string) {
@@ -181,15 +177,15 @@ func main() {
 		scheduler.BroadcastNodeStatus(serverID, "offline", scheduler.HealthScoreOf(serverID), "WS 连接断开")
 	}
 	// B-08 装配：节点 Hello 能力上报 → node_caps 落库 + node_status 广播（06 §5.1）
-	remote.OnPushHello = func(serverID string, caps NodeCaps) {
+	remote.OnPushHello = func(serverID string, caps model.NodeCaps) {
 		scheduler.ApplyNodeHello(caps, time.Now())
 	}
 	go scheduler.Start()
 
 	// 构建路由
-	h := &Handlers{store: store, probe: probe, pv: pv, remote: remote, hub: hub, scheduler: scheduler}
+	h := api.NewHandlers(store, probe, pv, remote, hub, scheduler)
 	gin.SetMode(gin.ReleaseMode)
-	router := newRouter(cfg, h)
+	router := api.NewRouter(cfg, h)
 
 	srv := &http.Server{
 		Handler:           router,
@@ -254,7 +250,7 @@ func isLoopbackAddr(addr string) bool {
 }
 
 // buildListener 根据模式创建 Unix Socket 或 TCP 监听器。
-func buildListener(cfg Config) (net.Listener, error) {
+func buildListener(cfg api.Config) (net.Listener, error) {
 	if cfg.DevMode {
 		return net.Listen("tcp", cfg.DevAddr)
 	}

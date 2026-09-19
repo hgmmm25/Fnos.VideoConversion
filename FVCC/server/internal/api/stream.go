@@ -1,4 +1,4 @@
-package main
+package api
 
 // M4：预览网关（04 §2 与 §7 改动点索引）。
 //

@@ -1,4 +1,4 @@
-package main
+package api
 
 // trash_handlers.go — P2-5 删除回收站化的 HTTP handler 层。
 //
