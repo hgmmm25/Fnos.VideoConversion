@@ -1,6 +1,6 @@
-package main
+package node
 
-// B-08：渲染节点选机 / 健康分 / 熔断 / 能力落库（06 §5.1~§5.4）。
+// P2-1 B轮：渲染节点选机 / 健康分 / 熔断 / 能力落库（06 §5.1~§5.4）。
 //
 // 设计要点：
 //  1. 选机（§5.3）：显式 serverId 优先（离线/维护→E_NODE_OFFLINE 冷却，忙→排队不换机）；
@@ -13,6 +13,10 @@ package main
 //
 // 指标窗口（尝试/失败/卡死/挂载失败时刻）保存在内存：节点重启或 FVCC 重启后自愈重算，
 // 不落盘，避免为「近 N 分钟」语义引入额外持久化表（06 §2.1 未定义该表）。
+//
+// B轮接口重构：本包不依赖根包具体类型，仅依赖 Store / Notifier 两个最小接口
+// （由根包 *store.Store / *ws.Hub 天然满足）与 store/model 数据模型；
+// 根包经 node_shim.go 转发调用点，阶段 C 迁入 api 层后内联删除 shim。
 
 import (
 	"encoding/json"
@@ -20,9 +24,20 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"fvcc/internal/edl"
+	"fvcc/internal/remote"
+	"fvcc/internal/store/model"
 	"fvcc/logger"
+)
+
+// 本域私有错误码（与根包 scheduler.go 既有常量取值一致；阶段 C 调度域迁入
+// internal/scheduler 后由该域统一导出）。
+const (
+	ErrCodeNodeNotFound = "E_NODE_NOT_FOUND"
+	ErrCodeTimeoutStall = "E_TIMEOUT_STALL"
 )
 
 const (
@@ -56,11 +71,43 @@ const (
 )
 
 var (
+	// ErrNoSelectableNode 无任何可选节点（全部离线/熔断/忙且无排队候选）。
+	ErrNoSelectableNode = errors.New(edl.ErrCodeNodeOffline)
 	// errNodeUnavailable 目标节点不可用（离线/维护/版本过低），按 E_NODE_OFFLINE 冷却重试。
-	errNodeUnavailable = errors.New(errCodeNodeOffline)
-	// errNoSelectableNode 无任何可选节点（全部离线/熔断/忙且无排队候选）。
-	errNoSelectableNode = errors.New(errCodeNodeOffline)
+	errNodeUnavailable = errors.New(edl.ErrCodeNodeOffline)
 )
+
+// Store 选机所需的数据访问抽象（B轮接口重构：由根包 *store.Store 天然满足）。
+type Store interface {
+	GetServer(id string) (model.Server, bool)
+	GetServers() []model.Server
+	GetTasks() []model.Task
+	GetNodeCaps(id string) (model.NodeCaps, bool)
+	UpsertNodeCaps(caps model.NodeCaps)
+}
+
+// Notifier 节点状态广播抽象（B轮接口重构：由根包 *ws.Hub 天然满足）。
+type Notifier interface {
+	BroadcastNodeStatus(serverID, status string, healthScore int, reason string) bool
+}
+
+// Selector 渲染节点选择器：持有节点指标窗口与选机/健康分/熔断逻辑。
+type Selector struct {
+	store Store
+	hub   Notifier
+
+	nodeMu sync.Mutex // 保护 nodes（节点指标窗口，调度 tick 与 WS 回传并发访问）
+	nodes  map[string]*nodeMetrics
+}
+
+// NewSelector 创建节点选择器。
+func NewSelector(store Store, hub Notifier) *Selector {
+	return &Selector{
+		store: store,
+		hub:   hub,
+		nodes: make(map[string]*nodeMetrics),
+	}
+}
 
 // nodeMetrics 节点运行指标的内存窗口（B-08）。
 type nodeMetrics struct {
@@ -73,7 +120,7 @@ type nodeMetrics struct {
 }
 
 // withMetrics 在锁内访问（必要时创建）节点指标，避免 WS 回传与调度 tick 并发读写。
-func (s *Scheduler) withMetrics(serverID string, fn func(m *nodeMetrics)) {
+func (s *Selector) withMetrics(serverID string, fn func(m *nodeMetrics)) {
 	if serverID == "" {
 		return
 	}
@@ -117,20 +164,20 @@ func countWithin(ts []time.Time, now time.Time, window time.Duration) int {
 // ===== 指标记录 =====
 
 // NoteNodeAttempt 记录一次派发尝试（06 §5.2 失败率分母）。
-func (s *Scheduler) NoteNodeAttempt(serverID string, now time.Time) {
+func (s *Selector) NoteNodeAttempt(serverID string, now time.Time) {
 	s.withMetrics(serverID, func(m *nodeMetrics) {
 		m.attempts = append(trimBefore(m.attempts, now, healthFailWindow), now)
 	})
 }
 
 // NoteNodeFailure 记录一次派发失败，并按错误码归集卡死/挂载失败，必要时触发熔断（06 §5.4）。
-func (s *Scheduler) NoteNodeFailure(serverID, code string, now time.Time) {
+func (s *Selector) NoteNodeFailure(serverID, code string, now time.Time) {
 	s.withMetrics(serverID, func(m *nodeMetrics) {
 		m.failures = append(trimBefore(m.failures, now, healthFailWindow), now)
 		switch code {
-		case errCodeTimeoutStall:
+		case ErrCodeTimeoutStall:
 			m.stalls = append(trimBefore(m.stalls, now, healthStallWindow), now)
-		case errCodeSMBMountFailed:
+		case remote.ErrCodeSMBMountFailed:
 			m.mountFails = append(trimBefore(m.mountFails, now, healthMountFailWindow), now)
 		}
 		// 熔断判定：同一节点 5 分钟内连续 3 次失败 → 熔断 10 分钟。
@@ -142,7 +189,7 @@ func (s *Scheduler) NoteNodeFailure(serverID, code string, now time.Time) {
 }
 
 // NoteNodeSuccess 记录一次派发成功：探测任务成功即恢复（清空失败窗口并解除熔断）。
-func (s *Scheduler) NoteNodeSuccess(serverID string, now time.Time) {
+func (s *Selector) NoteNodeSuccess(serverID string, now time.Time) {
 	s.withMetrics(serverID, func(m *nodeMetrics) {
 		m.failures = nil
 		m.stalls = nil
@@ -154,7 +201,7 @@ func (s *Scheduler) NoteNodeSuccess(serverID string, now time.Time) {
 
 // nodeCircuitOpen 判断节点是否处于熔断期（06 §5.4：熔断期内不被自动选机命中）。
 // 熔断到期后放行并标记 probing，允许接 1 个探测任务（成功后由 NoteNodeSuccess 恢复）。
-func (s *Scheduler) nodeCircuitOpen(serverID string, now time.Time) bool {
+func (s *Selector) nodeCircuitOpen(serverID string, now time.Time) bool {
 	open := false
 	s.withMetrics(serverID, func(m *nodeMetrics) {
 		if m.circuitUntil.IsZero() {
@@ -172,11 +219,11 @@ func (s *Scheduler) nodeCircuitOpen(serverID string, now time.Time) bool {
 // ===== 健康分（06 §5.2）=====
 
 // HealthScoreOf 计算节点健康分（0~100），供 WS node_status 与选机打分使用。
-func (s *Scheduler) HealthScoreOf(serverID string) int {
+func (s *Selector) HealthScoreOf(serverID string) int {
 	return s.healthScoreAt(serverID, time.Now())
 }
 
-func (s *Scheduler) healthScoreAt(serverID string, now time.Time) int {
+func (s *Selector) healthScoreAt(serverID string, now time.Time) int {
 	var attempts, failures, stalls, mountFails int
 	s.withMetrics(serverID, func(m *nodeMetrics) {
 		attempts = countWithin(m.attempts, now, healthFailWindow)
@@ -214,7 +261,7 @@ func (s *Scheduler) healthScoreAt(serverID string, now time.Time) int {
 // ===== 槽位与能力 =====
 
 // nodeMaxConcurrent 节点最大并发（node_caps.maxConcurrent，缺失回落到缺省 1）。
-func (s *Scheduler) nodeMaxConcurrent(serverID string) int {
+func (s *Selector) nodeMaxConcurrent(serverID string) int {
 	if caps, ok := s.store.GetNodeCaps(serverID); ok && caps.MaxConcurrent > 0 {
 		return caps.MaxConcurrent
 	}
@@ -222,14 +269,14 @@ func (s *Scheduler) nodeMaxConcurrent(serverID string) int {
 }
 
 // runningCount 统计节点上占用槽位的任务数（上传/待转码/转码/待下载/下载）。
-func (s *Scheduler) runningCount(serverID string) int {
+func (s *Selector) runningCount(serverID string) int {
 	n := 0
 	for _, t := range s.store.GetTasks() {
 		if t.ServerID != serverID || t.Status.IsTerminal() {
 			continue
 		}
 		switch t.Status {
-		case StatusUploading, StatusWaitingTrans, StatusTranscoding, StatusWaitingDown, StatusDownloading:
+		case model.StatusUploading, model.StatusWaitingTrans, model.StatusTranscoding, model.StatusWaitingDown, model.StatusDownloading:
 			n++
 		}
 	}
@@ -237,9 +284,9 @@ func (s *Scheduler) runningCount(serverID string) int {
 }
 
 // NodeFreeSlots 节点空闲槽位 = maxConcurrent − running（代理任务再减 1，04 §3.5）。
-func (s *Scheduler) NodeFreeSlots(serverID string, t Task) int {
+func (s *Selector) NodeFreeSlots(serverID string, t model.Task) int {
 	free := s.nodeMaxConcurrent(serverID) - s.runningCount(serverID)
-	if t.TaskType == TaskTypeGenProxy {
+	if t.TaskType == model.TaskTypeGenProxy {
 		free -= proxySlotCost
 	}
 	if free < 0 {
@@ -249,14 +296,14 @@ func (s *Scheduler) NodeFreeSlots(serverID string, t Task) int {
 }
 
 // requiredEncoder 返回任务所需的视频编码器；`copy` 与未知取值为空（不参与能力扣分）。
-func requiredEncoder(t Task) string {
-	if t.TaskType == TaskTypeGenProxy {
+func requiredEncoder(t model.Task) string {
+	if t.TaskType == model.TaskTypeGenProxy {
 		return proxyEncoder
 	}
 	if strings.TrimSpace(t.PayloadJSON) == "" {
 		return ""
 	}
-	var p RenderTaskPayload
+	var p model.RenderTaskPayload
 	if err := json.Unmarshal([]byte(t.PayloadJSON), &p); err != nil {
 		return ""
 	}
@@ -269,7 +316,7 @@ func requiredEncoder(t Task) string {
 
 // capabilityMatch 能力匹配分：命中所需编码器=100；未命中=20（可软编兜底）；
 // 所需编码器未知或节点能力未上报时不惩罚（按命中计）。
-func (s *Scheduler) capabilityMatch(serverID string, t Task) float64 {
+func (s *Selector) capabilityMatch(serverID string, t model.Task) float64 {
 	need := requiredEncoder(t)
 	if need == "" {
 		return capabilityHitScore
@@ -326,7 +373,7 @@ func leadingInt(seg string) int {
 }
 
 // nodeVersionOK 节点 Agent 版本是否支持渲染（06 §5.3）。
-func (s *Scheduler) nodeVersionOK(serverID string) bool {
+func (s *Selector) nodeVersionOK(serverID string) bool {
 	caps, ok := s.store.GetNodeCaps(serverID)
 	if !ok {
 		return true // 能力未上报：不排除，交由下发结果兜底
@@ -335,7 +382,7 @@ func (s *Scheduler) nodeVersionOK(serverID string) bool {
 }
 
 // nodeSelectable 自动选机的节点准入：在线 + 版本达标 + 非熔断。
-func (s *Scheduler) nodeSelectable(sv Server, now time.Time) bool {
+func (s *Selector) nodeSelectable(sv model.Server, now time.Time) bool {
 	if sv.IsLocal || sv.Status != "online" {
 		return false
 	}
@@ -346,8 +393,8 @@ func (s *Scheduler) nodeSelectable(sv Server, now time.Time) bool {
 }
 
 // onlineNodes 返回可参与自动选机的节点（06 §5.3）。
-func (s *Scheduler) onlineNodes(now time.Time) []Server {
-	var out []Server
+func (s *Selector) onlineNodes(now time.Time) []model.Server {
+	var out []model.Server
 	for _, sv := range s.store.GetServers() {
 		if s.nodeSelectable(sv, now) {
 			out = append(out, sv)
@@ -357,8 +404,8 @@ func (s *Scheduler) onlineNodes(now time.Time) []Server {
 }
 
 // earliestFreeNode 全忙时的排队候选：按已占用槽位升序，取最早可能空闲的节点（06 §5.3）。
-func (s *Scheduler) earliestFreeNode(cands []Server, t Task, now time.Time) *Server {
-	var best *Server
+func (s *Selector) earliestFreeNode(cands []model.Server, t model.Task, now time.Time) *model.Server {
+	var best *model.Server
 	bestRunning := math.MaxInt32
 	for i := range cands {
 		n := cands[i]
@@ -375,16 +422,16 @@ func (s *Scheduler) earliestFreeNode(cands []Server, t Task, now time.Time) *Ser
 	return best
 }
 
-// pickNode 选机（06 §5.3）：显式 serverId 优先（忙则排队不换机），否则打分降级选优。
+// PickNode 选机（06 §5.3）：显式 serverId 优先（忙则排队不换机），否则打分降级选优。
 // 返回 error 时，调用方按 classifyRenderError 归码（E_NODE_OFFLINE 属可重试白名单）。
-func (s *Scheduler) pickNode(t Task, now time.Time) (Server, error) {
+func (s *Selector) PickNode(t model.Task, now time.Time) (model.Server, error) {
 	if t.ServerID != "" {
 		sv, found := s.store.GetServer(t.ServerID)
 		if !found {
-			return Server{}, errCodeToError(errCodeNodeNotFound)
+			return model.Server{}, errCodeToError(ErrCodeNodeNotFound)
 		}
 		if sv.IsLocal || sv.Status != "online" || !s.nodeVersionOK(sv.ID) {
-			return Server{}, errNodeUnavailable
+			return model.Server{}, errNodeUnavailable
 		}
 		// 空闲槽为 0 时仍返回该节点：由传输/编码锁排队等待，尊重用户显式选择（不换机）。
 		return sv, nil
@@ -392,10 +439,10 @@ func (s *Scheduler) pickNode(t Task, now time.Time) (Server, error) {
 
 	cands := s.onlineNodes(now)
 	if len(cands) == 0 {
-		return Server{}, errNoSelectableNode
+		return model.Server{}, ErrNoSelectableNode
 	}
 
-	var best *Server
+	var best *model.Server
 	bestScore := -1.0
 	for i := range cands {
 		n := cands[i]
@@ -422,7 +469,7 @@ func (s *Scheduler) pickNode(t Task, now time.Time) (Server, error) {
 	if n := s.earliestFreeNode(cands, t, now); n != nil {
 		return *n, nil
 	}
-	return Server{}, errNoSelectableNode
+	return model.Server{}, ErrNoSelectableNode
 }
 
 // errCodeToError 把线协议错误码包装为 error（供 classifyRenderError 解析）。
@@ -431,7 +478,7 @@ func errCodeToError(code string) error { return errors.New(code) }
 // ===== 节点 Hello 能力落库（06 §5.1）=====
 
 // ApplyNodeHello 处理节点能力上报：刷新 node_caps，并按真实健康分广播 node_status。
-func (s *Scheduler) ApplyNodeHello(caps NodeCaps, now time.Time) {
+func (s *Selector) ApplyNodeHello(caps model.NodeCaps, now time.Time) {
 	if caps.ServerID == "" {
 		return
 	}
