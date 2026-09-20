@@ -111,16 +111,16 @@ func (h *Handlers) saveSettings(c *gin.Context) {
 		return
 	}
 	if s.SchedulerIntervalSec < 1 {
-		s.SchedulerIntervalSec = 1
+		s.SchedulerIntervalSec = DefaultSchedulerIntervalSec
 	}
 	if s.ChunkSizeMB < 1 {
-		s.ChunkSizeMB = 4
+		s.ChunkSizeMB = DefaultChunkSizeMB
 	}
 	if s.MaxRetry < 0 {
 		s.MaxRetry = 3
 	}
 	if s.HistoryLimit < 100 {
-		s.HistoryLimit = 1000
+		s.HistoryLimit = DefaultHistoryLimit
 	}
 	if s.LogLevel == "" {
 		s.LogLevel = "INFO"
@@ -379,31 +379,8 @@ func (h *Handlers) doScanDirectory(path string, onProgress func([]VideoInfo) boo
 
 		if cache, ok := h.store.GetVideoCache(p); ok {
 			if _, err := os.Stat(p); err == nil {
-				video = VideoInfo{
-					Path:         cache.Path,
-					FileName:     cache.FileName,
-					Format:       cache.Format,
-					Size:         cache.Size,
-					Duration:     cache.Duration,
-					Resolution:   cache.Resolution,
-					Width:        cache.Width,
-					Height:       cache.Height,
-					Codec:        cache.Codec,
-					Bitrate:      cache.Bitrate,
-					Fps:          cache.Fps,
-					AudioCodec:   cache.AudioCodec,
-					AudioBitrate: cache.AudioBitrate,
-					SampleRate:   cache.SampleRate,
-					Channels:     cache.Channels,
-					StreamCount:  cache.StreamCount,
-					Probed:       cache.Probed,
-					Streams:      cache.Streams,
-				}
-				if !cache.Probed {
-					useCache = false
-				} else {
-					useCache = true
-				}
+				video = cache.ToVideoInfo()
+				useCache = cache.Probed
 			} else {
 				h.store.DeleteVideoCache(p)
 			}
@@ -421,26 +398,7 @@ func (h *Handlers) doScanDirectory(path string, onProgress func([]VideoInfo) boo
 					Probed:   false,
 				}
 			} else {
-				h.store.UpsertVideoCache(VideoInfoCache{
-					Path:         probeInfo.Path,
-					FileName:     probeInfo.FileName,
-					Format:       probeInfo.Format,
-					Size:         probeInfo.Size,
-					Duration:     probeInfo.Duration,
-					Resolution:   probeInfo.Resolution,
-					Width:        probeInfo.Width,
-					Height:       probeInfo.Height,
-					Codec:        probeInfo.Codec,
-					Bitrate:      probeInfo.Bitrate,
-					Fps:          probeInfo.Fps,
-					AudioCodec:   probeInfo.AudioCodec,
-					AudioBitrate: probeInfo.AudioBitrate,
-					SampleRate:   probeInfo.SampleRate,
-					Channels:     probeInfo.Channels,
-					StreamCount:  probeInfo.StreamCount,
-					Probed:       probeInfo.Probed,
-					Streams:      probeInfo.Streams,
-				})
+				h.store.UpsertVideoCache(probeInfo.ToCache())
 				video = probeInfo
 			}
 		}

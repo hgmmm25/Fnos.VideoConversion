@@ -149,7 +149,7 @@ type Server struct {
 	Name          string     `json:"name"`
 	IP            string     `json:"ip"`
 	Port          int        `json:"port"`          // WebSocket 端口
-	AuthKey       string     `json:"authKey"`       // MVP 明文存储，TODO: P0 AES 加密
+	AuthKey       string     `json:"authKey"`       // 已加密落盘（AES-GCM，enc:v1: 前缀，见 internal/security/crypto.go；内存态保持明文供出站连接使用）
 	KeyExpireAt   *time.Time `json:"keyExpireAt"`   // 密钥过期时间
 	Status        string     `json:"status"`        // online/offline
 	LockExpireSec int        `json:"lockExpireSec"` // 锁自动过期时长（秒）
@@ -333,10 +333,68 @@ type VideoInfoCache struct {
 	Streams      []StreamInfo `json:"streams"`
 }
 
+// ToVideoInfo 将缓存条目转换为面向展示的 VideoInfo。
+// 收敛混乱报告 §2.3 证据 3：doScanDirectory 中 cache→VideoInfo 30+ 字段逐字段复制的重复块。
+func (c VideoInfoCache) ToVideoInfo() VideoInfo {
+	return VideoInfo{
+		Path:         c.Path,
+		FileName:     c.FileName,
+		Format:       c.Format,
+		Size:         c.Size,
+		Duration:     c.Duration,
+		Resolution:   c.Resolution,
+		Width:        c.Width,
+		Height:       c.Height,
+		Codec:        c.Codec,
+		Bitrate:      c.Bitrate,
+		Fps:          c.Fps,
+		AudioCodec:   c.AudioCodec,
+		AudioBitrate: c.AudioBitrate,
+		SampleRate:   c.SampleRate,
+		Channels:     c.Channels,
+		StreamCount:  c.StreamCount,
+		Probed:       c.Probed,
+		Streams:      c.Streams,
+	}
+}
+
+// ToCache 将探测得到的 VideoInfo 转为可持久化的缓存条目。
+// UpdatedAt 由 store.UpsertVideoCache 写入时统一赋值，转换时保持零值。
+func (v VideoInfo) ToCache() VideoInfoCache {
+	return VideoInfoCache{
+		Path:         v.Path,
+		FileName:     v.FileName,
+		Format:       v.Format,
+		Size:         v.Size,
+		Duration:     v.Duration,
+		Resolution:   v.Resolution,
+		Width:        v.Width,
+		Height:       v.Height,
+		Codec:        v.Codec,
+		Bitrate:      v.Bitrate,
+		Fps:          v.Fps,
+		AudioCodec:   v.AudioCodec,
+		AudioBitrate: v.AudioBitrate,
+		SampleRate:   v.SampleRate,
+		Channels:     v.Channels,
+		StreamCount:  v.StreamCount,
+		Probed:       v.Probed,
+		Streams:      v.Streams,
+	}
+}
+
 type VideoCacheFile struct {
 	Version int              `json:"version"`
 	Entries []VideoInfoCache `json:"entries"`
 }
+
+// 默认设置兜底值（saveSettings 校验 / DefaultSettings / scheduler 分片同源引用，
+// 消除散落硬编码；见混乱报告 §2.5 证据 3）
+const (
+	DefaultSchedulerIntervalSec = 1    // 调度器轮询间隔（秒）
+	DefaultChunkSizeMB          = 4    // 上传分片大小（MB）
+	DefaultHistoryLimit         = 1000 // 历史记录保留条数
+)
 
 // Settings 应用全局设置（可运行时修改并持久化）。
 type Settings struct {
@@ -366,10 +424,10 @@ type Settings struct {
 // DefaultSettings 返回默认设置。
 func DefaultSettings() Settings {
 	return Settings{
-		SchedulerIntervalSec:   1,
-		ChunkSizeMB:            4,
+		SchedulerIntervalSec:   DefaultSchedulerIntervalSec,
+		ChunkSizeMB:            DefaultChunkSizeMB,
 		MaxRetry:               3,
-		HistoryLimit:           1000,
+		HistoryLimit:           DefaultHistoryLimit,
 		OutputSuffix:           "_trans.mp4",
 		TransferMode:           "http",
 		SMBSharePath:           "",

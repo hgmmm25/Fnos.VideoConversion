@@ -42,6 +42,9 @@ import (
 const (
 	appName  = "fvcc"
 	sockName = "app.sock"
+
+	// defaultDevAddr 开发模式默认监听地址（FVCC_DEV=1 且未显式指定 FVCC_ADDR 时生效）
+	defaultDevAddr = "127.0.0.1:8088"
 )
 
 // AppVer 由 internal/version 从 VERSION 文件注入（go:embed），勿在此另写版本字面量。
@@ -55,7 +58,7 @@ func loadConfig() api.Config {
 		DevAddr:  os.Getenv("FVCC_ADDR"),
 	}
 	if c.DevAddr == "" {
-		c.DevAddr = "127.0.0.1:8088"
+		c.DevAddr = defaultDevAddr
 	}
 	return c
 }

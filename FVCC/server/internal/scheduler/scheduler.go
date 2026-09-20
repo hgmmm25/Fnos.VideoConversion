@@ -53,7 +53,7 @@ func NewScheduler(store *store.Store, remote *remote.RemoteClient, hub *ws.Hub, 
 		hub:       hub,
 		pv:        pv,
 		sel:       node.NewSelector(store, hub), // 节点选机与健康分（B-08）：指标窗口迁入 internal/node
-		chunkSize: 4 * 1024 * 1024,              // 4MB 分片
+		chunkSize: model.DefaultChunkSizeMB * 1024 * 1024, // 默认 4MB 分片（与设置项 ChunkSizeMB 同源，MB→字节换算）
 	}
 	// M4 代理收尾（internal/media）：失败收口走调度域 failRenderTaskPermanent，
 	// 源/代理本地根推导由本包 security 域（resolveMediaRootsFor）注入，与提交侧同源。

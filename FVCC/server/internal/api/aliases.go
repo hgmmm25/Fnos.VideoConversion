@@ -104,6 +104,10 @@ const (
 	ProxyStateReady       = model.ProxyStateReady
 	ProxyStateInvalid     = model.ProxyStateInvalid
 	ProxyStateStale       = model.ProxyStateStale
+
+	DefaultSchedulerIntervalSec = model.DefaultSchedulerIntervalSec
+	DefaultChunkSizeMB          = model.DefaultChunkSizeMB
+	DefaultHistoryLimit         = model.DefaultHistoryLimit
 )
 
 // ===== model 函数转发 =====

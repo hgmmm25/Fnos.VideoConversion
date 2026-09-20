@@ -126,16 +126,72 @@ type RemoteProgress struct {
 }
 
 // progressPush FVCS Progress 报文的线上结构（06 §4.2）。
+// 线上字段已统一为 camelCase（API_CONTRACT §1.1）；按 §3.2 接收端双风格兼容：
+// camelCase 优先，缺失字段回落 snake_case（兼容仍推送 task_id/out_time_ms/total_ms/seg_total 的旧节点）。
 type progressPush struct {
-	TaskID    string  `json:"task_id"`
+	TaskID    string  `json:"taskId"`
 	Progress  float64 `json:"progress"`
 	Stage     string  `json:"stage,omitempty"`
 	Seg       int     `json:"seg,omitempty"`
-	SegTotal  int     `json:"seg_total,omitempty"`
-	OutTimeMs int64   `json:"out_time_ms,omitempty"`
-	TotalMs   int64   `json:"total_ms,omitempty"`
+	SegTotal  int     `json:"segTotal,omitempty"`
+	OutTimeMs int64   `json:"outTimeMs,omitempty"`
+	TotalMs   int64   `json:"totalMs,omitempty"`
 	Speed     string  `json:"speed,omitempty"`
 	Msg       string  `json:"msg,omitempty"`
+}
+
+// UnmarshalJSON 双风格兼容解析（API_CONTRACT §3.2）：camelCase 优先，
+// 缺失字段回落 snake_case，保证旧节点（task_id/seg_total/out_time_ms/total_ms）报文不回归。
+func (p *progressPush) UnmarshalJSON(data []byte) error {
+	type camel progressPush
+	type snake struct {
+		TaskID    string  `json:"task_id"`
+		Progress  float64 `json:"progress"`
+		Stage     string  `json:"stage,omitempty"`
+		Seg       int     `json:"seg,omitempty"`
+		SegTotal  int     `json:"seg_total,omitempty"`
+		OutTimeMs int64   `json:"out_time_ms,omitempty"`
+		TotalMs   int64   `json:"total_ms,omitempty"`
+		Speed     string  `json:"speed,omitempty"`
+		Msg       string  `json:"msg,omitempty"`
+	}
+
+	var c camel
+	if err := json.Unmarshal(data, &c); err != nil {
+		return err
+	}
+	var s snake
+	_ = json.Unmarshal(data, &s) // snake 形状不匹配时保持零值，仅作为回落源
+
+	*p = progressPush(c)
+	if p.TaskID == "" {
+		p.TaskID = s.TaskID
+	}
+	if p.Progress == 0 {
+		p.Progress = s.Progress
+	}
+	if p.Stage == "" {
+		p.Stage = s.Stage
+	}
+	if p.Seg == 0 {
+		p.Seg = s.Seg
+	}
+	if p.SegTotal == 0 {
+		p.SegTotal = s.SegTotal
+	}
+	if p.OutTimeMs == 0 {
+		p.OutTimeMs = s.OutTimeMs
+	}
+	if p.TotalMs == 0 {
+		p.TotalMs = s.TotalMs
+	}
+	if p.Speed == "" {
+		p.Speed = s.Speed
+	}
+	if p.Msg == "" {
+		p.Msg = s.Msg
+	}
+	return nil
 }
 
 // HelloPush FVCS Hello 报文的线上结构（B-08，06 §5.1；内部协议段，snake_case 边界见 API_CONTRACT §3.2）。
