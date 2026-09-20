@@ -398,6 +398,9 @@ export interface Project {
 
 export type ProjectSummary = Pick<Project, 'id' | 'name' | 'rev' | 'updatedAt'> & {
   clipCount: number
+  // 海报帧（动效改进 2026-09-20）：首片段 file+inMs，卡片式视图复用 /thumb 抽帧；无片段时省略
+  posterFile?: string
+  posterMs?: number
 }
 
 /** POST /edl/projects 请求体（03 §4.2）；timeline 可省略/部分，服务端按 03 §2.2 回填缺省值 */

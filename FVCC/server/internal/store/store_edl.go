@@ -269,13 +269,19 @@ func (s *Store) GetProjects() []model.ProjectSummary {
 	defer s.mu.RUnlock()
 	out := make([]model.ProjectSummary, 0, len(s.projects))
 	for _, p := range s.projects {
-		out = append(out, model.ProjectSummary{
+		item := model.ProjectSummary{
 			ID:        p.ID,
 			Name:      p.Name,
 			Rev:       p.Rev,
 			ClipCount: p.ClipCount,
 			UpdatedAt: p.UpdatedAt,
-		})
+		}
+		// 动效改进（2026-09-20）：携带首片段海报帧，前端卡片式视图复用 /thumb 抽帧免二次拉详情
+		if len(p.Clips) > 0 {
+			item.PosterFile = p.Clips[0].File
+			item.PosterMs = p.Clips[0].InMs
+		}
+		out = append(out, item)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out

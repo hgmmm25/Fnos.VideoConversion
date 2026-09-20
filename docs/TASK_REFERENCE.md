@@ -2,7 +2,7 @@
 
 > 用途：混乱报告 P2-6「清理任务编号注释」的落地物。代码注释中散落的 `B-xx / C-xx / D-xx / M4 / Px-x / 修复①-⑤` 任务编号与 `03 §4.2` 式章节引用，在本表中统一登记为可读语义，供维护者追溯设计依据。
 > 约定：新增注释请直接书写可读语义，编号仅作括号溯源；本表与代码同仓维护，`docs/` 为章节引用文档的权威位置说明。
-> 维护日期：2026-09-19（第三版；同步混乱报告 §4 状态：P2-1 后端分层 / P2-2 前端组件化已收口）
+> 维护日期：2026-09-20（第四版；同步混乱报告第四版 1.4.7：P2-1/P2-2 持续收尾、P0-1 过时注释已清、前端图示化落地）
 
 ---
 
@@ -26,18 +26,18 @@
 
 | 编号 | 可读语义 | 代表位置 |
 |---|---|---|
-| P0-1 | 凭据安全：AuthKey/SMBPassword 加密落库 + 响应不回显明文（models.go 中 TODO P0 AES 加密项） | server/models.go、store.go、handlers.go |
-| P1-1 | updateProfile 59 块手写字段映射收敛（反射白名单 helper applyFields） | server/applyjson.go、scheduler.go（tick 合并快照） |
-| P1-2 | SMB 共享路径校验收敛为 helper（doScanDirectory/probeVideo/browseDirs/createTask 四处复用） | server/smb_validate.go |
-| P1-3 | 文档落地（README/规格入库）与数据面 WSS 加密（SECURITY.md §4） | server/remote.go、docs/SECURITY.md |
-| P2-1 | 可观测性：trace ID 全链路 + /metrics 指标扩展 + 前端骨架屏/空态 | server/handlers.go、store.go、ui-src/* |
-| P2-2 | 测试补强 / 前端无障碍对话框语义（role=dialog/焦点陷阱） | server/*_test.go、ui-src/src/* |
+| P0-1 | 凭据安全：AuthKey/SMBPassword 加密落库 + 响应不回显明文（internal/store/model/models.go 过时 TODO 已随 1.4.7 清理） | server/internal/security/crypto.go、internal/store/store.go、internal/api/handlers.go |
+| P1-1 | updateProfile 59 块手写字段映射收敛（反射白名单 helper applyFields） | server/internal/protocol/applyjson.go、internal/scheduler/scheduler.go（tick 合并快照） |
+| P1-2 | SMB 共享路径校验收敛为 helper（doScanDirectory/probeVideo/browseDirs/createTask 四处复用） | server/internal/security/smb_validate.go |
+| P1-3 | 文档落地（README/规格入库）与数据面 WSS 加密（SECURITY.md §4） | server/internal/remote/remote.go、docs/SECURITY.md |
+| P2-1 | 可观测性：trace ID 全链路 + /metrics 指标扩展 + 前端骨架屏/空态 | server/internal/api/（handlers 拆分）、internal/store/store.go、ui-src/* |
+| P2-2 | 测试补强 / 前端无障碍对话框语义（role=dialog/焦点陷阱） | server/internal/*/*_test.go、ui-src/src/* |
 | P2-3 | CI 流水线 + 覆盖率基线（≥60%） | .github/workflows/fvcc-ci.yml、scripts/check-coverage.ps1 |
-| P2-4 | 统一 API 错误契约 {ok:false,code,msg,detail?} | server/apierr.go、ui-src/src/api.ts、docs/API_CONTRACT.md |
-| P2-5 | 删除操作回收站化（_trash 移入/恢复/清空） | server/trash.go、ui-src/src/api.ts |
+| P2-4 | 统一 API 错误契约 {ok:false,code,msg,detail?} | server/internal/protocol/apierr.go、ui-src/src/api.ts、docs/API_CONTRACT.md |
+| P2-5 | 删除操作回收站化（_trash 移入/恢复/清空） | server/internal/store/trash.go、ui-src/src/api.ts |
 | P2-6 | 清理 AIGC 残留与任务编号注释（本表即落地物） | docs/TASK_REFERENCE.md |
 
-> **编号漂移登记（2026-09-19）**：混乱报告 §4 中 `P2-1`（后端分层）、`P2-2`（前端组件化）为**报告体系编号**（均已落地）；代码注释中的 `P2-1` 多指"可观测性：Prometheus 指标端点"（internal/api/handler_metrics_test.go），`P2-2` 在代码注释中未见（前端 P 组为另一套清单，见 §2.2）。两套语义并存属历史事实，维护者按文件归属对照。本表"代表位置"列为 P2-1 分层前路径，分层后实际位于 `server/internal/` 对应子包（api/store/scheduler/remote/ws/security/edl/media/node/version/protocol）。
+> **编号漂移登记（2026-09-19，路径更新 2026-09-20）**：混乱报告 §4 中 `P2-1`（后端分层）、`P2-2`（前端组件化）为**报告体系编号**（均已落地）；代码注释中的 `P2-1` 多指"可观测性：Prometheus 指标端点"（internal/api/handler_metrics_test.go），`P2-2` 在代码注释中未见（前端 P 组为另一套清单，见 §2.2）。两套语义并存属历史事实，维护者按文件归属对照。本表"代表位置"已更新为 P2-1 分层后 internal 路径；B/C/D/M4/修复 组的旧路径映射见 §3 顶部路径说明。
 
 ### 2.2 前端 P 组（源自 FVCC 前端 UI 优化清单，**与后端同名编号含义不同**）
 
@@ -60,18 +60,20 @@
 
 ## 3. B / C / D / M4 / 修复编号映射
 
+> **路径说明（2026-09-20 第四版补）**：§3 各表"代表位置"已更新为 P2-1 分层后 internal 路径；历史旧路径 → 现状子包映射速查：`security.go`→`internal/security`（pathvalidator.go / gateway.go / audit.go / crypto.go / smb_validate.go / rate.go）、`proxy_flow.go`→`internal/media`（proxy.go，代理工作流）、`stream.go`→`internal/api`（stream.go，预览网关）、`store_proxy.go`/`store.go`/`store_edl.go`/`trash.go`→`internal/store`、`handlers*.go`/`router.go`/`ratelimit.go`/`security_roots.go`/`hashutil.go`→`internal/api`、`ws.go`→`internal/ws`（ws_limit.go 同）、`edl_validate.go`→`internal/edl`、`remote.go`→`internal/remote`、`scheduler.go`→`internal/scheduler`、`models.go`→`internal/store/model`、`apierr.go`/`applyjson.go`→`internal/protocol`、`version.go`→`internal/version`、`node_select.go`→`internal/node`。
+
 ### 3.1 B 组（后端调度/EDL 业务批次）
 
 | 编号 | 可读语义 | 代表位置 |
 |---|---|---|
-| B-01 | 调度与持久化扩展：tasks 表列迁移、新增集合、幂等列迁移（设计 06 §2） | server/store.go、store_edl.go、ui-src/src/types.ts |
-| B-03 | EDL 剪辑项目 CRUD（设计 03 §4.2/§4.3） | server/router.go、handlers_edl.go |
-| B-04 | 渲染提交链路（设计 03 §4.4；含设置页渲染根字段保留等顺带改动） | server/router.go、handlers.go:125 |
-| B-05 | 渲染类任务分流与冷却调度（QUEUE/COOLDOWN 状态机，设计 06 §4.1/§4.3/§4.5） | server/scheduler.go、scheduler_edl_test.go |
-| B-06 | 渲染类任务下发通道（CreateRenderEDL/CreateGenProxy，仅传 credentialId，设计 06 §4.2） | server/remote.go、scheduler.go |
-| B-07 | 进度与事件聚合（WS BroadcastTaskUpdateFull / HandleRemoteProgress，设计 06 §6） | server/ws.go、scheduler.go、store_edl.go |
-| B-08 | 节点能力上报（HelloPush）→ NodeCaps 落库 + 选机/健康分/熔断（设计 06 §5） | server/remote.go、scheduler.go、ws.go |
-| B-09 | WS 断线自愈（指数退避重连/单飞/优雅关闭）+ 权限中间件 requireAdmin | server/remote.go、router.go、remote_reconnect_test.go、router_auth_test.go |
+| B-01 | 调度与持久化扩展：tasks 表列迁移、新增集合、幂等列迁移（设计 06 §2） | server/internal/store/store.go、internal/store/edl.go、ui-src/src/types.ts |
+| B-03 | EDL 剪辑项目 CRUD（设计 03 §4.2/§4.3） | server/internal/api/router.go、internal/api/handlers_edl.go |
+| B-04 | 渲染提交链路（设计 03 §4.4；含设置页渲染根字段保留等顺带改动） | server/internal/api/router.go、internal/api/handlers.go:125 |
+| B-05 | 渲染类任务分流与冷却调度（QUEUE/COOLDOWN 状态机，设计 06 §4.1/§4.3/§4.5） | server/internal/scheduler/scheduler.go、internal/scheduler/scheduler_edl_test.go |
+| B-06 | 渲染类任务下发通道（CreateRenderEDL/CreateGenProxy，仅传 credentialId，设计 06 §4.2） | server/internal/remote/remote.go、internal/scheduler/scheduler.go |
+| B-07 | 进度与事件聚合（WS BroadcastTaskUpdateFull / HandleRemoteProgress，设计 06 §6） | server/internal/ws/ws.go、internal/scheduler/scheduler.go、internal/store/edl.go |
+| B-08 | 节点能力上报（HelloPush）→ NodeCaps 落库 + 选机/健康分/熔断（设计 06 §5） | server/internal/remote/remote.go、internal/scheduler/scheduler.go、internal/ws/ws.go |
+| B-09 | WS 断线自愈（指数退避重连/单飞/优雅关闭）+ 权限中间件 requireAdmin | server/internal/remote/remote.go、internal/api/router.go、internal/remote/remote_reconnect_test.go、internal/api/router_auth_test.go |
 
 ### 3.2 C 组（前端剪辑页批次）
 
@@ -92,14 +94,14 @@
 
 | 编号 | 可读语义 | 代表位置 |
 |---|---|---|
-| D-02 | EDL 路径/输出名/载荷白名单校验（FVCC 与 FVCS 同规则双实现，设计 07 §3） | server/edl_validate.go、security.go |
-| D-04 | 审计与告警：EDL 域拒绝事件集中记账 + 突增告警 + 限流拒绝记账（设计 07 §7/§4.5） | server/security_audit.go、ratelimit.go、security_e2e_test.go |
+| D-02 | EDL 路径/输出名/载荷白名单校验（FVCC 与 FVCS 同规则双实现，设计 07 §3） | server/internal/edl/edl_validate.go、internal/security/pathvalidator.go |
+| D-04 | 审计与告警：EDL 域拒绝事件集中记账 + 突增告警 + 限流拒绝记账（设计 07 §7/§4.5） | server/internal/security/audit.go、internal/api/ratelimit.go、internal/security/security_e2e_test.go |
 
 ### 3.4 M4（模块/里程碑编号）
 
 | 编号 | 可读语义 | 代表位置 |
 |---|---|---|
-| M4 | 预览网关 + 代理工作流模块（设计 04：Range 流/票据/缩略图/三根白名单 + 代理生成/登记/proxy_ready 广播） | server/stream.go、proxy_flow.go、store_proxy.go、handlers_proxy.go、security.go（三根解析）、ws.go（ProxyReadyMsg） |
+| M4 | 预览网关 + 代理工作流模块（设计 04：Range 流/票据/缩略图/三根白名单 + 代理生成/登记/proxy_ready 广播） | server/internal/api/stream.go、internal/media/proxy.go、internal/store/store_proxy.go、internal/api/handlers_proxy.go、internal/security/pathvalidator.go（三根解析）、internal/ws/ws.go（ProxyReadyMsg） |
 
 > 说明：全库检索到的 `M3/M5/M6/M10/M11/M12/M14/M18/M19/M22` 等均位于前端 SVG path 数据中，属误报，非任务编号。
 
@@ -107,9 +109,9 @@
 
 | 编号 | 可读语义 | 代表位置 |
 |---|---|---|
-| 修复① | 剪辑页多授权目录素材根支持：root 放宽接受「素材根本地绝对路径」，代理任务携带实际 sourceRoot，授权目录下拉切换 | server/security.go、handlers_proxy.go、remote.go、ui-src/src/pages/editor/assets.ts、index.ts |
-| 修复② | 代理 E_RENDER_FAILED 闭环：GEN_PROXY 素材共享根与转码同源（后端）；新扫描先清空 → 增量推批累加去重（前端） | server/remote.go、ui-src/src/pages/editor/assets.ts |
-| 修复③ | 代理状态可感知：提交落地 queued/角标、消费 WS proxy_ready、页面渲染失败可见错误提示；渲染/代理下发补齐挂载凭据 | server/remote.go、ui-src/src/pages/editor/assets.ts、src/main.ts |
+| 修复① | 剪辑页多授权目录素材根支持：root 放宽接受「素材根本地绝对路径」，代理任务携带实际 sourceRoot，授权目录下拉切换 | server/internal/security/pathvalidator.go、internal/api/handlers_proxy.go、internal/remote/remote.go、ui-src/src/pages/editor/assets.ts、index.ts |
+| 修复② | 代理 E_RENDER_FAILED 闭环：GEN_PROXY 素材共享根与转码同源（后端）；新扫描先清空 → 增量推批累加去重（前端） | server/internal/remote/remote.go、ui-src/src/pages/editor/assets.ts |
+| 修复③ | 代理状态可感知：提交落地 queued/角标、消费 WS proxy_ready、页面渲染失败可见错误提示；渲染/代理下发补齐挂载凭据 | server/internal/remote/remote.go、ui-src/src/pages/editor/assets.ts、src/main.ts |
 | 修复④ | filmstrip 分格缩略图：按片段像素宽度自适应分格（1~8 格），每格取时间段中点帧 | ui-src/src/pages/editor/timeline.ts |
 | 修复⑤ | 预览器默认静音可配置：playerMuted 设置项（缺省 true 保持既有行为） | ui-src/src/pages/settings.ts、pages/editor/index.ts |
 

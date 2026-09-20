@@ -4,7 +4,7 @@
 //                  ③代理状态落地（queued/ready/invalid）+ 订阅 WS proxy_ready；
 //                  ④缩略图按时间段分格（时间线侧，见 timeline.ts）；⑤deduplicated 字段消费；
 //                  ⑥订阅/缓存清理、toRelative 兜底收敛、sourceRoot 随设置刷新。
-import { el, svgIcon, toast } from '../../ui'
+import { el, toast } from '../../ui'
 import { api } from '../../api'
 import { store, type ProxyReadyInfo } from '../../store'
 import type { AssetRef, AssetVisibility, ProxyState, VideoInfo } from '../../types'
@@ -164,28 +164,17 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
   let scan: { cancel(): void } | null = null
   let destroyed = false
 
-  const pathInput = el('input', {
-    class: 'input flex-1 min-w-0 text-xs',
-    value: currentDir,
-    placeholder: '素材目录（可手填或点「浏览…」）',
-  }) as HTMLInputElement
-  pathInput.onkeydown = (e) => {
-    if (e.key === 'Enter') startScan(pathInput.value.trim() || activeRoot)
-  }
-
-  const scanBtn = el('button', { class: 'btn btn-primary shrink-0' }, [svgIcon('search', 14), '扫描'])
-  scanBtn.onclick = () => startScan(pathInput.value.trim() || activeRoot)
-
   // 修复①：授权目录下拉（多根切换）+ 浏览对话框（browseDirs 受后端授权校验约束）
+  // 2026-09-20 UI 精简：删除「路径手填 + 扫描」对话框（所有目录已由授权下拉/浏览覆盖）
   const rootSel = el('select', {
-    class: 'input text-xs w-32 shrink-0',
+    class: 'input text-xs flex-1 min-w-0',
     title: '切换授权素材目录',
   }) as HTMLSelectElement
   rootSel.onchange = () => {
     const next = rootSel.value
     if (next) setActiveRoot(next, true)
   }
-  const browseBtn = el('button', { class: 'btn shrink-0 text-xs px-2 py-1' }, ['浏览…'])
+  const browseBtn = el('button', { class: 'btn btn-primary shrink-0 text-xs px-2 py-1' }, ['浏览…'])
   browseBtn.onclick = () => openDirBrowser((dir) => startScan(dir), currentDir || activeRoot)
   syncRootOptions()
 
@@ -226,7 +215,6 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
 
   const root = el('div', { class: 'flex flex-col h-full min-h-0 gap-2' }, [
     el('div', { class: 'flex items-center gap-1' }, [rootSel, browseBtn]),
-    el('div', { class: 'flex items-center gap-1' }, [pathInput, scanBtn]),
     el('div', { class: 'flex items-center gap-1' }, [searchInput, sortSel, dirBtn]),
     breadcrumb,
     listBox,
@@ -330,7 +318,6 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
   /** 修复②：增量推批累加 + 按 file 去重（后端 handlers.go 每批 batchSize=10，逐批下发不同素材） */
   function appendAssets(videos: VideoInfo[], dir: string) {
     currentDir = dir
-    pathInput.value = dir
     const seen = new Set(assets.map((a) => a.file))
     for (const v of videos) {
       const ref = toRef(v)
@@ -392,7 +379,12 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
     if (isUnderRoot) {
       const rel = normalized.slice(rootNorm.length).replace(/^\/+/, '')
       const parts = rel ? rel.split('/') : []
-      const segs: { label: string; path: string }[] = [{ label: '根', path: rootNorm }]
+      // 2026-09-20 UI 精简：「根」返回入口由授权目录下拉承担，面包屑不再渲染根段
+      if (!parts.length) {
+        breadcrumb.append(el('span', { class: 'shrink-0 truncate max-w-[140px]' }, ['根']))
+        return
+      }
+      const segs: { label: string; path: string }[] = []
       let acc = rootNorm
       for (const p of parts) {
         acc = acc + '/' + p

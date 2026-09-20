@@ -1,25 +1,30 @@
 # Fnos.VideoConversion 视频转码系统
 
-一套面面向个人与工作室的远程视频转码方案，核心支持 fnNAS 远程调用 Windows 主机 FVCS 算力转码。服务端依托 FFmpeg，自动适配显卡加速、多任务并发与断点传输；Web 客户端 FVCC 可直连 NAS 与多台 Windows 转码机，自定义转码模板远程下发任务，适合家庭 NAS 远程批量处理视频素材。
+一套面向个人与工作室的远程视频转码方案，核心支持 fnNAS 远程调用 Windows 主机 FVCS 算力转码。服务端依托 FFmpeg，自动适配显卡加速、多任务并发与断点传输；Web 客户端 FVCC 可直连 NAS 与多台 Windows 转码机，自定义转码模板远程下发任务，适合家庭 NAS 远程批量处理视频素材。当前版本：FVCC v1.4.9 / FVCS v1.2.6。
 
 ## 项目组成
 
 1. **FVCS 转码服务端（Windows常驻程序）**
-    部署在装有视频素材、具备转码算力的主机/NAS上，是整套系统的算力核心：
+    部署在装有视频素材、具备转码算力的 Windows 主机上，是整套系统的算力核心：
     - 带桌面托盘可视化面板，支持开机自启、资源监控、实时日志查看；
     - 底层基于FFmpeg转码，自动兼容NVIDIA/Intel/AMD硬件加速，无显卡加速时自动软编兜底；
+    - 支持 EDL 时间线渲染（多片段拼接/裁剪/顺序渲染），命令构造器基于结构化载荷生成参数数组，杜绝 shell 拼接注入；
+    - 支持 SMB 共享直读模式：挂载远程共享直接渲染素材，成品落盘目标共享，无需分片上传；
     - 完善任务调度：支持多并发、任务优先级插队，重启自动恢复排队任务；
     - 文件传输支持分片上传、断点续传下载，自动清理临时文件；
-    - 内置鉴权、命令注入过滤、访问限流等安全机制，本地/局域网部署灵活；
-    - 任务数据SQLite持久化、日志自动分卷清理，崩溃不丢失任务记录。
+    - 内置鉴权、命令注入过滤、访问限流等安全机制，凭据经 Windows DPAPI 加密存储，本地/局域网部署灵活；
+    - 任务数据SQLite持久化、日志自动分卷清理，崩溃不丢失任务记录；
+    - 提供 fvcs-cli 维护命令行（凭据重加密迁移 / 状态查询 / 版本），本地 IPC 供托盘 UI 管控服务。
 
 2. **FVCC Web客户端（fnNAS应用）**
     面向用户的可视化操作界面，无需安装软件：
-    - 可同时管理多台远程转码服务器，自带本地本机转码选项；
+    - 可同时管理多台远程转码服务器（含健康分与熔断调度），自带本地本机转码选项；
     - 本地视频一键扫描预览，自动解析分辨率、码率、编码等元数据，支持批量文件管理；
+    - 内置时间线编辑器（EDL）：多片段可视化剪辑、拼接、裁剪，一键下发渲染任务；
     - 自定义保存多套转码参数模板，批量选中素材一键下发转码任务；
     - WebSocket实时推送任务进度，支持启停任务、查询历史转码记录；
-    - 服务器连接、界面布局偏好本地保存，操作简单易上手。
+    - 服务器连接、界面布局偏好本地保存，操作简单易上手；
+    - 删除操作回收站化（移入授权根 `_trash`，可查看与清空），任务统计可视化图表。
 
 ## FVCS 服务端功能
 
@@ -35,6 +40,12 @@
 - 支持自定义 FFmpeg 参数，满足不同画质与体积需求
 - 转码进程优先级可配置（低/低于正常/正常/高于正常/高），与 Windows 任务管理器优先级联动
 
+### EDL 时间线渲染
+- 接收结构化 EDL 载荷（设计文档 03/05），支持多片段拼接、裁剪、顺序渲染
+- 命令构造器只输出 `[]string` 参数数组，所有路径经校验后入参，禁止 shell 拼接
+- 支持 SMB 共享直读：挂载共享后直接渲染远端素材，成品落盘到目标共享，全程无需上传
+- EDL 载荷校验与 FVCC 双端独立实现、交叉对照，保证契约一致
+
 ### 任务调度与并发控制
 - 多任务并发转码，可配置最大并发数量
 - 支持任务优先级，加急任务自动插队
@@ -42,17 +53,18 @@
 - 程序重启后自动恢复未完成任务队列
 
 ### 文件传输
-- 视频源文件分片上传，支持乱序缓存、CRC 校验、超时重传
+- 视频源文件分片上传，支持乱序缓存、CRC 校验、超时重传（EDL 渲染任务走 SMB 直读，不占传输通道）
 - 成品文件支持 HTTP 断点续传下载
 - 客户端断开连接自动清理未完成任务与临时分片
 - 定时清理过期临时文件，避免磁盘占用累积
 
 ### 安全与权限
-- 鉴权密钥加密存储，禁止 URL 明文传递
+- 鉴权密钥经 Windows DPAPI 加密存储（master.key），禁止 URL 明文传递
 - WebSocket 与 HTTP 请求统一请求头鉴权
 - FFmpeg 自定义参数做命令注入过滤
 - 默认仅监听本地，可手动开启局域网访问
 - 连接限流、心跳保活、定时二次鉴权
+- 提供 `fvcs-cli reencrypt` 一次性迁移工具：旧硬编码密钥密文 → DPAPI 主密钥重写
 
 ### 系统监控
 - 实时显示磁盘剩余空间、内存占用、GPU 编码状态
@@ -67,21 +79,30 @@
 - 任务数据 SQLite 持久化，异常崩溃数据不丢失
 - 敏感信息（密钥、文件路径、IP）自动脱敏输出
 
+### 本地 IPC 与管理
+- 本地 IPC 服务（127.0.0.1:5000）供托盘 UI 启停服务、读写配置、查询任务与日志
+- `fvcs-cli` 维护命令行：`reencrypt` / `status` / `version`，需与服务位于同一目录
+
 ---
 
 ## FVCC 客户端功能
 
 ### 多服务器管理
 - 支持同时配置多台远程转码服务器
-- 实时检测服务器在线状态
+- 实时检测服务器在线状态，调度层按健康分与熔断策略选机
 - 内置 fnNAS 自转码选项（使用 FVCC 本地算力），创建转码任务时自动可选，无需单独配置
 
 ### 视频扫描与预览
-- 浏览本地目录，自动扫描视频文件
+- 浏览本地目录，自动扫描视频文件（分页加载）
 - 通过 ffprobe 解析视频元数据
 - 展示文件名、格式、大小、时长、分辨率、编码、码率、帧率、音频信息等
 - 支持自定义列显示与搜索筛选
-- 支持文件重命名、移动、删除等批量操作（含多选）
+- 支持文件重命名、移动、删除等批量操作（含多选）；删除移入授权根 `_trash` 回收站，可列表查看与清空
+
+### 时间线编辑器（EDL）
+- 可视化时间线编辑：多片段拖拽、拼接、裁剪、排序
+- 生成结构化 EDL 载荷，下发 FVCS RenderEDL 渲染任务（SMB 直读模式）
+- EDL 载荷校验与 FVCS 双端实现，保证契约一致
 
 ### 转码方案管理
 - 创建并保存多套转码方案（编码、码率、分辨率、音频参数等）
@@ -93,11 +114,13 @@
 - 支持单任务停止、批量清空全部任务
 - 任务状态实时推送（WebSocket 长连接）
 - 历史任务记录查询
+- 任务统计可视化（趋势图、状态圆环、分布/密度图，基于 lightweight-charts）
 
 ### 设置
 - 服务器连接配置（地址、端口、鉴权密钥）
 - 客户端界面偏好设置
 - 列显示偏好本地持久化
+- 命令面板（快速跳转与操作）
 
 ---
 
@@ -107,12 +130,14 @@
 2. **视频创作者归档**：批量将录制的高码率素材转码为分发格式
 3. **家庭 NAS 转码**：部署在 NAS 或家庭主机上，远程提交转码任务，自动完成后下载成品
 4. **多机协同转码**：配置多台转码服务器，按需分配任务，提升整体吞吐
+5. **远程剪辑渲染**：浏览器端时间线编辑器剪辑素材，FVCS 经 SMB 直读渲染成品，无需上传大文件
 
 ---
 
 ## 构建与部署
 
 - **构建**：见 [BUILD.md](./BUILD.md)（一键脚本 `.\build.ps1`，含 FVCC fpk 打包与 FVCS 构建全流程、版本同步清单、故障排查）。
+- **版本单一来源**：FVCC 版本三处同步（`manifest` / `ui-src/package.json` / `server/internal/version/VERSION`，当前 v1.4.9），由 `scripts/check-versions.ps1` 自动校验；FVCS 版本见 `FVCS/pkg/version/VERSION`（当前 v1.2.6）。
 - **部署**：
   - FVCC：fnOS 应用，构建产物 `FVCC\fvcc.fpk` 上传 NAS 安装；历史版本见 `archive/fpk/`。
   - FVCS：Windows 常驻程序，`FVCS\fvcs-service.exe` 托盘运行，局域网被 FVCC 调度。
@@ -122,22 +147,33 @@
 
 ```
 Fnos.VideoConversion/
-├── FVCS/                          # 渲染端源码（Go + Fyne UI + FFmpeg）
-│   ├── cmd/                       # 服务入口 / 桌面 UI
-│   └── pkg/                       # 业务逻辑（EDL、协议、任务）
-├── FVCC/                          # 调度端源码（Go gin + Vite/TS）
-│   ├── server/                    # Go 后端
-│   ├── ui-src/                    # 前端（Vite + TypeScript）
+├── FVCS/                          # 转码服务端源码（Go + Fyne 托盘 UI + FFmpeg）
+│   ├── cmd/                       # 入口：ui（托盘）/ service（无头服务）/ settings / fvcs-cli（维护命令行）/ test_start
+│   └── pkg/                       # 业务包：config / ffmpeg（含 EDL 构造器）/ ipc / logger / protocol（EDL+协议）/ server / smb / task（含 RenderEDL）/ version / winapi（DPAPI）
+├── FVCC/                          # 调度端源码（Go gin + Vite/TS 无框架原生 DOM）
+│   ├── server/                    # Go 后端（P2-1 分层收口：main.go + internal/ 11 包 + logger + smbshare）
+│   ├── ui-src/                    # 前端源码（Vite + TypeScript；src/pages 7 页 + src/lib 公共模块）
+│   ├── cmd/                       # fnOS 安装/升级/卸载回调脚本
+│   ├── docs/                      # API_CONTRACT / DESIGN / PRODUCT / P2 实施记录
 │   ├── manifest                   # fnOS 应用清单
+│   ├── app/                       # 构建产物目录（fvcc + ui，git 忽略）
 │   └── README.md                  # FVCC 自包含说明与设计文档引用速查
-├── WebVideoEditor_Design/         # 设计规格文档（01~10 编号，代码注释按此引用）
+├── WebVideoEditor_Design/         # 设计规格文档（01~10 编号 + README + 整体架构设计方案，代码注释按此引用）
+├── docs/                          # 治理文档：混乱度评价报告 / 项目分析与改进方向 / IMPROVEMENT_LOG / SECURITY / TASK_REFERENCE / 项目现状与开发步骤 / UI 优化方向
+├── scripts/                       # 治理脚本：check-versions.ps1（版本一致性）/ check-coverage.ps1（测试覆盖率门槛）
+├── .github/workflows/             # CI 流水线：fvcc-ci.yml（paths 限定 FVCC/**）
 ├── archive/                       # 仓库治理归档：历史 fpk / 旧工具 / 升级前备份
+├── test-media/                    # 测试媒体样本
+├── freecut/                       # 独立子仓库（另一前端实验项目，自带 .git）
+├── temp/                          # 构建/调试临时产物
+├── dist/                          # 构建输出目录（git 忽略）
+├── _archive_md/                   # 已归档的旧分析文档
 ├── build.ps1                      # 一键构建脚本
 ├── build-env.ps1                  # 构建环境配置
 ├── BUILD.md                       # 构建规范与故障排查
-├── docs/                          # 治理文档：FVCC_混乱度评价报告_细化版 / TASK_REFERENCE / IMPROVEMENT_LOG / UI 优化方向
-├── 项目分析与改进方向.md            # 改进方向清单（P0~P3）
+├── fnpack-1.2.3-windows-amd64.exe # fnOS 打包工具（全仓库统一使用）
+├── .gitignore / LICENSE           # 仓库治理与许可
 └── README.md                      # 项目说明
 ```
 
-设计文档与对接协议见 [WebVideoEditor_Design](./WebVideoEditor_Design)（含 README 与 01~10 编号规格文档）；FVCC 内代码注释的章节引用规则见 [FVCC/README.md](./FVCC/README.md) 速查表。
+设计文档与对接协议见 [WebVideoEditor_Design](./WebVideoEditor_Design)（含 README、01~10 编号规格文档与整体架构设计方案）；FVCC 内代码注释的章节引用规则见 [FVCC/README.md](./FVCC/README.md) 速查表；数据面安全策略见 [docs/SECURITY.md](./docs/SECURITY.md)；治理台账见 [docs/FVCC_混乱度评价报告_细化版.md](./docs/FVCC_混乱度评价报告_细化版.md) 与 [docs/IMPROVEMENT_LOG.md](./docs/IMPROVEMENT_LOG.md)。

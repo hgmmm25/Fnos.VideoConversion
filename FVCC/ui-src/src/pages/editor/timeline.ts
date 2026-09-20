@@ -140,15 +140,8 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
   clearBtn.append(svgIcon('x', 14) as unknown as Node, el('span', {}, ['清空']))
   clearBtn.onclick = () => void clearAll()
 
-  const sortSel = el('select', { class: 'input text-xs w-24 shrink-0', title: '片段排序' }) as HTMLSelectElement
-  sortSel.append(
-    el('option', { value: 'added' }, ['按添加']),
-    el('option', { value: 'name' }, ['按素材名'])
-  )
-  sortSel.onchange = () => {
-    sortBy(sortSel.value as 'added' | 'name')
-    sortSel.value = 'added'
-  }
+  // 2026-09-20 UI 精简：删除「按添加 / 按素材名」排序下拉——
+  // 排序会重排时间线片段顺序且选中后立即重置回「按添加」，状态不持久，作用有限
 
   const profileSel = el('select', { class: 'input text-xs w-44 shrink-0', title: '渲染方案（服务端 presetKey 枚举，05 §5.1）' }) as HTMLSelectElement
   profileSel.onchange = () => opts.onSelectPreset(profileSel.value)
@@ -160,7 +153,6 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
     addBtn,
     delBtn,
     clearBtn,
-    sortSel,
     profileSel,
   ])
   fillProfiles()
@@ -600,17 +592,6 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
     if (!edlStore.getState().clips.length) return
     if (!(await confirmDialog('确定清空时间线？该操作可用 Ctrl+Z 撤销。'))) return
     edlStore.dispatch({ type: 'clear' })
-  }
-
-  function sortBy(kind: 'added' | 'name'): void {
-    const clips = edlStore.getState().clips.slice()
-    if (clips.length < 2) return
-    if (kind === 'name') {
-      clips.sort((a, b) => baseName(a.file).localeCompare(baseName(b.file), 'zh-Hans-CN'))
-    } else {
-      clips.sort((a, b) => (addedSeq.get(a.clipId) ?? 0) - (addedSeq.get(b.clipId) ?? 0))
-    }
-    edlStore.dispatch({ type: 'setClips', clips })
   }
 
   function fillProfiles(): void {

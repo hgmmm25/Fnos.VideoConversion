@@ -1,5 +1,5 @@
 appname               = fvcc
-version               = 1.4.6
+version               = 1.4.9
 display_name          = FVCC
 desc                  = Fnos Video Conversion Client - 视频转码任务调度与远程服务器管理
 arch                  = x86_64

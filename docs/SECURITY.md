@@ -20,7 +20,7 @@
 
 ### 2.2 渲染节点链路隔离（建议）
 
-- FVCC ↔ FVCS 走 WebSocket，节点间凭据为 `Server.AuthKey`（已由 `internal/security/crypto.go` AES-GCM 加密落盘；`internal/store/model/models.go` 仍留过时注释 `TODO: P0 AES 加密`，属代码层清理待办）。
+- FVCC ↔ FVCS 走 WebSocket，节点间凭据为 `Server.AuthKey`（已由 `internal/security/crypto.go` AES-GCM 加密落盘；`internal/store/model/models.go` 过时注释已随 1.4.7 清理）。
 - 部署建议：
   1. 渲染节点与 FVCC 处于同一可信内网/VLAN，禁止跨公网直连；
   2. 节点间防火墙仅放行 FVCS 端口 + FVCC 管理端口；

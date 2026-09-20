@@ -504,6 +504,10 @@ type ProjectSummary struct {
 	Rev       int       `json:"rev"`
 	ClipCount int       `json:"clipCount"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// 海报帧（动效改进 2026-09-20）：取首片段 file+inMs，供项目选择页卡片式缩略图复用 /thumb 抽帧。
+	// 无片段时省略，前端回退到图标占位。
+	PosterFile string `json:"posterFile,omitempty"`
+	PosterMs   int64  `json:"posterMs,omitempty"`
 }
 
 // WireClip 线协议片段（03 §2.2 / §3；in/out 为 "HH:MM:SS.mmm"）。

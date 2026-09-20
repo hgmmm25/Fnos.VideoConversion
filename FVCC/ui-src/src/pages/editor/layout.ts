@@ -119,10 +119,10 @@ export function buildEditorLayout(opts: LayoutOptions): EditorLayout {
   presetSel.append(
     el('option', { value: 'default' }, ['默认布局']),
     el('option', { value: 'compact' }, ['紧凑时间线']),
-    el('option', { value: 'preview' }, ['大预览']),
-    el('option', { value: 'custom' }, ['自定义'])
+    el('option', { value: 'preview' }, ['大预览'])
   )
-  presetSel.value = persist.presetId
+  // 2026-09-20 UI 精简：「自定义」为拖拽尺寸后的隐式状态，不再提供下拉项（原选中仅回显无操作）
+  presetSel.value = persist.presetId === 'custom' ? 'default' : persist.presetId
 
   const nodeEl = el('span', { class: 'text-xs text-ink-muted hidden md:inline' }, ['节点 —'])
 
@@ -210,12 +210,12 @@ export function buildEditorLayout(opts: LayoutOptions): EditorLayout {
   function markCustom() {
     if (persist.presetId === 'custom') return
     persist.presetId = 'custom'
-    presetSel.value = 'custom'
+    // 下拉已无「自定义」项，拖拽降级后回显默认布局，避免 select 空白
+    presetSel.value = 'default'
   }
   presetSel.onchange = () => {
     const v = presetSel.value
     if (v === 'default' || v === 'compact' || v === 'preview') applyPreset(v)
-    else presetSel.value = persist.presetId // 选中「自定义」无操作，回显当前预设
   }
 
   function setAssetsCollapsed(collapsed: boolean) {

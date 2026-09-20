@@ -32,27 +32,126 @@ function placeholder(text: string, icon: 'folder' | 'play' | 'film' = 'film'): H
 
 export async function renderProjectPicker(root: HTMLElement) {
   root.innerHTML = ''
-  const wrap = el('div', { class: 'p-4 sm:p-6 max-w-4xl mx-auto' })
+  const wrap = el('div', { class: 'p-4 sm:p-6 max-w-6xl mx-auto' })
+
+  // ===== 动效改进（2026-09-20）：视图切换器（详细信息 / 卡片式，滑块左右滑动）=====
+  const VIEW_KEY = 'wve.picker.view.v1'
+  type PickerView = 'detail' | 'grid'
+  function loadView(): PickerView {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'detail'
+    } catch {
+      return 'detail'
+    }
+  }
+  function saveView(v: PickerView) {
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      /* 隐私模式或配额不足时静默降级 */
+    }
+  }
+  const VIEW_BTN_W = 36 // w-9
+
+  let viewMode: PickerView = loadView()
+
+  const viewToggle = el('div', {
+    class: 'relative flex items-center rounded-lg bg-surface-hover p-0.5 shrink-0',
+    role: 'group',
+    'aria-label': '项目列表视图',
+  })
+  const viewThumb = el('div', {
+    class: 'absolute top-0.5 bottom-0.5 w-9 rounded-md bg-surface pointer-events-none transition-transform duration-300 ease-out-strong',
+  })
+  viewToggle.append(viewThumb)
+  const viewDefs: { key: PickerView; icon: 'list' | 'grid'; label: string }[] = [
+    { key: 'detail', icon: 'list', label: '详细信息' },
+    { key: 'grid', icon: 'grid', label: '卡片式' },
+  ]
+  const viewButtons: HTMLButtonElement[] = []
+  for (const v of viewDefs) {
+    const b = el('button', {
+      class: 'relative w-9 h-8 flex items-center justify-center rounded-md text-ink-muted hover:text-ink transition-colors',
+      type: 'button',
+      title: v.label,
+      'aria-label': v.label,
+    }) as HTMLButtonElement
+    b.append(svgIcon(v.icon, 16) as unknown as Node)
+    b.onclick = () => {
+      if (viewMode === v.key) return
+      viewMode = v.key
+      saveView(viewMode)
+      syncViewToggle()
+      load()
+    }
+    viewButtons.push(b)
+    viewToggle.append(b)
+  }
+  function syncViewToggle() {
+    viewThumb.style.transform = `translateX(${(viewMode === 'detail' ? 0 : 1) * VIEW_BTN_W}px)`
+    viewButtons.forEach((b, i) => {
+      const active = (viewMode === 'detail' ? 0 : 1) === i
+      b.classList.toggle('text-primary', active)
+      b.setAttribute('aria-pressed', String(active))
+    })
+  }
+  syncViewToggle()
 
   const head = el('div', { class: 'flex items-center justify-between mb-4 gap-2 flex-wrap' })
   head.append(
     el('h2', { class: 'text-lg font-semibold flex items-center gap-2' }, [
       svgIcon('scissors', 18) as unknown as Node,
       '剪辑项目',
-    ])
+    ]),
+    el('div', { class: 'flex items-center gap-2 flex-wrap' }, [viewToggle, buildCreateForm()])
   )
 
-  // 新建表单
-  const form = el('div', { class: 'flex items-center gap-2' })
-  const nameInput = el('input', {
-    class: 'input',
-    placeholder: '新项目名称',
-    maxlength: '64',
-  }) as HTMLInputElement
-  const createBtn = el('button', { class: 'btn btn-primary flex items-center gap-1' })
-  createBtn.append(svgIcon('plus', 16) as unknown as Node, el('span', {}, ['新建']))
-  form.append(nameInput, createBtn)
-  head.append(form)
+  function buildCreateForm(): HTMLElement {
+    // 动效改进：新建按钮去文字改圆形 +（尺寸匹配输入框 h-9）；输入框聚焦时由窄展开变长
+    const form = el('div', { class: 'flex items-center gap-2' })
+    const nameInput = el('input', {
+      class:
+        'h-9 w-32 focus:w-72 max-w-[60vw] px-3 text-sm rounded border border-line ' +
+        'bg-surface text-ink placeholder-ink-muted ' +
+        'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary ' +
+        'transition-[width] duration-300 ease-out-strong',
+      placeholder: '新项目名称',
+      maxlength: '64',
+    }) as HTMLInputElement
+    const createBtn = el('button', {
+      class:
+        'btn btn-primary !px-0 w-9 h-9 rounded-full shrink-0 ' +
+        'transition-transform duration-200 ease-out-strong hover:scale-105 active:scale-95',
+      title: '新建项目',
+      'aria-label': '新建项目',
+    })
+    createBtn.append(svgIcon('plus', 18) as unknown as Node)
+    form.append(nameInput, createBtn)
+    createBtn.onclick = async () => {
+      const name = nameInput.value.trim()
+      if (!name) {
+        toast('请输入项目名称', 'error')
+        nameInput.focus()
+        return
+      }
+      createBtn.setAttribute('disabled', 'true')
+      try {
+        const p = await api.createProject({ name, timeline: defaultTimeline() })
+        nameInput.value = ''
+        toast('项目已创建', 'success')
+        openProject(p.id)
+      } catch (e) {
+        toast('创建失败：' + errText(e), 'error')
+      } finally {
+        createBtn.removeAttribute('disabled')
+      }
+    }
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') createBtn.click()
+    })
+    return form
+  }
+
   wrap.append(head)
 
   const listBox = el('div', { class: 'grid gap-2' })
@@ -61,6 +160,11 @@ export async function renderProjectPicker(root: HTMLElement) {
 
   async function load() {
     listBox.innerHTML = ''
+    // 视图切换：卡片式用自适应栏位网格（auto-fill + minmax），详细信息保持纵向行卡片
+    listBox.className =
+      viewMode === 'grid'
+        ? 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]'
+        : 'grid gap-2'
     try {
       const r = await api.listProjects()
       // 服务端主字段为 items，projects 为兼容别名（2026-09-16 修复历史项目不显示）
@@ -69,13 +173,31 @@ export async function renderProjectPicker(root: HTMLElement) {
         listBox.append(emptyState('还没有剪辑项目，先在上方新建一个', 'film'))
         return
       }
-      for (const p of list) listBox.append(projectCard(p))
+      list.forEach((p, i) => {
+        const card = viewMode === 'grid' ? gridCard(p) : detailCard(p)
+        if (viewMode === 'grid') {
+          // 卡片式：进入动画逐张错开（动效改进）
+          card.classList.add('animate-fade-in-up')
+          card.style.animationDelay = Math.min(i, 8) * 40 + 'ms'
+        }
+        listBox.append(card)
+      })
     } catch (e) {
       listBox.append(emptyState('项目列表加载失败：' + errText(e), 'warning'))
     }
   }
 
-  function projectCard(p: ProjectSummary): HTMLElement {
+  async function deleteProject(p: ProjectSummary) {
+    try {
+      await api.deleteProject(p.id)
+      toast('项目已删除', 'success')
+      load()
+    } catch (e) {
+      toast('删除失败：' + errText(e), 'error')
+    }
+  }
+
+  function detailCard(p: ProjectSummary): HTMLElement {
     const card = el('div', { class: 'card flex items-center gap-3 px-3 py-2' })
     const main = el('div', { class: 'flex-1 min-w-0 cursor-pointer' })
     main.append(
@@ -91,42 +213,68 @@ export async function renderProjectPicker(root: HTMLElement) {
 
     const delBtn = el('button', { class: 'btn btn-sm flex items-center', title: '删除项目' })
     delBtn.append(svgIcon('trash', 14) as unknown as Node)
-    delBtn.onclick = async () => {
-      try {
-        await api.deleteProject(p.id)
-        toast('项目已删除', 'success')
-        load()
-      } catch (e) {
-        toast('删除失败：' + errText(e), 'error')
-      }
-    }
+    delBtn.onclick = () => void deleteProject(p)
 
     card.append(main, openBtn, delBtn)
     return card
   }
 
-  createBtn.onclick = async () => {
-    const name = nameInput.value.trim()
-    if (!name) {
-      toast('请输入项目名称', 'error')
-      return
+  // 卡片式：缩略图（复用 /thumb 抽帧，素材面板同源能力）+ 标题，自适应栏位
+  function gridCard(p: ProjectSummary): HTMLElement {
+    const card = el('div', {
+      class:
+        'card overflow-hidden border border-line-subtle cursor-pointer group ' +
+        'transition-all duration-200 ease-out-strong hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5',
+    })
+    const media = el('div', {
+      class: 'relative aspect-video bg-surface-alt flex items-center justify-center overflow-hidden',
+    })
+    const hasPoster = p.clipCount > 0 && !!p.posterFile
+    if (hasPoster) {
+      const img = el('img', {
+        class: 'w-full h-full object-cover transition-transform duration-300 ease-out-strong group-hover:scale-105',
+        loading: 'lazy',
+        alt: p.name,
+      }) as HTMLImageElement
+      // 复用已被提取的缩略图能力：/thumb 按首片段 inMs 抽帧（与素材面板同一端点）
+      img.src = api.thumbUrl(p.posterFile as string, Math.max(0, p.posterMs ?? 0))
+      img.onerror = () => {
+        img.remove()
+        media.append(placeholderIcon())
+      }
+      media.append(img)
+    } else {
+      media.append(placeholderIcon())
     }
-    createBtn.setAttribute('disabled', 'true')
-    try {
-      const p = await api.createProject({ name, timeline: defaultTimeline() })
-      nameInput.value = ''
-      toast('项目已创建', 'success')
-      openProject(p.id)
-    } catch (e) {
-      toast('创建失败：' + errText(e), 'error')
-    } finally {
-      createBtn.removeAttribute('disabled')
+
+    const body = el('div', { class: 'p-3' }, [
+      el('div', { class: 'font-medium text-sm truncate', title: p.name }, [p.name]),
+      el('div', { class: 'text-xs text-ink-muted mt-0.5' }, [
+        `${p.clipCount} 个片段 · ${formatTime(p.updatedAt)}`,
+      ]),
+    ])
+
+    const delBtn = el('button', {
+      class:
+        'absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full ' +
+        'bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200',
+      title: '删除项目',
+      'aria-label': '删除项目',
+    })
+    delBtn.append(svgIcon('trash', 13) as unknown as Node)
+    delBtn.onclick = (e) => {
+      e.stopPropagation()
+      void deleteProject(p)
     }
+
+    card.append(media, body, delBtn)
+    card.onclick = () => openProject(p.id)
+    return card
   }
 
-  nameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') createBtn.click()
-  })
+  function placeholderIcon(): HTMLElement {
+    return el('div', { class: 'text-ink-subtle' }, [svgIcon('film', 32) as unknown as Node])
+  }
 
   await load()
 }
@@ -203,7 +351,7 @@ export async function renderEditor(root: HTMLElement, projectId: string): Promis
     onRender: () => void handleRender(),
   })
 
-  const statsEl = el('span', { class: 'text-xs text-ink-muted' }, ['—'])
+  const statsEl = el('div', { class: 'text-xs text-ink-muted leading-tight text-right shrink-0 whitespace-nowrap' }, ['—'])
   layout.toolbar.append(statsEl)
 
   // ===== 需求1：顶栏「节点」显示真实链接状态（原实现仅初始化『节点 —』，setNodeStatus 从未被调用）=====
@@ -451,5 +599,7 @@ function renderSaveBadge(layout: EditorLayout, s: EditorState) {
 
 function renderStats(target: HTMLElement, edlStore: EditorStore) {
   const d = edlStore.derive()
-  target.textContent = `总时长 ${formatMs(d.totalMs)} · ${d.clipCount} 个片段`
+  target.innerHTML = ''
+  // 2026-09-20 UI 精简：总时长 / 片段数拆为两行显示（原为一行「·」拼接）
+  target.append(el('div', {}, [`总时长 ${formatMs(d.totalMs)}`]), el('div', {}, [`${d.clipCount} 个片段`]))
 }
