@@ -37,6 +37,18 @@ dist-ssr/
 FVCC/server/data/
 FVCS/data/
 
+# ---- 凭据/密钥与运行时数据库（2026-09-20 追加，P0 凭据加密产物，不得入库）----
+FVCC/config.enc.json
+FVCC/credentials.db
+FVCC/credentials.db-shm
+FVCC/credentials.db-wal
+FVCC/master.key
+FVCC/secret.key
+FVCC/task.db
+FVCC/tasks.json
+FVCC/history_tasks.json
+FVCC/locks.json
+
 # ---- FVCC 后端编译产物与调试残留（2026-09-18 追加）----
 FVCC/server/fvcc.exe
 FVCC/server/build_err.txt
