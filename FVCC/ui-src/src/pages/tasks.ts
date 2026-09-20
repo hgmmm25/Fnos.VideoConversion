@@ -32,6 +32,37 @@ interface CardEntry {
   dragHandle: HTMLElement
 }
 
+// B-阶段（7.3 tasks 行）：队列状态可视化 —— 状态分组与对应 token 色。
+// 分组与 tasks.ts getPhaseStyle / types.ts STATUS_CLASS 的语义一致：
+// 进行中=signal、待执行=neutral-soft、完成=success、错误=danger、暂停/取消=neutral、冷却=warning。
+type QueueGroupKey = 'active' | 'waiting' | 'completed' | 'error' | 'paused' | 'cooldown'
+const QUEUE_GROUPS: { key: QueueGroupKey; label: string; colorClass: string; match: (s: TaskStatus) => boolean }[] = [
+  {
+    key: 'active', label: '进行中', colorClass: 'bg-signal',
+    match: (s) => s === 'UPLOADING' || s === 'TRANSCODING' || s === 'DOWNLOADING',
+  },
+  {
+    key: 'waiting', label: '待执行', colorClass: 'bg-neutral-soft',
+    match: (s) => s === 'QUEUE' || s === 'WAITING_TRANS' || s === 'WAITING_DOWN',
+  },
+  {
+    key: 'completed', label: '完成', colorClass: 'bg-success',
+    match: (s) => s === 'COMPLETED',
+  },
+  {
+    key: 'error', label: '错误', colorClass: 'bg-danger',
+    match: (s) => s === 'ERROR',
+  },
+  {
+    key: 'paused', label: '暂停/取消', colorClass: 'bg-neutral',
+    match: (s) => s === 'PAUSED' || s === 'CANCELLED',
+  },
+  {
+    key: 'cooldown', label: '冷却', colorClass: 'bg-warning',
+    match: (s) => s === 'COOLDOWN',
+  },
+]
+
 export function renderTasks(container: HTMLElement) {
   const wrap = el('div', { class: 'flex flex-col h-full' })
 
@@ -41,6 +72,11 @@ export function renderTasks(container: HTMLElement) {
   })
   const refresh = el('button', { class: 'btn btn-sm flex items-center gap-1.5' }, [])
   refresh.append(svgIcon('refresh', 14) as unknown as Node, el('span', {}, ['刷新']))
+  // 2026-09-19 修复：此前「刷新」按钮创建后从未绑定点击事件，点击无任何反应。
+  // 点击后重新拉取任务列表，store 层已做数据去重：有变化才 notify 并触发渲染，无变化零开销。
+  refresh.onclick = () => {
+    void store.loadTasks()
+  }
 
   const selectAllBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5' }, [el('span', {}, ['全选'])])
   selectAllBtn.onclick = (e) => {
@@ -66,17 +102,62 @@ export function renderTasks(container: HTMLElement) {
   const stats = el('span', { class: 'ml-auto text-xs text-ink-muted' }, [])
   toolbar.append(selectAllBtn, refresh, batchPause, batchResume, batchCancel, stats)
 
+  // B-阶段（7.3 tasks 行）：队列状态可视化 —— 状态占比堆叠条 + 计数摘要（自绘 CSS，零依赖）
+  const overview = el('div', { class: 'px-3 sm:px-4 py-2 border-b border-line bg-surface-alt hidden' })
   const listWrap = el('div', { class: 'flex-1 overflow-auto p-4' })
-  wrap.append(toolbar, listWrap)
+  wrap.append(toolbar, overview, listWrap)
   container.appendChild(wrap)
 
   // 卡片缓存：taskID -> 卡片元素及动态引用
   const cardMap = new Map<string, CardEntry>()
 
+  // B-阶段（7.3 tasks 行）：队列状态概览 —— 状态占比堆叠条 + 计数摘要
+  const updateOverview = () => {
+    const tasks = store.tasks
+    if (tasks.length === 0) {
+      overview.classList.add('hidden')
+      overview.replaceChildren()
+      return
+    }
+    overview.classList.remove('hidden')
+
+    const counts = new Map<QueueGroupKey, number>(QUEUE_GROUPS.map((g) => [g.key, 0]))
+    for (const t of tasks) {
+      const g = QUEUE_GROUPS.find((g) => g.match(t.status))
+      if (g) counts.set(g.key, (counts.get(g.key) ?? 0) + 1)
+    }
+    const total = tasks.length
+
+    const bar = el('div', {
+      class: 'flex flex-1 min-w-[80px] h-1.5 rounded-full overflow-hidden bg-surface',
+      role: 'img',
+    })
+    const labels: string[] = []
+    for (const g of QUEUE_GROUPS) {
+      const n = counts.get(g.key) ?? 0
+      if (n === 0) continue
+      const seg = el('div', {
+        class: `${g.colorClass} h-full transition-all`,
+        style: `width:${(n / total) * 100}%`,
+        title: `${g.label} ${n}`,
+      })
+      bar.appendChild(seg)
+      labels.push(`${g.label} ${n}`)
+    }
+    bar.setAttribute('aria-label', labels.join('，'))
+
+    overview.replaceChildren(
+      el('span', { class: 'text-xs text-ink-muted shrink-0' }, ['队列']),
+      bar,
+      el('span', { class: 'text-xs text-ink-muted font-mono tabular-nums shrink-0' }, [labels.join(' · ')]),
+    )
+  }
+
   // full=true 时强制全量重建（用于全选/删除等结构性变化）
   const render = (full = false) => {
     const tasks = store.tasks
     stats.textContent = `共 ${tasks.length} 个任务，已选 ${selected.size} 个`
+    updateOverview()
     const isAllSelected = tasks.length > 0 && tasks.every(t => selected.has(t.id))
     selectAllBtn.className = isAllSelected
       ? 'btn btn-sm flex items-center gap-1.5 bg-primary text-white'

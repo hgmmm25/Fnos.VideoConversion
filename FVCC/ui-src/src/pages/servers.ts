@@ -5,6 +5,89 @@ import { type Server } from '../types'
 import { crudActions } from '../lib/crudActions'
 import { useListPage } from '../lib/useListPage'
 
+// ===== C-阶段（7.3 servers 行）：迷你负载仪表盘 =====
+// 服务器侧无负载接口（§7.1 边界：不动 API 契约），改用 store.tasks 按 serverId 聚合
+// 真实任务状态作为负载代理：进行中/待执行/完成/错误/冷却 计数 + 进行中占比圆环。
+// 纯 SVG 自绘零依赖；颜色全部走 token 色板（check-design R1 hex 规则）。
+interface ServerLoad {
+  active: number
+  waiting: number
+  completed: number
+  error: number
+  cooling: number
+}
+
+function tokenColor(name: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--c-${name}`).trim()
+  const parts = v.split(/\s+/).filter(Boolean)
+  return parts.length === 3 ? `rgb(${parts.join(' ')})` : v || 'transparent'
+}
+
+function serverLoadOf(id: string): ServerLoad {
+  const acc: ServerLoad = { active: 0, waiting: 0, completed: 0, error: 0, cooling: 0 }
+  for (const t of store.tasks) {
+    if (t.serverId !== id) continue
+    switch (t.status) {
+      case 'UPLOADING':
+      case 'TRANSCODING':
+      case 'DOWNLOADING':
+        acc.active++
+        break
+      case 'QUEUE':
+      case 'WAITING_TRANS':
+      case 'WAITING_DOWN':
+        acc.waiting++
+        break
+      case 'COMPLETED':
+        acc.completed++
+        break
+      case 'ERROR':
+        acc.error++
+        break
+      case 'COOLDOWN':
+        acc.cooling++
+        break
+    }
+  }
+  return acc
+}
+
+function miniGauge(load: ServerLoad, online: boolean): HTMLElement {
+  const total = load.active + load.waiting + load.completed + load.error + load.cooling
+  const ratio = total > 0 ? load.active / total : 0
+  const NS = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(NS, 'svg')
+  svg.setAttribute('width', '56')
+  svg.setAttribute('height', '56')
+  svg.setAttribute('viewBox', '0 0 56 56')
+  const r = 22
+  const c = 2 * Math.PI * r
+  const track = document.createElementNS(NS, 'circle')
+  track.setAttribute('cx', '28')
+  track.setAttribute('cy', '28')
+  track.setAttribute('r', String(r))
+  track.setAttribute('fill', 'none')
+  track.setAttribute('stroke', tokenColor('neutral-soft'))
+  track.setAttribute('stroke-width', '5')
+  const arc = document.createElementNS(NS, 'circle')
+  arc.setAttribute('cx', '28')
+  arc.setAttribute('cy', '28')
+  arc.setAttribute('r', String(r))
+  arc.setAttribute('fill', 'none')
+  arc.setAttribute('stroke', online ? tokenColor('signal') : tokenColor('neutral'))
+  arc.setAttribute('stroke-width', '5')
+  arc.setAttribute('stroke-linecap', 'round')
+  arc.setAttribute('transform', 'rotate(-90 28 28)')
+  arc.setAttribute('stroke-dasharray', `${ratio * c} ${c}`)
+  arc.setAttribute('stroke-dashoffset', '0')
+  svg.append(track, arc)
+  const center = el('div', { class: 'absolute inset-0 flex items-center justify-center text-sm font-semibold font-mono tabular-nums' }, [String(load.active)])
+  const box = el('div', { class: 'relative w-14 h-14 shrink-0', title: `进行中 ${load.active} / 共 ${total} 个关联任务` })
+  box.appendChild(svg)
+  box.appendChild(center)
+  return box
+}
+
 export function renderServers(container: HTMLElement) {
   const wrap = el('div', { class: 'flex flex-col h-full p-4 gap-3' })
 
@@ -111,6 +194,24 @@ export function renderServers(container: HTMLElement) {
     if (s.keyExpireAt) {
       info.appendChild(el('div', { class: 'text-warning' }, [`密钥过期: ${formatTime(s.keyExpireAt)}`]))
     }
+    // C-阶段（7.3 servers 行）：迷你负载仪表盘 —— 进行中占比圆环 + 状态计数行
+    const load = serverLoadOf(s.id)
+    const gauge = miniGauge(load, s.status === 'online')
+    const loadStats = el('div', { class: 'flex-1 min-w-0 space-y-1 text-xs' }, [
+      el('div', { class: 'flex items-center gap-2' }, [
+        el('span', { class: 'inline-block w-2 h-2 rounded-full bg-signal shrink-0' }),
+        el('span', { class: 'text-ink-muted' }, [`进行中 ${load.active}`]),
+        el('span', { class: 'inline-block w-2 h-2 rounded-full bg-neutral-soft shrink-0' }),
+        el('span', { class: 'text-ink-muted' }, [`待执行 ${load.waiting}`]),
+      ]),
+      el('div', { class: 'flex items-center gap-2' }, [
+        el('span', { class: 'inline-block w-2 h-2 rounded-full bg-success shrink-0' }),
+        el('span', { class: 'text-ink-muted' }, [`完成 ${load.completed}`]),
+        el('span', { class: 'inline-block w-2 h-2 rounded-full bg-danger shrink-0' }),
+        el('span', { class: 'text-ink-muted' }, [`错误 ${load.error}`]),
+      ]),
+    ])
+    const gaugeWrap = el('div', { class: 'flex items-center gap-3 rounded-lg bg-surface-alt px-3 py-2' }, [gauge, loadStats])
     const testBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5 self-start' }, [])
     testBtn.append(svgIcon('circle', 14) as unknown as Node, el('span', {}, ['测试连接']))
     testBtn.onclick = async (e) => {
@@ -127,7 +228,7 @@ export function renderServers(container: HTMLElement) {
       }
       testBtn.disabled = false
     }
-    card.append(head, info, testBtn)
+    card.append(head, info, gaugeWrap, testBtn)
     card.onclick = () => {
       currentId = s.id
       view = 'edit'
@@ -150,13 +251,17 @@ export function renderServers(container: HTMLElement) {
   }
 
   // P2-2：列表加载/订阅走 useListPage 统一生命周期
+  // 2026-09-19 修复：编辑视图下不响应 store 通知（与 profiles.ts 对齐），
+  // 否则 loadServers→notify→refresh→render 会重建编辑表单，吞掉用户正在输入的值，
+  // 表现为「保存时提示请填写服务器名称」「表单无法交互」。
   const page = useListPage({
     load: async () => {
-      await store.loadServers()
+      // C-阶段（7.3 servers 行）：仪表盘依赖任务分布，进页时一并拉取
+      await Promise.all([store.loadServers(), store.loadTasks()])
       return store.servers
     },
     render: () => render(),
-    subscribe: (cb) => store.subscribe(cb),
+    subscribe: (cb) => store.subscribe(() => { if (view === 'list') cb() }),
     errorLabel: '服务器列表',
   })
   page.mount()

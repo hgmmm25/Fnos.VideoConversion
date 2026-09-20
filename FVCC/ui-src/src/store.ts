@@ -90,6 +90,18 @@ class Store {
   }
 
   // ===== 加载 =====
+  // 数据去重保护（2026-09-19 修复）：load* 完成后若数据与当前完全一致则跳过 notify。
+  // 此前 load* 无条件 notify，而 useListPage 的 subscribe 回调会 refresh→load→notify，
+  // 形成「加载→通知→再加载」无限循环：列表页被持续全量重建、表单输入被吞、按钮点击失效，
+  // 同时向后端狂发 GET /api/{tasks|servers|profiles} 请求。
+  private sameList<T>(a: T[], b: T[]): boolean {
+    if (a.length !== b.length) return false
+    return JSON.stringify(a) === JSON.stringify(b)
+  }
+  private sameJson(a: unknown, b: unknown): boolean {
+    return JSON.stringify(a) === JSON.stringify(b)
+  }
+
   async loadAll() {
     await Promise.all([this.loadTasks(), this.loadServers(), this.loadProfiles(), this.loadMetrics()])
   }
@@ -103,27 +115,33 @@ class Store {
   }
   async loadTasks() {
     const r = await api.listTasks()
+    if (this.sameList(this.tasks, r.tasks)) return
     this.tasks = r.tasks
     this.notify()
   }
   async loadHistory() {
     const r = await api.listHistory()
+    if (this.sameList(this.history, r.tasks)) return
     this.history = r.tasks
     this.notify()
   }
   async loadServers() {
     const r = await api.listServers()
+    if (this.sameList(this.servers, r.servers)) return
     this.servers = r.servers
     this.notify()
   }
   async loadProfiles() {
     const r = await api.listProfiles()
+    if (this.sameList(this.profiles, r.profiles)) return
     this.profiles = r.profiles
     this.notify()
   }
   async loadMetrics() {
     try {
-      this.metrics = await api.metrics()
+      const m = await api.metrics()
+      if (this.sameJson(this.metrics, m)) return
+      this.metrics = m
       this.notify()
     } catch (e) {
       console.warn('[store] load metrics', e)
@@ -181,7 +199,9 @@ class Store {
           }
         }
       } else if (msg.type === 'snapshot') {
-        this.tasks = msg.data || []
+        const data = msg.data || []
+        if (this.sameList(this.tasks, data)) return
+        this.tasks = data
         this.notify()
       }
     })

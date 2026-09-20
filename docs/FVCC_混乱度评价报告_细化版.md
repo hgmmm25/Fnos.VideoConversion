@@ -2,10 +2,10 @@
 
 > 项目：FVCC（飞牛视频转换 NAS 调度端 Web UI）@ D:\Fnos.VideoConversion\FVCC
 > 基线评价日期：2026-09-18（首版）
-> **复查更新日期：2026-09-18（第二版，反映 P0/P1 落地与 P2 部分落地后的最新现状）**
+> **复查更新日期：2026-09-19（第三版，反映 P2-1 后端分层与 P2-2 前端组件化全部落地后的最新现状）**
 > 评价视角：Vibe Coding（AI 辅助编码）模式下的工程卫生与可维护性
-> 评价方式：目录树扫描 + 关键源码阅读（后端 Go 12,902 行非测试代码 / 6,458 行测试，前端 TS 9,999 行）+ 配置与文档核查 + 与根目录 README.md / BUILD.md / 项目分析与改进方向.md / WebVideoEditor_整体架构设计方案.md 交叉核对
-> 更新说明：本版在首版基础上，逐项核对 §4 修改建议的落地状态，修正已过时描述（59 块字段映射、SMB 校验复制、凭据明文、manifest 乱码、temp 130MB 垃圾等已消除），补充项目现状（新增 crypto/trash/applyjson/smb_validate/security_audit/apierr/version/gateway 等模块、前端 pages/editor/ 拆分、CI 流水线、文档体系落地），并重新量化评分。**P2-1（后端分层）与 P2-2（前端组件化）专题细化保留并同步更新现状盘点（见 §4.1 / §4.2）。**
+> 评价方式：目录树扫描 + 关键源码阅读（后端 internal 11+1 子包 82 个 .go 文件，根包仅剩 main.go；前端 TS 9,999 行）+ 配置与文档核查 + git log/tag 交叉核对 + 与根目录 README.md / BUILD.md / 项目分析与改进方向.md / WebVideoEditor_整体架构设计方案.md / FVCC/docs（P2-1 实施记录 / P2-2 细化细则）交叉核对
+> 更新说明：第三版基于 2026-09-19 实测，逐项核对 §4 修改建议的落地状态：**P2-1（后端 internal 分层）与 P2-2（前端组件化）均已落地**，上一版"仍单 main 包 / 样板未抽取"的过时描述已改写为落地结果；版本号同步为 1.4.4（工作区三处一致，含 v1.4.3/v1.4.4 打包产物，HEAD 1.4.3 待提交）；并重新量化评分。§4.1 / §4.2 保留为"方案 + 落地结果"双视图。
 
 ---
 
@@ -14,66 +14,56 @@
 | 项 | 内容 |
 |---|---|
 | 定位 | fnOS NAS 上的视频转码调度端：素材扫描 → 转码方案 → 渲染节点集群 → 任务队列 → EDL 剪辑/代理预览全链路 |
-| 后端 | Go 1.27.1，gin v1.12 + gorilla/websocket，单 `package main` |
-| 前端 | Vite + TypeScript 7 + TailwindCSS 3，零框架（`el()` 手工 DOM） |
-| 版本 | **1.4.2**（server/VERSION、ui-src/package.json、manifest 三处一致；version.go 以 go:embed 注入并配 version_test.go 自动校验） |
-| 版本控制 | **已启用 git 版本控制（P0-3 已落地）**：由上层仓库 `D:\Fnos.VideoConversion` 统一管理（FVCC 内不再有独立 .git，.gitignore 由仓库根统一维护，构建产物/依赖/temp/logs/0 字节残留已纳入忽略）；已推送 GitHub [hgmmm25/Fnos.VideoConversion](https://github.com/hgmmm25/Fnos.VideoConversion/tree/baseline-snapshot)，当前 HEAD 为 baseline-snapshot 快照分支 |
-| 文档 | **已大幅补全**：根 README.md、BUILD.md、FVCC/README.md（含设计文档引用速查表）、docs/API_CONTRACT.md、WebVideoEditor_Design/（01-10 编号规格文档已入库）；ui-src/DESIGN.md + PRODUCT.md 保留 |
+| 后端 | Go 1.27.1，gin v1.12 + gorilla/websocket，**已分层**：`server/internal` 11 个包 + store/model 子包（82 个 .go 文件，根包仅剩 main.go） |
+| 前端 | Vite + TypeScript 7 + TailwindCSS 3，零框架（`el()` 手工 DOM），公共样板已收敛至 src/lib/（crudActions/scrollPos/useListPage/formBuilder） |
+| 版本 | **1.4.4**（server/VERSION、ui-src/package.json、manifest 三处一致，2026-09-19 实测；version.go 以 go:embed 注入并配 version_test.go 自动校验；git HEAD 1.4.3 待提交，工作区含 v1.4.3/v1.4.4 打包产物） |
+| 版本控制 | **已启用 git 版本控制（P0-3 已落地）**：由上层仓库 `D:\Fnos.VideoConversion` 统一管理（FVCC 内不再有独立 .git，.gitignore 由仓库根统一维护，构建产物/依赖/temp/logs/0 字节残留已纳入忽略）；已推送 GitHub [hgmmm25/Fnos.VideoConversion](https://github.com/hgmmm25/Fnos.VideoConversion/tree/baseline-snapshot)，当前工作区 HEAD 为 1.4.3（baseline-snapshot 快照分支之后的后续提交）；P2-1 分层启动前基线已打 tag v1.4.3，可随时回滚 |
+| 文档 | **已大幅补全**：根 README.md、BUILD.md、FVCC/README.md（含设计文档引用速查表 + P2 组治理状态表）、docs/API_CONTRACT.md、WebVideoEditor_Design/（01-10 编号规格文档已入库）、docs/（混乱报告/TASK_REFERENCE/IMPROVEMENT_LOG/UI 优化方向）；ui-src/DESIGN.md + PRODUCT.md 保留 |
 
-目录结构（根目录，2026-09-18 实测）：
+目录结构（根目录，2026-09-19 实测）：
 ```
 FVCC/
 ├── .gitignore                            ← 已建立（*.exe/*.fpk/node_modules/temp/logs/0字节残留）
-├── README.md                             ← 已建立（目录结构 + 设计文档引用速查 + 版本单一来源表）
-├── fvcc.exe / fvcc.fpk / FVCC_v1.4.0/1.4.1/1.4.2_fnos_x86.fpk / fvcs-service.exe  ← 构建产物仍物理堆积在根（已入 .gitignore，未物理清理）
+├── README.md                             ← 已建立（目录结构 + 设计文档引用速查 + 版本单一来源表 + P1/P2 治理状态表）
+├── fvcc.exe / fvcc.fpk / FVCC_v1.4.0~1.4.4_fnos_x86.fpk / fvcs-service.exe  ← 构建产物仍物理堆积在根（已入 .gitignore，未物理清理；v1.4.3/v1.4.4 为本轮新增）
 ├── ICON.PNG / ICON_256.png / manifest    ← fnOS 应用清单（乱码已修复，UTF-8 正常）
 ├── app/          ← fnOS 应用打包目录（字体已瘦身为 latin 子集，仅 10 个 woff/woff2 + css + js）
 ├── cmd/          ← fnOS 生命周期回调脚本（install/config/uninstall/upgrade）
 ├── config/       ← privilege / resource 权限声明
-├── docs/         ← 已建立（API_CONTRACT.md）
+├── docs/         ← 已建立（API_CONTRACT.md、P2-1_后端分层_阶段A实施记录.md、P2-2_细化细则.md）
 ├── logs/         ← 2026-09-17/app.log（0B 残留，已入 .gitignore）
-├── server/       ← Go 后端（fvcc.exe/build_err.txt/out.txt 等 0 字节与编译残留已清除；32 个实现文件 + 29 个测试文件）
+├── server/       ← Go 后端（已分层：internal/ 11 包 + store/model 子包，82 个 .go 文件（46 实现 + 36 测试）；根包仅剩 main.go）
 ├── temp/         ← 仅剩 fpk_stage（33 文件 36.7MB：fnpack.exe + fvcc.fpk + ICON + manifest + app/cmd/config）；fpk_build_test2（数千压测 log 垃圾）与 fpk_inspect 已清除
-└── ui-src/       ← 前端源码（all.txt/err.txt/out.txt 已清除；tsconfig.tsbuildinfo 仍留但已入 .gitignore；src/pages/editor/ 已拆分 15 个模块）
+└── ui-src/       ← 前端源码（all.txt/err.txt/out.txt 已清除；tsconfig.tsbuildinfo 仍留但已入 .gitignore；src/pages/editor/ 已拆分 15 个模块；src/lib/ 已收敛公共样板 4 件套）
 ```
 
 ---
 
 ## 2. 分维度评价（含具体证据）
 
-### 2.1 代码组织与分层 —— 6/10（仍混乱，前端已有改善）
+### 2.1 代码组织与分层 —— 3/10（已分层收口，P2-1 落地）
 
-**证据 1：后端全部代码仍堆在 `package main` 单包内，巨型文件依旧。**（P2-1 未落地）
+**证据 1（已消除）：后端 `package main` 单包巨型文件 → internal 分层完成。**（P2-1 已落地，2026-09-19 实测）
 
-| 文件 | 行数（2026-09-18 实测） | 职责 |
-|---|---|---|
-| server/handlers.go | 1,737 | 全部 HTTP handler（59 块手写字段映射已移除，见 2.3） |
-| server/remote.go | 1,227 | WS 远端客户端 + 协议结构体 |
-| server/scheduler.go | 1,204 | 1s 调度循环 + 全任务状态机 |
-| server/handlers_render.go | 828 | 渲染类 handler |
-| server/stream.go | 794 | 预览网关（Range 流/票据/缩略图） |
-| server/store.go | 777 | 内存缓存 + JSON 原子持久化 |
-| server/store_edl.go | 649 | EDL 项目存储 |
-| server/models.go | 639 | 全部数据模型（Task/Server/Profile/Settings/Project/NodeCaps/AuditEntry/AssetProxy 等十几类） |
+- 第二版记录的原状：`server/` 32 个非测试 .go 文件 12,902 行全部 `package main`，handlers.go 1,737 / remote.go 1,227 / scheduler.go 1,204 等巨型文件无包级边界；
+- 现状：`server/internal/` 11 个包 + store/model 子包共 **82 个 .go 文件（46 实现 + 36 测试）**，根包仅剩 `main.go`（入口与装配、优雅退出）；巨型文件已按域拆解迁入 internal/api、internal/remote、internal/scheduler、internal/media、internal/store 等，行为零回归（实施记录见 `FVCC/docs/P2-1_后端分层_阶段A实施记录.md`，阶段 A/B/C 全部完成、8 个 shim 兼容文件已内联删除）；
+- 分层前基线已打 tag v1.4.3，可随时回滚；测试随包迁移（36 个 *_test.go），`go test ./...` 全绿。
 
-后端合计 **32 个非测试 .go 文件 12,902 行**（首版 11,336 行），仍全部 `package main`，无 `internal/` 分层。新增小文件 10 个（crypto 164 / trash 213 / store_proxy 144 / security_audit 131 / applyjson 83 / gateway 62 / apierr 56 / smb_validate 31 / version 19 / logger / smbshare），说明"文件级拆分"意识在增强，但"包级边界"仍未建立。
+**证据 2（P2-2 已收口）：前端编辑器区已拆分，列表页公共样板已收敛。**（2026-09-19 复核）
 
-**证据 2：前端编辑器区已拆分，列表页大文件仍存在。**（P2-2 部分落地）
-
-- `ui-src/src/pages/editor/` 已拆出 **15 个模块**（assets.ts 663 / timeline.ts 631 / preview.ts 580 / index.ts 455 / editorStore.ts 451 / layout.ts 320 / dialog.ts 214 / taskView.ts 145 / shortcuts.ts 131 / taskDrawer.ts 120 / ruler.ts 95 / clipOps.ts 90 / format.ts 83 / preset.ts 59），总 4,037 行，替代了首版的根级 assets/timeline/preview 大文件；
-- 列表页仍有单体大文件：`pages/scanner.ts`（1,300 行）、`pages/profiles.ts`（1,276 行）、`pages/tasks.ts`（479 行）、`pages/settings.ts`（420 行）；前端 TS 总计 29 文件 9,999 行（首版约 8,300 行）。
+- `ui-src/src/pages/editor/` 已拆出 **15 个模块**（assets.ts 663 / timeline.ts 631 / preview.ts 580 / index.ts 455 / editorStore.ts 451 / layout.ts 320 / dialog.ts 214 / taskView.ts 145 / shortcuts.ts 131 / taskDrawer.ts 120 / ruler.ts 95 / clipOps.ts 90 / format.ts 83 / preset.ts 59），总 4,037 行；
+- 列表页公共样板已收敛至 `src/lib/` 4 件套（crudActions / scrollPos / useListPage / formBuilder，接入 6 页），CRUD 四连 / 滚动位置 / 订阅 / 表单样板残留 0；列表页业务文件仍在（scanner.ts 1,300 / profiles.ts 1,276 / tasks.ts 479 / settings.ts 420），行数以业务逻辑为主；前端 TS 总计 29 文件 9,999 行。
 
 **积极面（需客观记录）**：内部仍按文件划分了职责（router / security / ratelimit / ws_limit / ffprobe / proxy_flow 单独成文件）；handler 按领域用注释分节；`RenderDispatcher` / `MediaProber` / `ProxyProber` 采用接口注入便于单测替身；前端新增 `theme.ts`（设计 token 收敛）与 `ws.ts`（WS 封装）；`pages/editor/` 拆分是向组件化迈出的实质一步。
 
-### 2.2 命名一致性 —— 6/10（中度混乱，编号歧义新增实锤）
+### 2.2 命名一致性 —— 5/10（轻度混乱，编号歧义已登记）
 
-**证据 1：JSON 字段大小写风格混杂。** 同一协议层既有 camelCase（`authKey`、`customFfmpeg`、`videoCache`），又有 snake_case（`server/remote.go` 中 `progressPush` 结构体：`task_id`、`out_time_ms`、`total_ms`、`seg_total`）。docs/API_CONTRACT.md 已将"协议字段一律 camelCase（FVCS 对等 WS 报文允许 snake_case 但双风格兼容解析）"定为规范，**但存量代码尚未迁移**。
+**证据 1：JSON 字段大小写风格混杂。** 同一协议层既有 camelCase（`authKey`、`customFfmpeg`、`videoCache`），又有 snake_case（`server/internal/remote` 包 `progressPush` 结构体：`task_id`、`out_time_ms`、`total_ms`、`seg_total`）。docs/API_CONTRACT.md 已将"协议字段一律 camelCase（FVCS 对等 WS 报文允许 snake_case 但双风格兼容解析）"定为规范，**但存量代码尚未迁移**。
 
-**证据 2：注释中的任务编号体系对维护者不透明（且新增同号异义实锤）。** 全代码库仍散布 `P0-4`、`P1-1`、`P2-1`、`B-04`、`B-09`、`C-02`、`D-04`、`M4`、`126` 等编号。本次复查发现新的同号异义：
+**证据 2：注释中的任务编号体系对维护者不透明（两套语义已登记）。** 全代码库仍散布 `P0-4`、`P1-1`、`P2-1`、`B-04`、`B-09`、`C-02`、`D-04`、`M4`、`126` 等编号。已知同号异义：
 
-- `server/router.go`：`// P2-1`、`// B-09`、`// D-04`、`// M4`
-- `server/handler_metrics_test.go`：**`// P2-1 可观测性端点验证`** —— 指 Prometheus 指标端点（`/metrics/prometheus`），与本报告 §4 中 P2-1（后端分层）含义完全不同，且与首版发现的 `router.go:29 // P2-1` 一致（代码注释里的 P2-1 均指"指标端点"）；**同一编号在代码注释体系与报告建议体系间存在两套稳定语义**，是 2.2 证据 2"编号体系对维护者不透明"的实锤。
-- `server/version.go` 注释建立了"发布约定（2026-09-16 建立）"——编号体系仍在持续新增。
+- `server/internal/api/handler_metrics_test.go`：**`// P2-1 可观测性端点验证`** —— 指 Prometheus 指标端点（`/metrics/prometheus`），与本报告 §4 中 P2-1（后端分层，已落地）含义完全不同；**同一编号在代码注释体系与报告建议体系间存在两套稳定语义**，已登记于 docs/TASK_REFERENCE.md §2.1（编号漂移登记），维护者按文件归属对照；
+- `server/internal/version/version.go` 注释建立了"发布约定（2026-09-16 建立）"——编号体系仍在持续新增。
 
 **证据 3：同名接口新旧风格并存（过渡期）。** `ui-src/src/api.ts:27` 已声明统一错误契约 { ok:false, code, msg, detail? }，request() 保留 `body.msg || body.error` 兜底——API_CONTRACT.md 明确"旧格式过渡期兜底，新代码只读 msg"，新旧格式仍同时在线上流通。
 
@@ -89,7 +79,7 @@ FVCC/
 
 `server/smb_validate.go`（31 行）新增 `func (h *Handlers) validateSMBPath(settings Settings, path string) error`；`handlers.go` 中 **5 处**调用点（L331 / L478 / L665 / L913 / L921）统一改为单行调用；`smbshare.IsPathShared` 仅在 helper 内出现 1 次。配套 smb_validate_test.go（15 行）。
 
-**证据 3（仍在）：VideoInfo 30+ 字段逐字段复制出现 2 处。** `handlers.go` `doScanDirectory()` 中 cache→VideoInfo 赋值块（L378 / L412）与 `UpsertVideoCache` 调用参数块（L420），各 30+ 字段逐项手写，字段新增时两处必改。
+**证据 3（仍在）：VideoInfo 30+ 字段逐字段复制出现 2 处。** `server/internal/api/handlers*.go` `doScanDirectory()` 中 cache→VideoInfo 赋值块与 `UpsertVideoCache` 调用参数块，各 30+ 字段逐项手写，字段新增时两处必改（P2-1 分层迁移未涉及此逻辑，保留为待办）。
 
 **证据 4（P2-2 已收口）：前端跨页面样板重复。** 2026-09-18 复核：`crudActions` / `scrollPos` / `useListPage` / `formBuilder` 已抽取至 `src/lib/` 并接入 6 页，CRUD 四件套 / 滚动位置 / store 订阅 / 表单构建样板残留 0；历史收敛轨迹：`renderList` 仅 `profiles.ts`(2) / `servers.ts`(2) 残留，scanner/tasks/settings/history 已为 0；`scrollPos` 仅 profiles.ts(3) 残留；编辑器区拆分为 pages/editor/ 15 个模块后，样板随模块边界自然缩小。
 
@@ -105,7 +95,7 @@ FVCC/
 
 `server/crypto.go`（164 行）：AES-GCM 对称加密，主密钥以 **0600 权限**落盘 `<dataDir>/secret.key`；`EncryptSecret` 输出 `enc:v1:<base64>`，`DecryptSecret` 对非 `enc:` 前缀按旧明文原样返回（兼容迁移），`IsEncrypted` 判断密文格式；适用范围注释明确"Server.AuthKey、Settings.SMBPassword 等凭据字段的落盘加密；内存态保持明文供出站连接/挂载使用，对外 API 一律脱敏（MaskSecret，`******`）"。配套 crypto_test.go（158 行）。
 
-**⚠️ 新发现残留**：`server/models.go:147` 仍保留过时注释 `// MVP 明文存储，TODO: P0 AES 加密`——**代码已加密，注释未随实现更新**，正是"文档/注释滞后于代码"的新实例，说明整改落地时未同步清理旧注释。
+**⚠️ 残留跟踪（2026-09-19 更新）**：原 `server/models.go:147` 过时注释 `// MVP 明文存储，TODO: P0 AES 加密` 随 P2-1 迁移至 `server/internal/store/model/models.go`（约 L152），**代码已加密、注释仍过时**，属代码层清理待办（本轮 md 文档归档不修改代码）。
 
 **证据 2（已修复）：manifest 乱码 → 元数据正常（P1-4 已落地）。**
 
@@ -119,9 +109,7 @@ UTF-8 无乱码，占位符已消除。
 
 **证据 3（仍在）：默认值散落硬编码。** `saveSettings` 中 `SchedulerIntervalSec=1`、`ChunkSizeMB=4`、`HistoryLimit=1000` 等兜底值；`scheduler.go` `chunkSize: 4 * 1024 * 1024` 与设置项语义重复；`main.go` 开发模式默认 `127.0.0.1:8088`。
 
-**证据 4（已改善）：版本号三处手工维护 → 单一来源机制建立。** `server/version.go`（19 行）以 `go:embed VERSION` 注入版本号，注释明确"版本号唯一来源：本目录 VERSION 文件，禁止在代码中另写版本字面量"，并约定"出新包时同步修改本目录 VERSION、../manifest（version 字段）、../ui-src/package.json"；`version_test.go` 自动校验三处一致性（实测 manifest 1.4.2 / VERSION 1.4.2 / package.json 1.4.2 一致）；`scripts/check-versions.ps1` 提供人工校验入口。
-
-**⚠️ 新发现残留**：`FVCC/README.md` 版本表仍写 **1.4.1**，落后于实际三处 1.4.2——**文档版本表滞后于代码**，说明"版本单一来源"机制尚未覆盖 README 速查表。
+**证据 4（已改善）：版本号三处手工维护 → 单一来源机制建立。** `server/internal/version/version.go` 以 `go:embed VERSION` 注入版本号（P2-1 迁移后位置，原 server/version.go），注释明确"版本号唯一来源：本目录 VERSION 文件，禁止在代码中另写版本字面量"；`version_test.go` 自动校验三处一致性（2026-09-19 实测 manifest 1.4.4 / VERSION 1.4.4 / package.json 1.4.4 一致）；`scripts/check-versions.ps1` 提供人工校验入口；BUILD.md 版本同步清单与 FVCC/README.md 版本表已于 2026-09-19 同步至 1.4.4，README 滞后残留消除。
 
 **证据 5（已清理，P2-6 收口）：AIGC 元数据残留。** 原 `PRODUCT.md`、`docs/API_CONTRACT.md`、根目录 `项目分析与改进方向.md`、`WebVideoEditor_整体架构设计方案.md` 及本报告顶部均带 AIGC frontmatter（`ContentProducer`、`ProduceID`、`ReservedCode1/2` 等 base64 块）；2026-09-18 已全部清除，README 侧 frontmatter 上一轮已清。
 
@@ -134,10 +122,10 @@ UTF-8 无乱码，占位符已消除。
 - **根文档补齐**：根 `README.md`（项目组成/功能/构建部署/目录结构）、`BUILD.md`（2026-09-18 更新：构建规范/版本同步清单/故障排查/产物校验）、`docs/API_CONTRACT.md`（8,124B，统一错误契约 + code 映射表 + 域内 helper 清单）。
 - **注释密度与质量保持**：每个 handler 有职责注释；crypto.go/applyjson.go/trash.go/security_audit.go 等新文件均带"Px-x 对应混乱报告条目"的落地注释；security.go 明确实现"07 四层校验"。
 
-**残留混乱点**：
-1. **文档滞后于代码的实例仍在新增**：models.go:147 过时注释（见 2.5）、FVCC/README.md 版本表 1.4.1 vs 实际 1.4.2（见 2.5）；
-2. **文档位置仍不统一**：PRODUCT.md / DESIGN.md 仍在 ui-src/ 根下而非 docs/（API_CONTRACT.md 已入 docs/，形成两处文档根）；
-3. **AIGC frontmatter 污染未清理**（见 2.5 证据 5；P2-6 已收口清理）。
+**残留混乱点（2026-09-19 更新）**：
+1. **代码注释滞后于代码实现**：`server/internal/store/model/models.go`（约 L152）仍留过时注释 `// MVP 明文存储，TODO: P0 AES 加密`（代码已 AES-GCM 加密）——属代码层清理待办；
+2. **文档位置仍不统一（轻微）**：PRODUCT.md / DESIGN.md 仍在 ui-src/ 根下而非 docs/（API_CONTRACT.md 已入 FVCC/docs/，形成两处文档根）——已在 FVCC/README.md 文档体系表登记，属可接受的既有布局；
+3. **AIGC frontmatter 污染已清零（P2-6 收口 + 本轮补清）**：2026-09-18 清除 5 份文档后，2026-09-19 复查发现 `docs/IMPROVEMENT_LOG.md`、`docs/TASK_REFERENCE.md` 顶部与 `docs/SECURITY.md` 顶部仍带 AIGC frontmatter，本轮已一并清除；全仓 md（含 docs/ 全部文档）已无 AIGC base64 残留。
 
 ### 2.7 遗留/废弃代码 —— 6/10（temp 130MB 与 0 字节残留已清除，根目录产物仍在）
 
@@ -155,7 +143,7 @@ UTF-8 无乱码，占位符已消除。
 - `logs/2026-09-17/app.log`（0B）仍留（已入 .gitignore）；
 - `app/ui/` 构建产物仍在源码树（已入 .gitignore，字体已瘦身见 2.4）。
 
-**证据 3（仍在）：根目录堆积构建产物。** 2026-09-18 实测根目录仍堆：`fvcc.exe`（32MB）、`fvcc.fpk`（8.8MB）、`FVCC_v1.4.0/1.4.1/1.4.2_fnos_x86.fpk`（3 个版本包）、`fvcs-service.exe`（9.9MB）、ICON.PNG/ICON_256.png、manifest、README.md——.gitignore 已覆盖 `*.exe` / `*.fpk`，但**物理文件未清理、未移入 archive/**（archive/ 已建立并收纳历史包 v1.1.0~v1.3.1 与升级前备份，说明治理动作正在进行但根目录未同步执行）。
+**证据 3（仍在，版本包数量增加）：根目录堆积构建产物。** 2026-09-19 实测根目录仍堆：`fvcc.exe`（32MB）、`fvcc.fpk`（8.8MB，与 v1.4.4 同大小）、`FVCC_v1.4.0~1.4.4_fnos_x86.fpk`（5 个版本包，v1.4.3/v1.4.4 为本轮新增）、`fvcs-service.exe`（9.9MB）、ICON.PNG/ICON_256.png、manifest、README.md——.gitignore 已覆盖 `*.exe` / `*.fpk`，但**物理文件未清理、未移入 archive/**（archive/ 已建立并收纳历史包 v1.1.0~v1.3.1 与升级前备份，说明治理动作正在进行但根目录未同步执行）。
 
 **新增观察（FVCS 侧，非 FVCC 范围，供根仓库治理参考）**：`FVCS/` 根下仍有 `build_check.txt`(0B)、`_cgo_full.txt`(0B)、6 个历史 FVCC fpk、`fvcs-service.exe.bak_preupgrade`——根仓库治理（项目分析与改进方向.md P2"仓库治理"）尚未覆盖 FVCS 目录。
 
@@ -166,8 +154,8 @@ UTF-8 无乱码，占位符已消除。
 - **扣分项（已改善两项）**：
   ① **CI 已建立（P2-3 已落地）**：`.github/workflows/fvcc-ci.yml`（根仓库，paths 限定 `FVCC/**`）——后端 `go vet + go test -race ./...` + **覆盖率门槛 ≥55%**（`scripts/check-coverage.ps1` 强制，注释自述当前基线 56.1%，后续上调至 60%）；前端 `npm ci + npm run build`（内部含 `check:design` 设计门禁 + `tsc -b` + vite build）；
   ② **覆盖率基线已建立**（见上）；
-  ③ 命名带票号/契约后缀仍存在（P2-7 未落地）；
-  ④ 测试文件与实现 1:1 平铺在 server/ 下，无测试分层（随 P2-1 迁移）。
+  ③ ~~命名带票号/契约后缀~~（P2-7 已落地，两文件 git mv 规范化）；
+  ④ 测试已随 P2-1 迁移至 internal 各包（36 个 *_test.go 随实现分层），平铺问题已消除。
 
 ### 2.9 安全与健壮性 —— 2/10（首版五硬伤已全部修复）
 
@@ -181,30 +169,30 @@ UTF-8 无乱码，占位符已消除。
 - 加密基座：`crypto.go` AES-GCM + 0600 密钥文件 + API 脱敏（新增，见 2.5）
 
 **硬伤（首版 5 项 → 现 0 项未决）**：
-1. ✅ **凭据明文已修复**（crypto.go 落地，见 2.5 证据 1）；但 models.go:147 过时注释残留
+1. ✅ **凭据明文已修复**（internal/security/crypto.go 落地，见 2.5 证据 1）；过时注释已随 P2-1 迁移至 internal/store/model/models.go（约 L152），属代码层清理待办
 2. ✅ **`deleteVideo` 物理删除已修复（P2-5 已落地）**：`server/trash.go`（213 行）——视频删除不再物理删除，移入所在授权根下 `_trash` 目录（`_` 前缀受 `isReservedMediaName` 保护），保留相对路径结构避免同名覆盖，同名追加时间戳后缀；提供 `listTrash`（回收站列表，前端展示路径/原始路径）；配套 trash_test.go(101)
 3. ✅ **`updateProfile` 白名单遗漏已修复**（applyjson.go 反射白名单，见 2.3 证据 1）
 4. 🟡 **审计闭环部分落地（P2-8 已收口）**：`server/security_audit.go`（131 行）新增 `auditRejection` 记账拒绝类事件（`validate.reject` / `security.alert`，含按阈值突增告警）、`auditRejectCode` 判断错误码（07 §7 需记账的越权/载荷校验拒绝）、`alertReject` 告警文本；`handlers_edl.go` 的 `edlErr` 附带审计记账副作用（API_CONTRACT.md 已登记）；2026-09-18 起破坏性操作（删除/清缓存/清日志/清空回收站）经 `auditDestructive` 统一强制记账，8 处调用点 + 单测闭环，见 §4 P2-8 状态行。
-5. ✅ **无版本控制已解决（P0-3 已落地，本次复查更新）**：git 版本控制已启用，由上层仓库 `D:\Fnos.VideoConversion` 统一管理（FVCC 内不再有独立 .git），已推送 GitHub https://github.com/hgmmm25/Fnos.VideoConversion/tree/baseline-snapshot（当前 HEAD 为 baseline-snapshot 快照分支）——误改/误删可回滚，安全事件取证与恢复有依据；**剩余动作**：快照分支建立后的新改动需持续提交，避免再次漂移
+5. ✅ **无版本控制已解决（P0-3 已落地，2026-09-19 更新）**：git 已启用，由上层仓库 `D:\Fnos.VideoConversion` 统一管理（FVCC 内不再有独立 .git），已推送 GitHub https://github.com/hgmmm25/Fnos.VideoConversion/tree/baseline-snapshot（快照分支）；P2-1 分层阶段 B/C 已有提交记录（见 `FVCC/docs/P2-1_后端分层_阶段A实施记录.md` §5），P2-7 两文件 git mv 保留历史——误改/误删可回滚，安全事件取证与恢复有依据；**剩余动作**：后续改动持续提交，避免快照漂移
 
 ---
 
-## 3. 量化混乱度评分（第二版）
+## 3. 量化混乱度评分（第三版，2026-09-19）
 
-| 维度 | 首版得分 | **第二版得分** | 一句话结论（变化） |
-|---|---|---|---|
-| 代码组织与分层 | 7 | **6** | 后端仍单包巨型文件；前端 pages/editor/ 已拆 15 模块 |
-| 命名一致性 | 6 | **6** | camel/snake 混用、新旧接口过渡、编号歧义新增 handler_metrics_test.go 实锤 |
-| 重复代码 | 7 | **5** | 59 块映射与 SMB 校验 x3 已消灭；VideoInfo 复制与列表页样板残留 |
-| 依赖管理 | 5 | **5** | 间接依赖未变；app/ui 字体已瘦身为 latin 子集（12 文件） |
-| 配置与硬编码 | 7 | **4** | 凭据加密、manifest 修复、版本单一来源机制建立；残留过时注释与 README 版本表滞后 |
-| 文档与注释 | 5 | **3** | 规格文档入库 + 速查表 + 根 README/BUILD/API_CONTRACT，悬空引用消除 |
-| 遗留/废弃代码 | **8** | **6** | temp 130MB→36.7MB stage、0 字节残留清除；根目录构建产物仍物理堆积 |
-| 测试情况 | **3** | **2** | 29 文件 6,458 行 + CI 流水线 + 覆盖率门禁 55%；P2-7 命名已规范化（两文件 git mv），平铺问题未动 |
-| 安全与健壮性 | 5 | **2** | 凭据加密、删除回收站化、白名单反射、审计部分落地；版本控制已建立（P0-3 落地，首版五硬伤清零） |
-| **综合** | **6.5/10（中等偏混乱）** | **4.3/10（轻度混乱）** | P0 全落地（含版本控制）、P1 全落地、P2 完成 7/8（P2-2/4/5/6/7/8 已收口，P2-1 未动），混乱度明显下降 |
+| 维度 | 首版得分 | 第二版得分 | **第三版得分** | 一句话结论（变化） |
+|---|---|---|---|---|
+| 代码组织与分层 | 7 | 6 | **2** | P2-1 已落地：internal 11 包 + store/model 子包，根包仅剩 main.go（82 个 .go = 46 实现 + 36 测试） |
+| 命名一致性 | 6 | 6 | **5** | camel/snake 混用收敛至协议边界；编号歧义已登记（TASK_REFERENCE §2.1）；P2-7 两文件 git mv 规范化 |
+| 重复代码 | 7 | 5 | **3** | 59 块映射与 SMB 校验 x3 已消灭；P2-2 列表页样板收敛至 src/lib/ 4 件套（残留 0）；VideoInfo 逐字段复制 2 处仍在 |
+| 依赖管理 | 5 | 5 | **5** | 间接依赖未变；app/ui 字体已瘦身为 latin 子集（12 文件） |
+| 配置与硬编码 | 7 | 4 | **3** | 凭据加密、manifest 修复、版本单一来源（1.4.4 三处一致）；过时注释残留 1 处（代码层待办） |
+| 文档与注释 | 5 | 3 | **2** | 文档体系建立 + AIGC 残留清零（含本轮补清 docs/ 3 份）+ 混乱报告第三版对齐；残留：PRODUCT/DESIGN 未入 docs/（已登记） |
+| 遗留/废弃代码 | 8 | 6 | **6** | temp 130MB 已清理、0 字节残留清除；根目录构建产物仍物理堆积（版本包增至 5 个） |
+| 测试情况 | 3 | 2 | **2** | 36 个 *_test.go 随 P2-1 分层迁移，平铺问题消除；CI 流水线 + 覆盖率门禁 55% 保持 |
+| 安全与健壮性 | 5 | 2 | **2** | 凭据加密、删除回收站化、白名单反射、审计闭环、版本控制已建立（首版五硬伤清零） |
+| **综合** | **6.5/10（中等偏混乱）** | **4.3/10（轻度混乱）** | **2.8/10（轻度混乱）** | P0 全落地、P1 全落地、P2 全落地（P2-1~P2-8 均已落地/收口，2026-09-19 复核），混乱度显著下降 |
 
-等级判定：**B- / 轻度混乱**。从"能跑、能测、但很难继续演进"过渡到"工程卫生显著改善、具备继续演进条件"的状态——1.4.2 已消除全部安全硬伤（凭据明文/物理删除/白名单遗漏/无版本控制）并建立 CI 与文档体系，2026-09-18 复核 P2-2/4/6/7/8 均已收口，剩余主要债务为：后端仍单 main 包（12,902 行）、根目录构建产物未物理清理、P2-1 未收口。
+等级判定：**B / 轻度混乱（接近 B+）**。从"能跑、能测、但很难继续演进"过渡到"工程卫生显著改善、具备继续演进条件"的状态——1.4.4 已消除全部安全硬伤（凭据明文/物理删除/白名单遗漏/无版本控制），P2-1 后端分层与 P2-2 前端组件化落地，文档体系对齐 1.4.4（AIGC 残留清零），剩余主要债务：根目录构建产物未物理清理、代码层过时注释 1 处、P2-3 覆盖率门槛待上调至 60%。
 
 ---
 
@@ -212,15 +200,15 @@ UTF-8 无乱码，占位符已消除。
 
 ### P0 —— 立即处理（安全与止血，1 周内）
 
-| # | 建议 | 状态（2026-09-18） | 落地证据 / 剩余动作 |
+| # | 建议 | 状态（2026-09-19） | 落地证据 / 剩余动作 |
 |---|---|---|---|
-| P0-1 | **凭据加密落库** | ✅ **已落地** | server/crypto.go（AES-GCM + 0600 secret.key + enc:v1: 前缀 + 旧明文兼容迁移 + API 脱敏）；**剩余**：清除 models.go:147 过时注释"TODO: P0 AES 加密" |
-| P0-2 | **清理工程残留并建立 .gitignore** | 🟡 **基本落地** | .gitignore 已建（覆盖 *.exe/*.fpk/node_modules/temp/logs/*.tsbuildinfo/0 字节残留）；temp/fpk_build_test2 与 fpk_inspect、server/ui-src 0 字节残留已删；**剩余**：根目录 fvcc.exe/fvcc.fpk/3 个版本 fpk/fvcs-service.exe 物理清理或移入 archive/；logs/2026-09-17/app.log(0B) 删除；FVCS/ 目录 build_check.txt/_cgo_full.txt/旧 fpk 治理 |
+| P0-1 | **凭据加密落库** | ✅ **已落地** | server/internal/security/crypto.go（AES-GCM + 0600 secret.key + enc:v1: 前缀 + 旧明文兼容迁移 + API 脱敏）；**剩余**：internal/store/model/models.go（约 L152）过时注释"TODO: P0 AES 加密"清理（代码层待办，本轮 md 归档不涉及） |
+| P0-2 | **清理工程残留并建立 .gitignore** | 🟡 **基本落地** | .gitignore 已建（覆盖 *.exe/*.fpk/node_modules/temp/logs/*.tsbuildinfo/0 字节残留）；temp/fpk_build_test2 与 fpk_inspect、server/ui-src 0 字节残留已删；**剩余**：根目录 fvcc.exe/fvcc.fpk/5 个版本 fpk/fvcs-service.exe 物理清理或移入 archive/；logs/2026-09-17/app.log(0B) 删除；FVCS/ 目录 build_check.txt/_cgo_full.txt/旧 fpk 治理 |
 | P0-3 | **git init 建立版本控制** | ✅ **已落地** | git 已启用：由上层仓库 `D:\Fnos.VideoConversion` 统一管理（FVCC 内不再有独立 .git），已推送 GitHub https://github.com/hgmmm25/Fnos.VideoConversion/tree/baseline-snapshot（当前 HEAD 为 baseline-snapshot 快照分支）；P2-1/P2-7 等重构已具备回滚前提；**剩余**：后续改动持续提交，避免快照漂移 |
 
 ### P1 —— 短期改进（1~2 个迭代）
 
-| # | 建议 | 状态（2026-09-18） | 落地证据 / 剩余动作 |
+| # | 建议 | 状态（2026-09-19） | 落地证据 / 剩余动作 |
 |---|---|---|---|
 | P1-1 | **消灭 updateProfile 的 59 块手写映射** | ✅ **已落地（方案 B）** | server/applyjson.go 反射白名单 helper（applyJSONUpdates），实测 `if v, ok := updates[` = 0；配套 4 个单测 |
 | P1-2 | **抽取 SMB 校验 helper** | ✅ **已落地** | server/smb_validate.go（validateSMBPath），handlers.go 5 处调用点统一 |
@@ -230,14 +218,14 @@ UTF-8 无乱码，占位符已消除。
 
 ### P2 —— 中期架构演进（1~2 月）
 
-| # | 建议 | 状态（2026-09-18） | 落地证据 / 剩余动作 |
+| # | 建议 | 状态（2026-09-19） | 落地证据 / 剩余动作 |
 |---|---|---|---|
-| P2-1 | **后端分层：单 main 包 → internal 分层** | ❌ **未落地** | 仍 32 文件 12,902 行全 package main；细化方案见 §4.1（现状盘点已更新）；**注意**：代码注释中 P2-1 已另指"指标端点"（见 2.2 证据 2），实施时注意两套编号语义冲突 |
-| P2-2 | **前端组件化** | 🟡 **部分落地** | pages/editor/ 已拆 15 模块（4,037 行）；列表页 renderList/scrollPos 样板从 6 页收敛至 1~2 页；**剩余**：公共 crudActions/useListPage/formBuilder 抽取未做，细化方案见 §4.2（现状盘点已更新） |
+| P2-1 | **后端分层：单 main 包 → internal 分层** | ✅ **已落地（2026-09-19）** | `server/internal/` 11 包 + store/model 子包，根包仅剩 main.go（82 个 .go = 46 实现 + 36 测试）；阶段 A/B/C 全部完成、8 个 shim 兼容文件已内联删除；go build / vet / test 全绿（实施记录：`FVCC/docs/P2-1_后端分层_阶段A实施记录.md`，分层前基线 tag v1.4.3）；**注意**：代码注释中 P2-1 另指"指标端点"（见 2.2 证据 2 与 TASK_REFERENCE §2.1 漂移登记），两套编号语义并存 |
+| P2-2 | **前端组件化** | ✅ **已收口（2026-09-19）** | `src/lib/` 4 件套（crudActions / scrollPos / useListPage / formBuilder）接入 6 页，CRUD/滚动/订阅/表单样板残留 0；main.ts 路由切换接入 dispose 防订阅泄漏；验收：pages/ 行数以业务逻辑为主未达 -30%（§4.2 遗留说明），样板类残留为 0；详见 `FVCC/docs/P2-2_细化细则.md`（Checklist 全勾）；**决策门仍开放**：组合器方案去留 / 是否启动 Svelte 5 试点（§4.2.3） |
 | P2-3 | **建立 CI 流水线** | ✅ **已落地** | .github/workflows/fvcc-ci.yml（go vet + test -race + 覆盖率 ≥55% + 前端 check:design/tsc/build）+ scripts/check-coverage.ps1 |
 | P2-4 | **统一 API 契约与命名** | ✅ **已收口（2026-09-18 复核）** | docs/API_CONTRACT.md（统一错误契约 + code 映射表 + 域内 helper 清单）+ server/apierr.go（fail/failWithCode）+ api.ts 适配层兜底（body.msg \|\| body.error）；`{error}` 裸格式 grep 为 0；remote.go 剩余 snake_case（task_id/progress/stage 等）均为 FVCS 对等协议段（progressPush/helloPush），API_CONTRACT §3.2 已登记边界并补注释引用，无剩余动作 |
 | P2-5 | **删除操作回收站化** | ✅ **已落地** | server/trash.go（moveToTrash → `<授权根>/_trash`，保留相对路径 + 同名时间戳后缀；listTrash 列表接口） |
-| P2-6 | **清理 AIGC 残留与任务编号注释** | ✅ **已收口（2026-09-18 复核）** | AIGC frontmatter 已从 5 份文档清除（ui-src/PRODUCT.md、docs/API_CONTRACT.md、根目录 2 份、本报告自身）；README 原 frontmatter 上一轮已清；version.go"发布约定 2026-09-16"注释已语义化并指向 README 版本表；编号映射收敛于 docs/TASK_REFERENCE.md |
+| P2-6 | **清理 AIGC 残留与任务编号注释** | ✅ **已收口（2026-09-19 复核）** | AIGC frontmatter 已从 5 份文档清除（ui-src/PRODUCT.md、docs/API_CONTRACT.md、根目录 2 份、本报告自身）+ docs/ 3 份补清（TASK_REFERENCE / 项目分析与改进方向 / P2-1 实施记录）；README 原 frontmatter 上一轮已清；version.go"发布约定 2026-09-16"注释已语义化并指向 README 版本表；编号映射收敛于 docs/TASK_REFERENCE.md；2026-09-19 全库扫描 AIGC 关键词 0 命中 |
 | P2-7 | **测试文件命名规范化** | ✅ **已落地（2026-09-18）** | `genproxy_share_cred_126_test.go` → `genproxy_share_cred_test.go`、`handlers_edl_list_contract_test.go` → `handlers_edl_list_test.go`（git mv 保留历史；TASK_REFERENCE §3.6 已同步） |
 | P2-8 | **破坏性操作审计闭环** | ✅ **已落地（2026-09-18）** | server/security_audit.go 新增 `auditDestructive`（destructive.delete / destructive.clear / destructive.empty_trash，复用拒绝类审计通道，Detail 脱敏记方法+路径+IP，actor 取网关用户）；已接入清日志/清缓存/删除视频/服务器/方案/任务/历史/清空回收站共 8 处调用点；配套单测 TestP28DestructiveOpsAudited 验证记账与脱敏 |
 
@@ -245,7 +233,9 @@ UTF-8 无乱码，占位符已消除。
 
 ### 4.1 P2-1 细化方案：后端分层（单 main 包 → internal 分层）
 
-#### 4.1.1 现状盘点（2026-09-18 第二版实测）
+> **状态：✅ 已落地（2026-09-19）**——本方案已按 §4.1.4 阶段 A/B/C 全部执行完毕（实施记录：`FVCC/docs/P2-1_后端分层_阶段A实施记录.md`）。下方 4.1.1~4.1.7 为落地前快照，保留作迁移映射与验收依据。
+
+#### 4.1.1 现状盘点（2026-09-19 第三版实测）
 
 `server/` 目录实测共 **61 个 `.go` 文件（32 个实现 + 29 个测试）**，仍全部位于单一 `package main`；子目录 logger/、smbshare/ 各 1 个文件（仍属 main 包）。非测试代码 12,902 行，测试 6,458 行。按行数排序的 Top 实现文件：
 
@@ -267,6 +257,8 @@ UTF-8 无乱码，占位符已消除。
 **2026-09-18 新增（首版未列）**：trash.go(213)、crypto.go(164)、router.go(149)、store_proxy.go(144)、security_audit.go(131)、applyjson.go(83)、gateway.go(62)、ws_limit.go(57)、apierr.go(56)、smb_validate.go(31)、version.go(19)、localtranscode_syscall_windows/generic(19/15)、logger/logger.go、smbshare/smbshare.go——**新增 10+ 文件全部仍进 main 包**，单包体量持续膨胀，分层的迫切性随每次迭代上升。
 
 **已有"准领域文件"（分层意识存在的证据，呼应 2.1 积极面）**：见上表全部单文件职责划分；注意首版"准领域文件"清单中的行数已全部更新。
+
+> **状态：✅ 已落地（2026-09-19）**——下述痛点均已随 P2-1 分层消解（见 §4.1 顶部横幅与 P2-1 实施记录），保留作动机说明。
 
 #### 4.1.2 核心痛点（第二版更新）
 
@@ -404,7 +396,9 @@ store → {security}（加密落盘时）
 
 ### 4.2 P2-2 细化方案：前端组件化
 
-#### 4.2.1 现状盘点（2026-09-18 第二版实测）
+> **状态：✅ 已收口（2026-09-19）**——本方案已按 4.2.1~4.2.2 落地（`src/lib/` 4 件套接入 6 页，样板残留 0；细则：`FVCC/docs/P2-2_细化细则.md`，Checklist 全勾）。下方 4.2.1~4.2.2 为落地前快照；4.2.3 决策门仍开放（组合器去留 / Svelte 5 试点）。
+
+#### 4.2.1 现状盘点（2026-09-19 第三版实测）
 
 `ui-src/src` 结构实测（第二版更新）：
 
@@ -429,7 +423,7 @@ ui-src/src/
 
 另注意：`ui-src/src/api.ts:27` 已按新契约实现 `{ ok:false, code, msg, detail? }` 统一错误处理（ApiError.code），request() 保留 `body.msg || body.error` 兜底——错误契约过渡期由 api.ts 适配层承担（联动 P2-4 已部分落地），组件化抽取时**公共层只依赖新契约**（ApiError），兼容分支留在 api.ts。
 
-#### 4.2.2 短期方案（1~2 迭代，不引入框架）——基本保留首版设计
+#### 4.2.2 短期方案（1~2 迭代，不引入框架）——已按此落地（2026-09-19）
 
 **目标**：把每个列表页的样板从 ~100 行降到 ~20 行调用，业务逻辑保持零框架 `el()` 手工 DOM 不变。
 
@@ -531,28 +525,21 @@ export function useListPage<T>(opts: {
 
 ---
 
-## 5. 结论（第二版）
+## 5. 结论（第三版，2026-09-19）
 
-FVCC 从首版评价（2026-09-18 上午，1.4.0）到本次复查（2026-09-18，1.4.2），在不足一天内完成了 **P0 全部、P1 全部、P2 3/8** 的整改落地，混乱度综合评分从 **6.5/10 降至 4.3/10**（版本控制落地后再下调 0.1）：
+FVCC 从首版评价（2026-09-18 上午，1.4.0）到第三版复核（2026-09-19，1.4.4），不到两天完成 **P0 全部、P1 全部、P2 全部（P2-1~P2-8 均已落地/收口）** 的整改，混乱度综合评分从 **6.5/10 → 4.3/10 → 2.8/10**（轻度混乱，接近 B+）：
 
 **已兑现的改善（高置信证据）**：
-1. **安全硬伤清零**：凭据 AES-GCM 加密落盘（crypto.go）、删除回收站化（trash.go）、字段更新反射白名单（applyjson.go）——首版三大硬伤全部落地且配套单测；
-2. **工程卫生显著改善**：temp 130MB 打包垃圾 → 36.7MB 干净 stage、源码树 0 字节残留清零、.gitignore 建立；
-3. **文档体系成型**：规格文档 01-10 入库 + 引用速查表、根 README/BUILD/API_CONTRACT 补齐，首版"悬空引用"从根上解决；
-4. **质量保障闭环**：CI 流水线（go vet + test -race + 覆盖率 ≥55% + 前端设计门禁）、版本单一来源（go:embed + version_test）、覆盖率基线 56.1%；
-5. **版本控制落地（本次复查更新）**：git 已启用（由上层仓库 `D:\Fnos.VideoConversion` 统一管理，FVCC 内不再有独立 .git），已推送 GitHub [hgmmm25/Fnos.VideoConversion](https://github.com/hgmmm25/Fnos.VideoConversion/tree/baseline-snapshot)（当前 HEAD 为 baseline-snapshot 快照分支）——P0-3 唯一未动项清零，误改/误删可回滚。
+1. **安全硬伤清零并闭环**：凭据 AES-GCM 加密（internal/security/crypto.go）、删除回收站化（internal/store/trash.go）、字段更新反射白名单（internal/protocol/applyjson.go）、破坏性操作审计闭环（internal/security/security_audit.go，8 处调用点 + 单测）、版本控制（git + GitHub baseline-snapshot）——首版五硬伤全部落地且配套单测；
+2. **架构演进两大项落地**：P2-1 后端 internal 分层（11 包 + store/model 子包，根包仅剩 main.go，82 个 .go 全绿）+ P2-2 前端组件化（src/lib/ 4 件套接入 6 页、样板残留 0、dispose 防订阅泄漏）——第二版"均未启动"的两大项已于 2026-09-19 收口；
+3. **质量保障闭环**：CI 流水线（go vet + test -race + 覆盖率 ≥55%）、版本单一来源（manifest / package.json / VERSION 三处 1.4.4 + check-versions.ps1）、覆盖率基线 56.1%（门槛后续上调 60%）；
+4. **文档体系成型且 AIGC 残留清零**：规格文档 01-10 入库 + 速查表，根 README / BUILD / API_CONTRACT / 混乱报告 / TASK_REFERENCE 等全部对齐 1.4.4；2026-09-19 全库扫描 AIGC 关键词 0 命中。
 
-**仍待解决的主要债务（按优先级）**：
-1. **后端仍单 main 包**（12,902 行，新增 10+ 文件全部继续进 main 包）——P2-1 未启动，单包体量持续膨胀（git 回滚前提已就绪，可随时启动分层）；
-2. **根目录构建产物仍物理堆积**（fvcc.exe 32MB + 3 个版本 fpk + fvcs-service.exe），archive/ 治理未覆盖根目录与 FVCS/；
-3. **注释/文档滞后于代码的新实例**：models.go:147"TODO: P0 AES 加密"过时注释、FVCC/README.md 版本表 1.4.1 vs 实际 1.4.2——整改落地时未同步清理旧注释，说明"代码即真相"机制尚未完全建立；
-4. **AIGC 残留与编号注释未清理（P2-6 已收口）**：原 version.go"发布约定 2026-09-16"编号注释已语义化，`P2-1` 同号异义实锤仍存 2 处（见 2.2 证据 2）。
+**仍待解决的主要债务（按优先级，均为非阻塞项）**：
+1. **根目录构建产物物理堆积**（fvcc.exe + 5 个版本 fpk + fvcs-service.exe）：archive/ 已收纳 v1.1.0~v1.3.1 旧包，根目录与 FVCS/ 残留待物理清理（P0-2 剩余）；
+2. **代码层过时注释 1 处**：internal/store/model/models.go（约 L152）"TODO: P0 AES 加密"（P0-1 剩余，属代码层清理，不在 md 归档范围）；
+3. **P2-3 覆盖率门槛待上调至 60%**；**§4.2.3 决策门仍开放**（组合器方案去留 / Svelte 5 试点）。
 
-**其混乱的根因（第二版更新）**：
-1. ~~无版本控制 + 无构建隔离~~ → **构建隔离与版本控制均已建立（.gitignore + 干净 stage + CI + git/GitHub baseline-snapshot 快照分支）**；
-2. ~~外部规格文档未入库~~ → **规格文档已入库并建立速查表**；
-3. **AI 增量修补式开发**（任务编号、新旧接口并存、文档/注释滞后于代码）仍是剩余混乱的主要来源——这类债务随每轮 AI 迭代自然累积；P2-6（清理编号/AIGC 残留）已收口（2026-09-18），后续主要依靠"文档同步机制"（项目分析与改进方向.md P3-2 快照漂移说明）持续对冲。
+**当前定位**：项目已从"能跑、能测、但很难继续演进"过渡到"工程卫生显著改善、具备继续演进条件"。剩余债务集中在物理清理与代码层注释，不再有架构级阻塞项。后续以"代码即真相"与快照漂移说明机制（P3-1/P3-2）持续对冲 AI 增量修补式开发带来的文档滞后。
 
-综合评价 **4.3/10（轻度混乱）**。该项目的底子好（路径安全、崩溃恢复、限流、接口注入、设计门禁、测试诚意 6,458 行、CI 已建），且本轮整改展现了很强的执行力。**下一步建议按序推进：根目录产物物理清理 → P2-1 后端分层（git 回滚前提已就绪）**（P2-2/4/6/7/8 已于 2026-09-18 收口），可将混乱度在 1~2 个月内压到 3/10 以下。其中 **P2-1 后端分层仍是中期架构演进的主力**（P2-2 前端组件化样板收敛已收口），细化实施方案见 §4.1 / §4.2：后端以"叶子优先、只搬不移、测试门禁"三原则在 6~7 周内完成 internal 分层（新增 10+ 文件已列迁移映射）；前端"组合器收敛样板"第一步已收口（样板类残留 0；pages/ 行数因业务逻辑占比高未达 -30% 目标，见 §4.2 遗留说明），"决策门评估框架"第二步留待后续评估。
-*（内容由AI生成，仅供参考）*
-*（内容由AI生成，仅供参考）*
+> 维护记录：首版 2026-09-18 上午（1.4.0）→ 第二版 2026-09-18（1.4.2，评分 4.3/10）→ 第三版 2026-09-19（1.4.4，评分 2.8/10）。本报告与 docs/ 下其他台账文档（TASK_REFERENCE / 项目分析与改进方向 / P2-1 实施记录 / P2-2 细化细则）已于 2026-09-19 统一对齐 1.4.4 现状。

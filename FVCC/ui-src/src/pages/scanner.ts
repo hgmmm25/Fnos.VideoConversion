@@ -75,6 +75,15 @@ const defaultVisibleCols = ['fileName', 'size', 'duration', 'resolution', 'codec
 const savedCols = localStorage.getItem('fvcc_visible_cols')
 const visibleCols: Set<ColKey> = new Set(savedCols ? JSON.parse(savedCols) : defaultVisibleCols)
 
+// C-阶段（7.3 scanner 行）：文件类型/大小分布 —— 简单占比条，CSS 自绘零依赖，颜色走 token 色板
+const DIST_FMT_COLORS = ['bg-primary', 'bg-signal', 'bg-success', 'bg-warning', 'bg-neutral']
+const SIZE_BUCKETS: { label: string; test: (s: number) => boolean; cls: string }[] = [
+  { label: '<100MB', test: (s) => s < 100 * 1024 * 1024, cls: 'bg-primary/50' },
+  { label: '100MB-1GB', test: (s) => s < 1024 * 1024 * 1024, cls: 'bg-primary/70' },
+  { label: '1-4GB', test: (s) => s < 4 * 1024 * 1024 * 1024, cls: 'bg-signal/70' },
+  { label: '>4GB', test: () => true, cls: 'bg-signal' },
+]
+
 export function renderScanner(container: HTMLElement) {
   const wrap = el('div', { class: 'flex flex-col h-full' })
 
@@ -103,6 +112,7 @@ export function renderScanner(container: HTMLElement) {
   let searchQuery = ''
   searchInput.oninput = () => {
     searchQuery = searchInput.value.trim().toLowerCase()
+    currentPage = 1
     render()
   }
 
@@ -141,13 +151,44 @@ export function renderScanner(container: HTMLElement) {
 
   // 列表
   const tableWrap = el('div', { class: 'flex-1 overflow-auto' })
-  
+
+  // D-阶段（7.4 阶段 D）：大列表分页 —— 禁止整表全量重建（§7.5），与 history 分页一致
+  const PAGE_SIZE = 100
+  let currentPage = 1
+
   // 统计栏（放到最下面）
   const statBar = el('div', {
     class: 'flex items-center justify-between gap-4 px-4 py-1.5 text-xs text-ink-muted bg-surface-alt border-t border-line',
   })
   const statTotal = el('span', {}, ['共 0 个文件'])
   const statSelected = el('span', {}, ['已选 0 个'])
+  // D-阶段：分页控件（左：统计 / 右：分页 + 详情）
+  const paginationWrap = el('div', { class: 'flex items-center gap-1' })
+  const prevBtn = el('button', { class: 'btn btn-sm', disabled: 'true' }, ['上一页'])
+  const pageInfo = el('span', { class: 'font-mono tabular-nums whitespace-nowrap' }, ['1 / 1'])
+  const nextBtn = el('button', { class: 'btn btn-sm', disabled: 'true' }, ['下一页'])
+  const updatePagination = (total: number) => {
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+    if (currentPage > totalPages) currentPage = totalPages
+    if (currentPage < 1) currentPage = 1
+    pageInfo.textContent = `${currentPage} / ${totalPages}`
+    prevBtn.disabled = currentPage <= 1
+    nextBtn.disabled = currentPage >= totalPages
+  }
+  prevBtn.onclick = () => {
+    if (currentPage > 1) {
+      currentPage--
+      render()
+    }
+  }
+  nextBtn.onclick = () => {
+    const totalPages = Math.max(1, Math.ceil((searchQuery ? scannedVideos.filter((v) => v.fileName.toLowerCase().includes(searchQuery) || v.path.toLowerCase().includes(searchQuery)).length : scannedVideos.length) / PAGE_SIZE))
+    if (currentPage < totalPages) {
+      currentPage++
+      render()
+    }
+  }
+  paginationWrap.append(prevBtn, pageInfo, nextBtn)
   const detailFileName = el('span', { class: 'text-xs font-medium text-primary truncate max-w-[200px] hidden', title: '' }, [''])
   
   const detailToggle = el('button', { 
@@ -157,8 +198,11 @@ export function renderScanner(container: HTMLElement) {
   
   statBar.append(
     el('div', { class: 'flex items-center gap-4' }, [statTotal, statSelected]),
-    el('div', { class: 'flex items-center gap-2' }, [detailFileName, detailToggle])
+    el('div', { class: 'flex items-center gap-2' }, [paginationWrap, detailFileName, detailToggle])
   )
+
+  // C-阶段（7.3 scanner 行）：格式/大小占比条（挂 toolbar 与列表之间，随扫描结果更新）
+  const distBar = el('div', { class: 'hidden bg-surface-alt border-b border-line px-4 py-2 text-xs text-ink-muted space-y-1.5' })
 
   const detailPanel = el('div', { 
     class: 'hidden bg-surface border-t border-line overflow-auto max-h-[300px]' 
@@ -397,7 +441,7 @@ export function renderScanner(container: HTMLElement) {
     ok.focus()
   }
   
-  wrap.append(toolbar, tableWrap, detailPanel, statBar)
+  wrap.append(toolbar, distBar, tableWrap, detailPanel, statBar)
   container.appendChild(wrap)
 
   let detailExpanded = false
@@ -710,6 +754,67 @@ export function renderScanner(container: HTMLElement) {
     statSelected.textContent = `已选 ${selectedVideos.size} 个`
     taskBtn.disabled = selectedVideos.size === 0
   }
+  // C-阶段（7.3 scanner 行）：格式/大小占比条渲染（基于扫描全量，不随搜索词变化）
+  const updateDist = () => {
+    const vs = scannedVideos
+    distBar.replaceChildren()
+    if (vs.length === 0) {
+      distBar.classList.add('hidden')
+      return
+    }
+    distBar.classList.remove('hidden')
+    const total = vs.length
+
+    // 格式占比（top5 + 其他）
+    const fmtMap = new Map<string, number>()
+    for (const v of vs) {
+      const f = (v.format || '未知').toLowerCase()
+      fmtMap.set(f, (fmtMap.get(f) ?? 0) + 1)
+    }
+    const fmtArr = [...fmtMap.entries()].sort((a, b) => b[1] - a[1])
+    const top = fmtArr.slice(0, 5)
+    const restN = fmtArr.slice(5).reduce((a, [, n]) => a + n, 0)
+    if (restN > 0) top.push(['其他', restN])
+    const fmtRow = el('div', { class: 'flex items-center gap-3' }, [el('span', { class: 'shrink-0 w-10' }, ['格式'])])
+    const fmtBar = el('div', { class: 'flex flex-1 min-w-0 h-1.5 rounded-full overflow-hidden bg-surface' })
+    const fmtLabels: string[] = []
+    top.forEach(([f, n], i) => {
+      const seg = el('div', {
+        class: `${DIST_FMT_COLORS[i % DIST_FMT_COLORS.length]} h-full transition-all`,
+        style: `width:${(n / total) * 100}%`,
+        title: `${f} ${n}`,
+      })
+      fmtBar.appendChild(seg)
+      fmtLabels.push(`${f} ${n}`)
+    })
+    fmtRow.append(fmtBar, el('span', { class: 'shrink-0 font-mono tabular-nums max-w-[40%] truncate' }, [fmtLabels.join(' · ')]))
+
+    // 大小分段占比
+    const sizeCounts = SIZE_BUCKETS.map((b) => ({ label: b.label, cls: b.cls, n: 0 }))
+    for (const v of vs) {
+      const b = SIZE_BUCKETS.find((b) => b.test(v.size))
+      if (b) {
+        const hit = sizeCounts.find((x) => x.label === b.label)
+        if (hit) hit.n++
+      }
+    }
+    const sizeRow = el('div', { class: 'flex items-center gap-3' }, [el('span', { class: 'shrink-0 w-10' }, ['大小'])])
+    const sizeBar = el('div', { class: 'flex flex-1 min-w-0 h-1.5 rounded-full overflow-hidden bg-surface' })
+    const sizeLabels: string[] = []
+    for (const b of sizeCounts) {
+      if (b.n === 0) continue
+      const seg = el('div', {
+        class: `${b.cls} h-full transition-all`,
+        style: `width:${(b.n / total) * 100}%`,
+        title: `${b.label} ${b.n}`,
+      })
+      sizeBar.appendChild(seg)
+      sizeLabels.push(`${b.label} ${b.n}`)
+    }
+    sizeRow.append(sizeBar, el('span', { class: 'shrink-0 font-mono tabular-nums max-w-[40%] truncate' }, [sizeLabels.join(' · ')]))
+
+    distBar.append(fmtRow, sizeRow)
+  }
   const render = () => {
     tableWrap.innerHTML = ''
     const filtered = searchQuery
@@ -719,6 +824,7 @@ export function renderScanner(container: HTMLElement) {
       ? `共 ${filtered.length} / ${scannedVideos.length} 个文件`
       : `共 ${scannedVideos.length} 个文件`
     updateStats()
+    updateDist()
     if (scannedVideos.length === 0) {
       // P2-1：空状态承载"下一步动作"
       tableWrap.appendChild(
@@ -729,12 +835,16 @@ export function renderScanner(container: HTMLElement) {
           },
         })
       )
+      updatePagination(0)
       return
     }
     if (filtered.length === 0) {
       tableWrap.appendChild(emptyState('没有匹配的文件', 'search'))
+      updatePagination(0)
       return
     }
+    updatePagination(filtered.length)
+    // D-阶段（7.4 阶段 D）：大列表分页 —— 排序在全量数据上执行，渲染仅取当前页切片，避免数千行全量重建
     tableWrap.appendChild(buildTable(updateStats, filtered))
   }
 
@@ -760,7 +870,7 @@ export function renderScanner(container: HTMLElement) {
   }
 
   function buildTable(updateBtns: () => void, sourceVideos: VideoInfo[]): HTMLElement {
-  const sorted = [...sourceVideos].sort((a, b) => {
+  const sortedAll = [...sourceVideos].sort((a, b) => {
     let av: string | number = ''
     let bv: string | number = ''
     switch (sortKey) {
@@ -783,6 +893,10 @@ export function renderScanner(container: HTMLElement) {
     if (av > bv) return sortDir === 'asc' ? 1 : -1
     return 0
   })
+
+  // D-阶段（7.4 阶段 D）：大列表分页 —— 排序在全量 sortedAll 上，渲染仅取当前页切片
+  const startIdx = (currentPage - 1) * PAGE_SIZE
+  const sorted = sortedAll.slice(startIdx, startIdx + PAGE_SIZE)
 
   const table = el('table', { class: 'w-full text-sm whitespace-nowrap' })
   const thead = el('thead', { class: 'sticky top-0 bg-surface-alt text-ink-muted' })
@@ -821,8 +935,7 @@ export function renderScanner(container: HTMLElement) {
         sortKey = col
         sortDir = 'asc'
       }
-      const newTable = buildTable(updateBtns, sourceVideos)
-      table.replaceWith(newTable)
+      render()
     }
     if (col === 'fileName') {
       const wrap = el('div', { class: 'flex items-center gap-2' }, [

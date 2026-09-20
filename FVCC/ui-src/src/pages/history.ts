@@ -1,7 +1,7 @@
 import { store } from '../store'
 import { api } from '../api'
 import { el, toast, formatTime, emptyState, svgIcon } from '../ui'
-import { type TaskStatus, STATUS_LABEL, STATUS_CLASS } from '../types'
+import { type Task, type TaskStatus, STATUS_LABEL, STATUS_CLASS } from '../types'
 import { crudActions } from '../lib/crudActions'
 import { useListPage } from '../lib/useListPage'
 
@@ -31,12 +31,16 @@ export function renderHistory(container: HTMLElement) {
   const stats = el('span', { class: 'ml-auto text-xs text-ink-muted' }, [])
   toolbar.append(refresh, filterSel, stats)
 
+  // §7 阶段B试点二：历史趋势图（lightweight-charts 动态 import，仅进页签时加载）
+  const trend = makeTrendCard()
+
   const listWrap = el('div', { class: 'flex-1 overflow-auto' })
   const paginationWrap = el('div', { class: 'flex justify-center items-center gap-2 px-4 py-2 border-t border-line bg-surface-alt' })
-  wrap.append(toolbar, listWrap, paginationWrap)
+  wrap.append(toolbar, trend.card, listWrap, paginationWrap)
   container.appendChild(wrap)
 
   const render = () => {
+    trend.scheduleDraw()
     listWrap.innerHTML = ''
     let list = store.history
     const f = filterSel.value
@@ -201,5 +205,159 @@ export function renderHistory(container: HTMLElement) {
   page.mount()
   filterSel.onchange = () => { currentPage = 1; render() }
   render()
-  return () => { unsubStore(); page.dispose() }
+  return () => { unsubStore(); page.dispose(); trend.dispose() }
+}
+
+// ===== §7 阶段B试点二：历史趋势图（lightweight-charts 动态 import；canvas 渲染；色板取自 token）=====
+type TrendRange = 7 | 30 | 90 | 0
+interface TrendDay { ts: number; label: string; done: number; err: number }
+interface TrendChartHandle { remove(): void; applyOptions(o: Record<string, unknown>): void }
+
+function tokenColor(name: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--c-${name}`).trim()
+  const parts = v.split(/\s+/).filter(Boolean)
+  return parts.length === 3 ? `rgb(${parts.join(' ')})` : (v || 'transparent')
+}
+
+function buildTrendDays(hist: Task[], range: TrendRange): TrendDay[] {
+  const byDay = new Map<string, TrendDay>()
+  const keyOf = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+  for (const t of hist) {
+    const ts = t.updatedAt ? new Date(t.updatedAt) : new Date()
+    if (isNaN(ts.getTime())) continue
+    const k = keyOf(ts)
+    let day = byDay.get(k)
+    if (!day) {
+      day = { ts: new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()).getTime(), label: `${ts.getMonth() + 1}/${ts.getDate()}`, done: 0, err: 0 }
+      byDay.set(k, day)
+    }
+    if (t.status === 'COMPLETED') day.done++
+    else if (t.status === 'ERROR') day.err++
+  }
+  if (range > 0) {
+    const out: TrendDay[] = []
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    start.setDate(start.getDate() - (range - 1))
+    for (let i = 0; i < range; i++) {
+      const d = new Date(start)
+      d.setDate(start.getDate() + i)
+      const hit = byDay.get(keyOf(d))
+      out.push(hit ?? { ts: d.getTime(), label: `${d.getMonth() + 1}/${d.getDate()}`, done: 0, err: 0 })
+    }
+    return out
+  }
+  return [...byDay.values()].sort((a, b) => a.ts - b.ts)
+}
+
+function makeTrendCard() {
+  let range: TrendRange = 30
+  let collapsed = false
+  let chart: TrendChartHandle | null = null
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let disposed = false
+
+  const legend = el('span', { class: 'flex items-center gap-3 text-xs text-ink-muted' }, [])
+  const rangeSel = el('select', { class: 'input text-sm h-9', 'aria-label': '趋势时间范围' }) as HTMLSelectElement
+  for (const [v, l] of [[7, '近7天'], [30, '近30天'], [90, '近90天'], [0, '全部']] as const) {
+    rangeSel.appendChild(el('option', { value: String(v) }, [l]))
+  }
+  rangeSel.value = '30'
+  const foldBtn = el('button', { class: 'btn btn-sm w-11 h-11 flex items-center justify-center shrink-0', 'aria-label': '折叠/展开趋势图' }, [el('span', { class: 'text-xs' }, ['▲'])]) as HTMLButtonElement
+  const body = el('div', { class: 'h-[220px] px-3 sm:px-4 pb-3' })
+
+  const header = el('div', { class: 'flex flex-wrap items-center gap-2 px-3 sm:px-4 py-1.5 border-b border-line-subtle bg-surface' }, [
+    el('span', { class: 'text-sm font-medium flex items-center gap-1.5' }, [svgIcon('history', 15) as unknown as Node, el('span', {}, ['历史趋势'])]),
+    legend,
+    el('span', { class: 'ml-auto flex items-center gap-2' }, [rangeSel, foldBtn]),
+  ])
+  const card = el('div', { class: 'border-b border-line bg-surface' }, [header, body])
+
+  const renderLegend = (done: number, err: number) => {
+    const total = done + err
+    const rate = total > 0 ? ((done / total) * 100).toFixed(1) : '0.0'
+    legend.innerHTML = ''
+    legend.append(
+      el('span', { class: 'flex items-center gap-1' }, [el('i', { class: 'inline-block w-2 h-2 rounded-sm', style: `background:${tokenColor('success')}` }), el('span', {}, [`完成 ${done}`])]),
+      el('span', { class: 'flex items-center gap-1' }, [el('i', { class: 'inline-block w-2 h-2 rounded-sm', style: `background:${tokenColor('danger')}` }), el('span', {}, [`错误 ${err}`])]),
+      el('span', { class: 'flex items-center gap-1' }, [el('i', { class: 'inline-block w-2 h-2 rounded-sm', style: `background:${tokenColor('signal')}` }), el('span', {}, [`成功率 ${rate}%`])])
+    )
+  }
+
+  const scheduleDraw = () => {
+    if (disposed || collapsed) return
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => { void draw() }, 200)
+  }
+
+  const draw = async () => {
+    if (disposed || collapsed) return
+    const days = buildTrendDays(store.history, range)
+    const hasData = days.some((d) => d.done > 0 || d.err > 0)
+    const totalDone = days.reduce((s, d) => s + d.done, 0)
+    const totalErr = days.reduce((s, d) => s + d.err, 0)
+    renderLegend(totalDone, totalErr)
+    if (chart) { try { chart.remove() } catch { /* noop */ } chart = null }
+    body.innerHTML = ''
+    if (!hasData) {
+      body.appendChild(el('div', { class: 'flex items-center justify-center h-full text-sm text-ink-muted py-10' }, ['暂无历史数据，完成转码后这里会展示趋势']))
+      return
+    }
+    try {
+      const lwc = await import('lightweight-charts')
+      const w = Math.max(body.clientWidth || 600, 320)
+      const h = body.clientHeight || 220
+      const inst = lwc.createChart(body, {
+        width: w,
+        height: h,
+        layout: { background: { type: lwc.ColorType.Solid, color: 'transparent' }, textColor: tokenColor('ink-muted'), fontSize: 11 },
+        grid: { vertLines: { color: tokenColor('line-subtle') }, horzLines: { color: tokenColor('line-subtle') } },
+        rightPriceScale: { borderColor: tokenColor('line-subtle') },
+        leftPriceScale: { borderColor: tokenColor('line-subtle') },
+        timeScale: { borderColor: tokenColor('line-subtle'), timeVisible: false, rightOffset: 2 },
+        crosshair: { mode: 0 },
+      })
+      chart = inst as unknown as TrendChartHandle
+      const times = days.map((d) => { const dt = new Date(d.ts); return { year: dt.getFullYear(), month: dt.getMonth() + 1, day: dt.getDate() } })
+      const doneSeries = inst.addSeries(lwc.HistogramSeries, {
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'right',
+        color: tokenColor('success'),
+      })
+      doneSeries.setData(days.map((d, i) => ({ time: times[i], value: d.done })))
+      const errSeries = inst.addSeries(lwc.LineSeries, {
+        color: tokenColor('danger'),
+        lineWidth: 2,
+        priceScaleId: 'right',
+      })
+      errSeries.setData(days.map((d, i) => ({ time: times[i], value: d.err })))
+      const rateSeries = inst.addSeries(lwc.LineSeries, {
+        color: tokenColor('signal'),
+        lineWidth: 2,
+        priceScaleId: 'left',
+        lineStyle: lwc.LineStyle.Dashed,
+        autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
+      })
+      rateSeries.setData(days.map((d, i) => ({ time: times[i], value: d.done + d.err > 0 ? Math.round((d.done / (d.done + d.err)) * 1000) / 10 : 0 })))
+      inst.timeScale().fitContent()
+    } catch (e) {
+      body.appendChild(el('div', { class: 'flex items-center justify-center h-full text-sm text-danger py-10' }, [`趋势图加载失败：${(e as Error).message}`]))
+    }
+  }
+
+  foldBtn.onclick = () => {
+    collapsed = !collapsed
+    body.style.display = collapsed ? 'none' : ''
+    foldBtn.firstChild!.textContent = collapsed ? '▼' : '▲'
+    if (!collapsed) scheduleDraw()
+  }
+  rangeSel.onchange = () => { range = Number(rangeSel.value) as TrendRange; scheduleDraw() }
+
+  const dispose = () => {
+    disposed = true
+    if (timer) clearTimeout(timer)
+    if (chart) { try { chart.remove() } catch { /* noop */ } chart = null }
+  }
+
+  return { card, scheduleDraw, dispose }
 }

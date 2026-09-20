@@ -207,7 +207,47 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
   }
 
   const ruler = buildRuler((ms) => locateGlobal(ms), map)
-  const root = el('div', { class: 'min-h-full flex flex-col' }, [ruler.root, track])
+
+  // ===== C-阶段（7.3 editor 行）：时间轴密度条 =====
+  // 48 格统计片段重叠度，映射 4 档 token 色阶（低→高密度），纯 CSS 零依赖，不叠加图表库。
+  const DENSITY_CLASS = ['bg-transparent', 'bg-primary/15', 'bg-primary/35', 'bg-primary/65', 'bg-primary']
+  const density = el('div', { class: 'relative hidden h-3.5 shrink-0 border-b border-line bg-surface-alt' })
+  density.setAttribute('role', 'img')
+  density.setAttribute('aria-label', '时间轴片段密度')
+
+  function drawDensity(): void {
+    density.replaceChildren()
+    if (!segs.length) {
+      density.classList.add('hidden')
+      return
+    }
+    density.classList.remove('hidden')
+    const N = 48
+    const cells = new Array<number>(N).fill(0)
+    const segDur = totalMs / N
+    for (const s of segs) {
+      if (s.durMs <= 0) continue
+      const i0 = Math.max(0, Math.floor(s.startMs / segDur))
+      const i1 = Math.min(N - 1, Math.floor((s.startMs + s.durMs) / segDur))
+      for (let i = i0; i <= i1; i++) cells[i]++
+    }
+    const desc: string[] = []
+    for (let i = 0; i < N; i++) {
+      const n = cells[i]
+      // 绝对档位（非相对 max）：单轨无重叠时每格 1 层显示浅档，重叠≥2/3/5 逐级加深
+      const level = n === 0 ? 0 : n >= 5 ? 4 : n >= 3 ? 3 : n === 2 ? 2 : 1
+      const t0 = Math.round((i * segDur) / 1000)
+      const t1 = Math.round(((i + 1) * segDur) / 1000)
+      if (n > 0) desc.push(`${t0}s-${t1}s ${n} 片段`)
+      const cellAttrs: Record<string, string> = { class: `flex-1 h-full ${DENSITY_CLASS[level]} transition-colors` }
+      if (n > 0) cellAttrs.title = `${t0}s-${t1}s · ${n} 个片段重叠`
+      const cell = el('div', cellAttrs)
+      density.append(cell)
+    }
+    density.setAttribute('aria-label', `时间轴片段密度：${desc.join('，') || '无片段'}`)
+  }
+
+  const root = el('div', { class: 'min-h-full flex flex-col' }, [ruler.root, density, track])
 
   // ===== 几何：分段线性（含最小宽度兜底）=====
   function containerWidth(): number {
@@ -276,6 +316,7 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
     track.style.width = trackW + 'px'
     ruler.root.style.width = trackW + 'px'
     drawClips(edlStore.getState().selectedClipId)
+    drawDensity()
     ruler.render(totalMs, trackW)
     updatePlayhead()
   }
