@@ -24,8 +24,6 @@ FVCC/
 │   ├── smbshare/            # SMB 共享能力
 │   └── go.mod / go.sum
 ├── ui-src/              # 前端源码（Vite + TS，零框架 el() 手工 DOM）
-│   ├── DESIGN.md            # 设计契约（Named Rules + check:design 门禁）
-│   ├── PRODUCT.md           # 产品定位与反参照
 │   ├── src/                 # 页面与逻辑
 │   │   ├── pages/           # 页面（含时间线编辑器）
 │   │   ├── api.ts / ws.ts   # HTTP / WS 客户端
@@ -37,7 +35,9 @@ FVCC/
 │   ├── scripts/             # check-design.mjs 等门禁脚本
 │   └── public/              # config + images（vite 构建时复制回 app/ui，禁止误删）
 ├── docs/                # 项目内文档
-│   └── API_CONTRACT.md      # 前后端 API 契约
+│   ├── API_CONTRACT.md      # 前后端 API 契约
+│   ├── DESIGN.md            # 设计契约（Named Rules + check:design 门禁）
+│   └── PRODUCT.md           # 产品定位与反参照
 ├── cmd/                 # fnOS 安装脚本
 ├── app/                 # 构建产物目录（git 忽略）
 ├── temp/                # 打包 stage 等临时目录（git 忽略）
@@ -85,19 +85,19 @@ go test ./...
 
 | 文件 | 字段 | 当前值 |
 |------|------|--------|
-| `manifest` | `version` | 1.4.2 |
-| `ui-src/package.json` | `version` | 1.4.2 |
-| `server/internal/version/VERSION` | 文件内容 | 1.4.2 |
+| `manifest` | `version` | 1.4.4 |
+| `ui-src/package.json` | `version` | 1.4.4 |
+| `server/internal/version/VERSION` | 文件内容 | 1.4.4 |
 
 ## 项目内文档体系
 
 | 文档 | 位置 | 说明 |
 |------|------|------|
 | API_CONTRACT.md | `FVCC/docs/` | 前后端 API 契约（错误码、路由、载荷） |
-| DESIGN.md | `FVCC/ui-src/` | 前端设计契约（Named Rules + 反例清单 + check:design 门禁） |
-| PRODUCT.md | `FVCC/ui-src/` | 前端产品定位、用户与反参照 |
+| DESIGN.md | `FVCC/docs/` | 前端设计契约（Named Rules + 反例清单 + check:design 门禁） |
+| PRODUCT.md | `FVCC/docs/` | 前端产品定位、用户与反参照 |
 | 设计规格 01~10 | `../WebVideoEditor_Design/` | 见上表"设计文档引用速查" |
-| 混乱度评价报告 | `../FVCC_混乱度评价报告_细化版.md` | 项目治理台账（P0/P1/P2 计划与状态） |
+| 混乱度评价报告 | `../docs/FVCC_混乱度评价报告_细化版.md` | 项目治理台账（P0/P1/P2 计划与状态） |
 | TASK_REFERENCE.md | `../docs/TASK_REFERENCE.md` | 任务编号语义登记（B/C/D/M4/修复/Px-x） |
 
 ## 前端公共模块速查（ui-src/src/lib/，P2-2 新增）
@@ -117,19 +117,23 @@ go test ./...
 
 | 计划项 | 内容 | 状态 | 说明 / 剩余动作 |
 |--------|------|------|------------------|
-| P1-1 | Profile 反射白名单更新 | ✅ 已落地 | `server/applyjson.go` + 单测 |
-| P1-2 | SMB 路径校验 | ✅ 已落地 | `server/smb_validate.go` + 单测 |
+| P1-1 | Profile 反射白名单更新 | ✅ 已落地 | `server/internal/protocol/applyjson.go` + 单测（P2-1 分层后位置） |
+| P1-2 | SMB 路径校验 | ✅ 已落地 | `server/internal/security/smb_validate.go` + 单测（P2-1 分层后位置） |
 | P1-3 | 文档落地（代码注释引用设计规格） | ✅ 已落地 | 注释以 `WebVideoEditor_Design/07-§3.2` 形式引用 |
-| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地 | 三处 1.4.2 已同步；本表已更新，消除 README 滞后 |
+| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地 | 三处 1.4.4 已同步（2026-09-19 复核）；本表已更新，消除 README 滞后 |
 | P1-5 | 依赖瘦身（前端字体 / 后端 indirect） | 🟡 部分落地 | 字体 latin 子集已瘦身（app/ui/assets 12 文件）；go.mod 已执行 `go mod tidy` 复核：29 个 indirect 均为 gin v1.12 传递依赖（mongo-driver v2 由 gin 直接 require、quic-go 由 gin http3 引入），无进一步精简空间；node_modules 全字符集不进入构建产物，建议保持不动 |
 
-## 治理计划状态（P2-4 / P2-6 / P2-7 / P2-8）
+## 治理计划状态（P2-1 ~ P2-8）
 
-依据 `FVCC_混乱度评价报告_细化版.md` §4 的 P2 组计划项，2026-09-18 复核状态：
+依据 `FVCC_混乱度评价报告_细化版.md` §4 的 P2 组计划项，2026-09-19 复核状态：
 
 | 计划项 | 内容 | 状态 | 说明 / 剩余动作 |
 |---|---|---|---|
+| P2-1 | 后端 internal 分层 | ✅ 已落地（2026-09-19） | `server/internal/` 11 包 + store/model 子包，根包仅剩 main.go（82 个 .go）；阶段 A/B/C 完成、8 shim 内联删除；基线 tag v1.4.3；详见 [docs/P2-1_后端分层_阶段A实施记录.md](<FVCC/docs/P2-1_后端分层_阶段A实施记录.md>) |
+| P2-2 | 前端组件化 | ✅ 已收口（2026-09-19） | `src/lib/` 4 件套接入 6 页、样板残留 0；main.ts 路由切换接入 dispose 防订阅泄漏；详见 [docs/P2-2_细化细则.md](<FVCC/docs/P2-2_细化细则.md>)（Checklist 全勾） |
+| P2-3 | 建立 CI 流水线 | ✅ 已落地 | `.github/workflows/fvcc-ci.yml`（paths 限定 FVCC/**）+ `scripts/check-coverage.ps1`（覆盖率门槛 ≥55%，基线 56.1%，后续上调 60%） |
 | P2-4 | 统一 API 契约与命名 | ✅ 已收口 | 统一错误契约（apierr.go + API_CONTRACT.md + api.ts 适配层）已落地；存量 `{error}` 裸格式 grep 为 0；remote.go snake_case 结构体均为 FVCS 对等协议段（API_CONTRACT §3.2 已登记边界），无剩余动作 |
-| P2-6 | 清理 AIGC 残留与任务编号注释 | ✅ 已收口 | AIGC frontmatter 已清（README / API_CONTRACT / ui-src PRODUCT / 根目录 2 份 / 混乱报告自身）；version.go 编号注释已语义化；编号映射见 docs/TASK_REFERENCE.md |
+| P2-5 | 删除操作回收站化 | ✅ 已落地 | `server/internal/store/trash.go`（P2-1 分层后位置）：视频删除移入授权根下 `_trash`，同名时间戳后缀；listTrash 列表接口 |
+| P2-6 | 清理 AIGC 残留与任务编号注释 | ✅ 已收口 | AIGC frontmatter 已清（README / API_CONTRACT / ui-src PRODUCT / 根目录 2 份 / 混乱报告自身 / docs/ 3 份补清）；编号映射见 docs/TASK_REFERENCE.md |
 | P2-7 | 测试文件命名规范化 | ✅ 已落地 | `genproxy_share_cred_126_test.go` → `genproxy_share_cred_test.go`、`handlers_edl_list_contract_test.go` → `handlers_edl_list_test.go`（git mv 保留历史） |
 | P2-8 | 破坏性操作审计闭环 | ✅ 已落地 | security_audit.go 新增 `auditDestructive`（destructive.delete / destructive.clear / destructive.empty_trash），已接入清日志/清缓存/删除视频/服务器/方案/任务/历史/清空回收站 8 处调用点；配套单测 TestP28DestructiveOpsAudited |

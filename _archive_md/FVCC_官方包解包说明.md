@@ -1,13 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_ea5294a0ace211f1af37525400826444
-    ReservedCode1: Dz4w+e9dqjDslamZsX3BSkx572d7Bmm3tItDOs9vXLofI7yHQwy4ivGtiSf5sf7JJaGrgSfWqFAOD7cIMyb18/geeiK1ipZjIraRs79UCeOEZLhjZhX+7w8sWShxde1Rbc7UjnJk3gKrTfDw1jVrSXLXeIUktHvaX+ES46WaeiHqvnvQBxpanqjZUgo=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_ea5294a0ace211f1af37525400826444
-    ReservedCode2: Dz4w+e9dqjDslamZsX3BSkx572d7Bmm3tItDOs9vXLofI7yHQwy4ivGtiSf5sf7JJaGrgSfWqFAOD7cIMyb18/geeiK1ipZjIraRs79UCeOEZLhjZhX+7w8sWShxde1Rbc7UjnJk3gKrTfDw1jVrSXLXeIUktHvaX+ES46WaeiHqvnvQBxpanqjZUgo=
----
 
 # FVCC 官方包解包说明
 
@@ -245,4 +235,4 @@ checksum              = a4d90f96ad8e83f9db5df5bdfae41392
 ---
 
 *本文全部结论均可在 `D:\Fnos.VideoConversion\FVCC_official_unpack\` 下对应文件中逐项复核。*
-*（内容由AI生成，仅供参考）*
+

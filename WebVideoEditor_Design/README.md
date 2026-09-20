@@ -1,13 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_270ef764acff11f188ac525400dcc5b3
-    ReservedCode1: SSJOysT1ZYXOFD9hukjssKNxq3nYZHeuh1A7kUsB0qTG4BR10J8RN+jJ2i7MXl8fCQEnzwSWR+wdLlJQr+sz9jZEF93HuKY1DB3zjdXOIY8O3AAayiymwSABdYbHSOcAmYsmsgBMJpYVdPtz7wnNdg05LtM552iAbpTr2fA7t4zuFZiwdpihinrUFCM=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_270ef764acff11f188ac525400dcc5b3
-    ReservedCode2: SSJOysT1ZYXOFD9hukjssKNxq3nYZHeuh1A7kUsB0qTG4BR10J8RN+jJ2i7MXl8fCQEnzwSWR+wdLlJQr+sz9jZEF93HuKY1DB3zjdXOIY8O3AAayiymwSABdYbHSOcAmYsmsgBMJpYVdPtz7wnNdg05LtM552iAbpTr2fA7t4zuFZiwdpihinrUFCM=
----
 
 # WebVideoEditor 细化设计文档包 · 索引
 
@@ -150,4 +140,4 @@ flowchart TB
 ---
 
 *本文档包为工程落地设计，所有结论以 `D:\Fnos.VideoConversion` 现有源码与上位方案为依据；未在源码中验证的推断均已显式标注。*
-*（内容由AI生成，仅供参考）*
+

@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_35cb4303b2ba11f19369525400de85a5
-    ReservedCode1: 99coZZxs0AwZ1+jHhlvaC/PwfTsG2ULM4u9rfOxmJIWRx3AGXabg+3W+tRJZwWn9Qy55rQdhrzAKFQ9sOOPb4gmVKQDFori0XfD3+VmxcutBOGtPGhNYzI117MYnp52TRbEfATrO9gUivux1Ep3Ks33aEsz9BRliqj5icfFsbvYdmXIBr2JH1pLd71k=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_35cb4303b2ba11f19369525400de85a5
-    ReservedCode2: 99coZZxs0AwZ1+jHhlvaC/PwfTsG2ULM4u9rfOxmJIWRx3AGXabg+3W+tRJZwWn9Qy55rQdhrzAKFQ9sOOPb4gmVKQDFori0XfD3+VmxcutBOGtPGhNYzI117MYnp52TRbEfATrO9gUivux1Ep3Ks33aEsz9BRliqj5icfFsbvYdmXIBr2JH1pLd71k=
----
-
 # FVCC 改进方向落实记录（2026-09-17）
 
 > 依据《项目分析与改进方向.md》逐项落实。原则：低风险直接改码并验证；结构性大改（SQLite 迁移、事件驱动调度、freecut 收敛）如实说明未落实原因，不强行破坏既有稳定链路。
@@ -199,7 +188,7 @@ AIGC:
 2. 已勾销项在 `IMPROVEMENT_LOG.md` 以独立轮次章节记录落实详情，本章状态同步更新为 ✅；
 3. 未启动前不修改既有稳定链路，避免半成品风险。
 
-*（内容由AI生成，仅供参考）*
+
 
 ---
 
@@ -253,7 +242,7 @@ AIGC:
 | P2-6 | AIGC 残留清理 | README frontmatter 残留未清除，下一轮处理 |
 | 仓库卫生 | server/fvcc.exe、nul.exe 构建产物 | 已加 .gitignore 但磁盘未清理，可在确定可重建后删除 |
 
-*（内容由AI生成，仅供参考）*
+
 
 ---
 
@@ -380,8 +369,6 @@ AIGC:
 | P2-2 | 前端组件化 | 大工程（profiles/scanner 1100+ 行），1~2 月级 |
 | P2-3 门槛 | 覆盖率 ≥60% 强制门槛 | 当前基线 56.1%（全包口径）/ 57.0%（主包口径）未达标，待决策（§11.5） |
 
-*（内容由AI生成，仅供参考）*
-
 ---
 
 ## 12. 第七轮（2026-09-18）—— P2-4 / P2-6 / P2-7 / P2-8 收口
@@ -429,4 +416,41 @@ AIGC:
 | P2-2 | 前端组件化 | 大工程（profiles/scanner 1100+ 行），1~2 月级 |
 | P2-3 门槛 | 覆盖率 ≥60% 强制门槛 | 当前基线 56.1%（全包口径）/ 57.0%（主包口径）未达标，待决策（§11.5） |
 
-*（内容由AI生成，仅供参考）*
+---
+
+## 十三、第十三轮（2026-09-19）：P2-1 后端分层 + P2-2 前端组件化收口 + 文档体系对齐
+
+> 承接混乱报告 §4 P2 组两大结构性建议：后端单 main 包分层（P2-1）、前端组件化（P2-2）。本轮同时按项目最新现状（版本 1.4.4）统一归档/更新各 md 文档。
+
+### 13.1 落实情况
+
+| 编号 | 改进项 | 落实状态 | 落实方式（文件 / 改动） | 验证 |
+|---|---|---|---|---|
+| P2-1 | 后端 internal 分层 | ✅ 已落地 | `server/internal/` 11 包 + store/model 子包共 82 个 .go 文件（46 实现 + 36 测试），根包仅剩 main.go；阶段 A/B/C 全部完成，8 个 shim 内联删除（详见 `FVCC/docs/P2-1_后端分层_阶段A实施记录.md`）；分层前基线 tag v1.4.3 | go build / vet / test ./... 全绿（见实施记录 §4） |
+| P2-2 | 前端组件化 | ✅ 已收口 | `ui-src/src/lib/` 4 件套（crudActions / scrollPos / useListPage / formBuilder）接入 6 页，样板残留 0；main.ts 路由切换接入 dispose 防订阅泄漏（详见 `FVCC/docs/P2-2_细化细则.md`，Step/Checklist 全勾） | tsc --noEmit 通过；check:design 门禁通过 |
+| 文档归档 | md 文档体系对齐 1.4.4 | ✅ 已完成 | 混乱报告升至第三版（§2.1/§3/§4/§5 对齐 P2-1/P2-2 已落地）；SECURITY.md 清除 AIGC frontmatter；IMPROVEMENT_LOG / TASK_REFERENCE / BUILD.md / FVCC/README.md 版本与路径同步；项目分析与改进方向.md 清单状态回写 | 各文档状态与代码实测一致 |
+
+### 13.2 变更文件清单
+
+**修改**
+- `docs/FVCC_混乱度评价报告_细化版.md`（第三版：1.4.4 / 分层评分 / P2 状态表 / §5 结论）
+- `docs/TASK_REFERENCE.md`（§2.1 编号漂移登记、维护日期、尾注清理）
+- `docs/SECURITY.md`（AIGC frontmatter 清除、凭据状态回写）
+- `docs/IMPROVEMENT_LOG.md`（本轮）
+- `docs/项目分析与改进方向.md`（快照漂移说明更新 + 清单状态回写 + 尾注清理）
+- `docs/FVCC_UI设计优化方向.md`（尾注清理）
+- `BUILD.md`（fnOS 部署段版本 1.4.4、VERSION 路径）
+- `FVCC/README.md`（混乱报告引用路径修正、P2 组状态表补全）
+- `FVCC/docs/P2-1_后端分层_阶段A实施记录.md`（状态与提交说明更新）
+- `FVCC/docs/P2-2_细化细则.md`（状态行更新为已收口、尾注清理）
+- `README.md`（根，目录树引用混乱报告新路径）
+
+### 13.3 未落实项（延续）
+
+| 编号 | 未落实内容 | 原因 |
+|---|---|---|
+| P0-2 | JSON 文件存储迁 SQLite | 结构性重构，需独立里程碑（同前） |
+| P1-1 完整版 | 1s ticker 改纯事件驱动调度 | 调度内核重构，与既有验收强耦合（同前） |
+| P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策（同前） |
+| P2-3 门槛 | 覆盖率 ≥60% 强制门槛 | 当前基线 56.1%（全包口径）/ 57.0%（主包口径）未达标，待决策（§11.5） |
+| 代码层待办 | models.go 过时注释 `TODO: P0 AES 加密`、VideoInfo 逐字段复制 2 处 | 本轮仅归档文档，不修改代码 |

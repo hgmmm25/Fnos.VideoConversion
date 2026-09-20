@@ -1,16 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_f8c02069b2bc11f1839d525400cd780f
-    ReservedCode1: CJpsUcpb8yjAL43/4Nc7+IxH+YQDyOlSR3ED4ud8sbYGi6v4VQkP1wHthpxbRwf8Zjf+6yElUSwUwga7weOlp2WLTrZEQiP1AmPH/PPq26H/bpqOPHfa4PV9GrUcwp5ro/xgIHnyKQsE8pi+hzPDVACN+rfesSYNpO/+BHVWLIHtdfey2JyhfkLdx2E=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_f8c02069b2bc11f1839d525400cd780f
-    ReservedCode2: CJpsUcpb8yjAL43/4Nc7+IxH+YQDyOlSR3ED4ud8sbYGi6v4VQkP1wHthpxbRwf8Zjf+6yElUSwUwga7weOlp2WLTrZEQiP1AmPH/PPq26H/bpqOPHfa4PV9GrUcwp5ro/xgIHnyKQsE8pi+hzPDVACN+rfesSYNpO/+BHVWLIHtdfey2JyhfkLdx2E=
----
-
-
-
 # FVCC / FVCS 数据面安全策略
 
 > 依据《项目分析与改进方向.md》P1-3「数据面 HTTPS/WSS 加密」改进方向编制（2026-09-17）。
@@ -21,7 +8,7 @@ AIGC:
 | 链路 | 协议 | 现状 |
 |---|---|---|
 | 浏览器 UI ↔ FVCC | 生产：fnOS 网关（Unix Socket）代理；开发：TCP HTTP | 明文 HTTP/WS（局域网内） |
-| FVCC ↔ FVCS（渲染节点） | WebSocket（`remote.WS_URL`） | 明文 WSS 尚未启用，节点间需网络隔离 |
+| FVCC ↔ FVCS（渲染节点） | WebSocket（`remote.WS_URL`） | 默认明文；节点配置 `useWSS` / `tlsCACert` / `tlsSkipVerify` 后走 WSS（2026-09-18 已支持，见 §3） |
 
 ## 2. 风险与缓解措施
 
@@ -33,7 +20,7 @@ AIGC:
 
 ### 2.2 渲染节点链路隔离（建议）
 
-- FVCC ↔ FVCS 走 WebSocket，节点间凭据为 `Server.AuthKey`（`models.go` 注释 TODO: P0 AES 加密，MVP 明文存储）。
+- FVCC ↔ FVCS 走 WebSocket，节点间凭据为 `Server.AuthKey`（已由 `internal/security/crypto.go` AES-GCM 加密落盘；`internal/store/model/models.go` 仍留过时注释 `TODO: P0 AES 加密`，属代码层清理待办）。
 - 部署建议：
   1. 渲染节点与 FVCC 处于同一可信内网/VLAN，禁止跨公网直连；
   2. 节点间防火墙仅放行 FVCS 端口 + FVCC 管理端口；
@@ -60,5 +47,3 @@ WSS 启用前（明文链路），不得将 FVCS 端口暴露到不可信网络�
 2. ✅ FVCC `models.Server` 新增 `useWSS` / `tlsCACert` / `tlsSkipVerify`；`remote` 按节点配置选择 `wss://`，支持 CA PEM 文件注入与系统根证书池；`tlsSkipVerify=true` 输出 WARN；
 3. ✅ 握手失败走既有重连逻辑（指数退避），日志含 URL 与 TLS 错误明细，可据此区分 TLS 与业务错误；
 4. ✅ `项目分析与改进方向.md` 中 P1-3 数据面条目已勾销（见 IMPROVEMENT_LOG §二）。
-*（内容由AI生成，仅供参考）*
-*（内容由AI生成，仅供参考）*

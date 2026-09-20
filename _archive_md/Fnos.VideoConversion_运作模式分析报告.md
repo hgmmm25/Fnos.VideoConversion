@@ -1,13 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_99837d9cac1f11f1af37525400826444
-    ReservedCode1: DmCfSBBfcj1mzsqZZy6X3R2QDFOWeszVAZc5X0W/w/z7UCcDTpUgEd4Idm3OFkoOOx1qinWg2sfr2FCwA2vB4ZAeJJU1t6lpIDBx0efuigYT3lqbnx4F8ueGgw6gPEHZT3yO7x9oCVU/OXLQXppuwtKdTS3TxW7I5O4xUQdAx/0NOOr9pHkjljeVl0M=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_99837d9cac1f11f1af37525400826444
-    ReservedCode2: DmCfSBBfcj1mzsqZZy6X3R2QDFOWeszVAZc5X0W/w/z7UCcDTpUgEd4Idm3OFkoOOx1qinWg2sfr2FCwA2vB4ZAeJJU1t6lpIDBx0efuigYT3lqbnx4F8ueGgw6gPEHZT3yO7x9oCVU/OXLQXppuwtKdTS3TxW7I5O4xUQdAx/0NOOr9pHkjljeVl0M=
----
 
 
 
@@ -245,5 +235,5 @@ flowchart TD
 - `FVCC/server/models.go`：`TaskStatus` 枚举 / `Settings.TransferMode`(259) / `Profile.DeleteSource`(144)
 - `FVCC/server/main.go`（Unix Socket 生产监听）、`router.go`、`gateway.go`（X-Trim-* 网关鉴权）、`ws.go`（Hub）
 - 打包：`FVCC/manifest`（`desktop_uidir=ui`）、`FVCC/fnpack-1.2.1.exe`、`FVCC/cmd/main`（Unix Socket + accessible_paths.env）、`FVCC/config/privilege|resource`、`FVCC/server/fvcc.exe`
-*（内容由AI生成，仅供参考）*
-*（内容由AI生成，仅供参考）*
+
+

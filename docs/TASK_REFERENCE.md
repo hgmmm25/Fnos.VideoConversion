@@ -1,19 +1,8 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_ca956a5cb31c11f19369525400de85a5
-    ReservedCode1: 8TMo0q7JeCf0vb8mo5MxD49pdodei70cvZmh7dCFWvSnAZVt8Ajk9YEu3mV99zck8lcy+mXukGkD6xRvxYdZNv+JSWlhj2tyKuwtkhVAl4EhDrlX1MQLJN5wsUDMXyzMZJmO/yj5eIg1svGKGaik0BFfU6qRq7LDtUwWEBxyohtxC/eG41mY8S0ZacM=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_ca956a5cb31c11f19369525400de85a5
-    ReservedCode2: 8TMo0q7JeCf0vb8mo5MxD49pdodei70cvZmh7dCFWvSnAZVt8Ajk9YEu3mV99zck8lcy+mXukGkD6xRvxYdZNv+JSWlhj2tyKuwtkhVAl4EhDrlX1MQLJN5wsUDMXyzMZJmO/yj5eIg1svGKGaik0BFfU6qRq7LDtUwWEBxyohtxC/eG41mY8S0ZacM=
----
-
 # FVCC 任务编号与章节引用对照表（TASK_REFERENCE）
 
 > 用途：混乱报告 P2-6「清理任务编号注释」的落地物。代码注释中散落的 `B-xx / C-xx / D-xx / M4 / Px-x / 修复①-⑤` 任务编号与 `03 §4.2` 式章节引用，在本表中统一登记为可读语义，供维护者追溯设计依据。
 > 约定：新增注释请直接书写可读语义，编号仅作括号溯源；本表与代码同仓维护，`docs/` 为章节引用文档的权威位置说明。
-> 维护日期：2026-09-18
+> 维护日期：2026-09-19（第三版；同步混乱报告 §4 状态：P2-1 后端分层 / P2-2 前端组件化已收口）
 
 ---
 
@@ -47,6 +36,8 @@ AIGC:
 | P2-4 | 统一 API 错误契约 {ok:false,code,msg,detail?} | server/apierr.go、ui-src/src/api.ts、docs/API_CONTRACT.md |
 | P2-5 | 删除操作回收站化（_trash 移入/恢复/清空） | server/trash.go、ui-src/src/api.ts |
 | P2-6 | 清理 AIGC 残留与任务编号注释（本表即落地物） | docs/TASK_REFERENCE.md |
+
+> **编号漂移登记（2026-09-19）**：混乱报告 §4 中 `P2-1`（后端分层）、`P2-2`（前端组件化）为**报告体系编号**（均已落地）；代码注释中的 `P2-1` 多指"可观测性：Prometheus 指标端点"（internal/api/handler_metrics_test.go），`P2-2` 在代码注释中未见（前端 P 组为另一套清单，见 §2.2）。两套语义并存属历史事实，维护者按文件归属对照。本表"代表位置"列为 P2-1 分层前路径，分层后实际位于 `server/internal/` 对应子包（api/store/scheduler/remote/ws/security/edl/media/node/version/protocol）。
 
 ### 2.2 前端 P 组（源自 FVCC 前端 UI 优化清单，**与后端同名编号含义不同**）
 
@@ -158,4 +149,3 @@ AIGC:
 1. 新代码注释**禁止**再引入未登记的任务编号；确需溯源时按「可读语义（编号）」格式书写。
 2. 新规格文档引用一律写 `WebVideoEditor_Design/<文件名> §x.y` 全路径。
 3. 本表新增/修改编号映射时同步更新本节，避免再次漂移。
-*（内容由AI生成，仅供参考）*

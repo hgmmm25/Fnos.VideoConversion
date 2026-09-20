@@ -1,13 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_329396faacff11f1af37525400826444
-    ReservedCode1: O6Lt0CjSBqPd6RFoYzh7XRCGiWi5yMHFxxdYnD/jokGoA7Kx4GumUer2ChFqvBkYY5XRTnB7wKZ+9xltPnBKOS2C71gaqsBqJHV4aEl49Tm0E5ss7ISp9tNdGFnCrmY3FO6KaK7ofezhtoPvX8glBplVOBOZ42sK6RfaKPJAowt6nMlTXGDEdrZxR6o=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_329396faacff11f1af37525400826444
-    ReservedCode2: O6Lt0CjSBqPd6RFoYzh7XRCGiWi5yMHFxxdYnD/jokGoA7Kx4GumUer2ChFqvBkYY5XRTnB7wKZ+9xltPnBKOS2C71gaqsBqJHV4aEl49Tm0E5ss7ISp9tNdGFnCrmY3FO6KaK7ofezhtoPvX8glBplVOBOZ42sK6RfaKPJAowt6nMlTXGDEdrZxR6o=
----
 
 # 03 · EDL 数据模型与接口契约
 
@@ -495,4 +485,4 @@ export type WSEvent =
 | `FVCS/pkg/protocol/protocol.go` | 新增命令常量、请求字段、`ValidateRenderEDLPayload`（替代黑名单） | §3.1、07 §3.3 |
 | `FVCS/pkg/server/server.go` | `handleWebSocket` 分派 `CreateRenderEDL`；新增 `handleCreateRenderEDL`（仿 `handleCreateSMBTask` L447） | 05 §2 |
 | `FVCS/pkg/task/task.go` | `Task` 新增 `TaskType/Payload/Stage/SegTotal/SegDone/TotalMs`；新增 `CreateRenderTask`（仿 `CreateSMBTask` L616） | 06 §3 |
-*（内容由AI生成，仅供参考）*
+

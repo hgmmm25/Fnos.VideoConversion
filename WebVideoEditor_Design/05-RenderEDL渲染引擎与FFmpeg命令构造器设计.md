@@ -1,13 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_38e25a3dacff11f1ac01525400e6dd8f
-    ReservedCode1: QhyUJmejjnkfCR2bCyGjKHqM83mH0dxt1WgIyIYQa9tvcBe2ZoYNIxhJ0L3O+RZYXRNIL75p22TIEwCFuuo5op5/PXQvfUy83TaEC9zVeXG0ja0I3Ad2NEwkXdUo1ce3rkpCqRMcR4UJ06fEDmvDDaMwd71OpuxHV4DUb0wUygJS0UuEEE9LFldntzU=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_38e25a3dacff11f1ac01525400e6dd8f
-    ReservedCode2: QhyUJmejjnkfCR2bCyGjKHqM83mH0dxt1WgIyIYQa9tvcBe2ZoYNIxhJ0L3O+RZYXRNIL75p22TIEwCFuuo5op5/PXQvfUy83TaEC9zVeXG0ja0I3Ad2NEwkXdUo1ce3rkpCqRMcR4UJ06fEDmvDDaMwd71OpuxHV4DUb0wUygJS0UuEEE9LFldntzU=
----
 
 # 05 · RenderEDL 渲染引擎与 FFmpeg 命令构造器设计
 
@@ -421,4 +411,4 @@ func resolveEncoder(presetKey string, caps *HardwareCaps) (codec string, fallbac
 | `FVCS/pkg/server/server.go` | `handleWebSocket` 新增 `CreateRenderEDL`/`CreateGenProxy` 分支；新增 `handleCreateRenderEDL`（仿 L447） | §2 |
 | `FVCS/pkg/server/security.go` | 载荷白名单接入点（见 07 §3.3） | 07 |
 | `FVCS/pkg/smb/smb.go` | 复用 `MountSMBShare`/`BuildSMBPath`；新增 `EnsureDirUNC`（代理目录/中间目录创建） | §4.5 |
-*（内容由AI生成，仅供参考）*
+

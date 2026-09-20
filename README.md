@@ -135,7 +135,7 @@ Fnos.VideoConversion/
 ├── build.ps1                      # 一键构建脚本
 ├── build-env.ps1                  # 构建环境配置
 ├── BUILD.md                       # 构建规范与故障排查
-├── FVCC_混乱度评价报告.md           # 混乱度基线报告（改进项编号 P0~P2 来源）
+├── docs/                          # 治理文档：FVCC_混乱度评价报告_细化版 / TASK_REFERENCE / IMPROVEMENT_LOG / UI 优化方向
 ├── 项目分析与改进方向.md            # 改进方向清单（P0~P3）
 └── README.md                      # 项目说明
 ```
