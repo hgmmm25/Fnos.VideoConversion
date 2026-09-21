@@ -1,0 +1,71 @@
+# FVCC CI — 混乱报告 P2-3：建立流水线（go vet/test + 覆盖率门槛 + 前端类型检查/设计门禁/构建）
+#
+# 触发：FVCC 相关路径的 push / PR；仓库根共用，故限定 paths 避免无关提交空跑。
+# 基线目标：go test ./... 与前端 check:design 全绿后合入，覆盖率 >=55%（当前基线 56.7%，2026-09-21 修复脚本口径后实测；后续补测试后上调至 60%，由 check-coverage.ps1 强制）。
+
+name: FVCC CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'FVCC/**'
+      - '.github/workflows/fvcc-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'FVCC/**'
+      - '.github/workflows/fvcc-ci.yml'
+
+concurrency:
+  group: fvcc-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (go vet + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FVCC/server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache-dependency-path: FVCC/server/go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race ./...
+
+      - name: Coverage gate (>= 55%)
+        run: pwsh ../../scripts/check-coverage.ps1 -Race
+
+  frontend:
+    name: Frontend (tsc + design gate + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FVCC/ui-src
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: FVCC/ui-src/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Type check + design gate + build
+        run: npm run build

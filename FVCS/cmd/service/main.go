@@ -11,6 +11,7 @@ import (
 	"Fnos.VC_Service/pkg/logger"
 	"Fnos.VC_Service/pkg/server"
 	"Fnos.VC_Service/pkg/task"
+	"Fnos.VC_Service/pkg/version"
 	"Fnos.VC_Service/pkg/winapi"
 )
 
@@ -40,7 +41,7 @@ func main() {
 	}
 	logger.SetLogLevel(logLevel)
 
-	logger.Info("service", "FVCS Service starting...")
+	logger.Info("service", "FVCS Service starting... version=%s", version.Version)
 
 	ffmpeg.DetectHardwareAccel()
 
@@ -60,6 +61,10 @@ func main() {
 			if err != nil {
 				logger.Error("service", "Failed to find free HTTP port: %v, auto start skipped", err)
 			} else {
+				// 凭据档案库（07 §5.3）先于任务加载就绪：任务恢复执行时才可解密挂载
+				if err := server.InitCredentialAdmin(); err != nil {
+					logger.Error("service", "Failed to init credential store: %v", err)
+				}
 				if err := task.Init(); err != nil {
 					logger.Error("service", "Failed to init task manager: %v", err)
 				} else if err := server.Init(cfg.WsPort, httpPort); err != nil {

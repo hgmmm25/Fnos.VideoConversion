@@ -1,0 +1,26 @@
+{
+  "name": "fvcc-ui",
+  "version": "1.5.4",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "check:design": "node scripts/check-design.mjs --all",
+    "check:design:diff": "node scripts/check-design.mjs",
+    "build": "npm run check:design:diff && tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "lightweight-charts": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}

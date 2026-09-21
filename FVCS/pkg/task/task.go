@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +41,7 @@ func (s TaskStatus) IsTerminal() bool {
 type TaskPriority int
 
 const (
+	PriorityLow    TaskPriority = -1 // 代理生成等后台任务（04 §3.2 priority=low）
 	PriorityNormal TaskPriority = 0
 	PriorityUrgent TaskPriority = 1
 )
@@ -66,8 +68,41 @@ type Task struct {
 	SMBPath        string
 	SMBUser        string
 	SMBPassword    string
-	uploadFile     *os.File
-	fileMu         sync.Mutex // 保护 uploadFile 的 Seek+Write 不被并发分片打断
+
+	// CredentialID 本地凭据档案键（07 §5.3，M1 支路）：非空时优先走 DPAPI 档案挂载，
+	// 不再使用 SMBUser/SMBPassword；空则回退明文兼容路径（记 WARN 审计）。
+	CredentialID string
+
+	// ---- RenderEDL（04/05）扩展 ----
+	TaskType      string // 空/TRANSCODE=传统转码；RENDER_EDL=结构化剪辑渲染；GEN_PROXY=代理生成
+	PayloadJSON   string // RenderEDL / GenProxy 载荷原文（创建时入库，重启后可重放）
+	SMBOutputPath string // 目标目录 UNC（03 §3.1 SMBOutputPath），为空则用挂载点 + payload.DestRoot
+	Stage         string // 当前渲染阶段（prepare/segment/concat/mux/finalize）
+	StageIndex    int    // segment 阶段段序号（1-based）
+	StageTotal    int    // segment 阶段段总数
+	SegDone       int    // 断点续跑：workDir 内已完整落盘的片段数（重启/重试后据此跳过已完成段）
+	SegTotal      int    // 本轮渲染片段总数（落库，供重启后续跑校验与进度展示）
+	ProfileKey    string // 实际生效的 presetKey（含硬编降级结果）
+	Degraded      bool   // 是否发生硬编降级
+	Warnings      string // 渲染过程中的告警（分号分隔）
+
+	// ---- 失败节点细化上报（代理 E_RENDER_FAILED 闭环）----
+	// Status=Failed 时记录失败节点（阶段）对应的错误码与原因，随 GetTask/QueryTask 上报 FVCC，
+	// 避免客户端只能看到"节点状态 Failed"这类无法定位的泛化信息。
+	// 注意：ErrorMessage 仅放非敏感文本（路径/阶段/ffmpeg 摘要），严禁写入账号口令。
+	ErrorCode    string
+	ErrorMessage string
+
+	// TraceID 任务链路追踪 ID（P2-1）：FVCC 下发时透传，贯穿创建→执行→完成全生命周期，
+	// 供双端日志按同一标识聚合排查。空值表示兼容旧版本下发。
+	TraceID string
+
+	uploadFile *os.File
+	fileMu     sync.Mutex // 保护 uploadFile 的 Seek+Write 不被并发分片打断
+
+	// ResumePending 运行期标记：本次执行由"重启恢复"触发，允许按 workDir 复用已完成段。
+	// 不落库（重启后由 loadTasksFromDB 重新置位），不影响既有转码路径。
+	ResumePending bool
 }
 
 type TaskManager struct {
@@ -113,10 +148,13 @@ func Init() error {
 	}
 
 	if err := loadTasksFromDB(); err != nil {
-		logger.Warn("task", "Failed to load tasks from DB: ", err)
+		logger.Warn("task", "Failed to load tasks from DB: %v", err)
 	}
 
 	ffmpeg.SetCallbacks(MarkSuccess, MarkFailed)
+
+	// 启动时扫描并清理孤儿 workDir（无对应任务且过期；06 §3.4）
+	cleanupOrphanWorkDirs()
 
 	go startGCTimer()
 	go startScheduler()
@@ -152,7 +190,19 @@ func createTables(db *sql.DB) error {
 		is_smb_mode INTEGER DEFAULT 0,
 		smb_path TEXT,
 		smb_user TEXT,
-		smb_password TEXT
+		smb_password TEXT,
+		credential_id TEXT,
+		task_type TEXT DEFAULT 'TRANSCODE',
+		payload_json TEXT,
+		smb_output_path TEXT,
+		stage TEXT,
+		profile_key TEXT,
+		degraded INTEGER DEFAULT 0,
+		warnings TEXT,
+		seg_done INTEGER DEFAULT 0,
+		seg_total INTEGER DEFAULT 0,
+		error_code TEXT,
+		error_message TEXT
 	);
 	`
 	_, err := db.Exec(schema)
@@ -161,16 +211,37 @@ func createTables(db *sql.DB) error {
 	}
 
 	if err := addColumnIfNotExists(db, "task_list", "is_smb_mode", "INTEGER DEFAULT 0"); err != nil {
-		logger.Warn("task", "Failed to add is_smb_mode column: ", err)
+		logger.Warn("task", "Failed to add is_smb_mode column: %v", err)
 	}
 	if err := addColumnIfNotExists(db, "task_list", "smb_path", "TEXT"); err != nil {
-		logger.Warn("task", "Failed to add smb_path column: ", err)
+		logger.Warn("task", "Failed to add smb_path column: %v", err)
 	}
 	if err := addColumnIfNotExists(db, "task_list", "smb_user", "TEXT"); err != nil {
-		logger.Warn("task", "Failed to add smb_user column: ", err)
+		logger.Warn("task", "Failed to add smb_user column: %v", err)
 	}
 	if err := addColumnIfNotExists(db, "task_list", "smb_password", "TEXT"); err != nil {
-		logger.Warn("task", "Failed to add smb_password column: ", err)
+		logger.Warn("task", "Failed to add smb_password column: %v", err)
+	}
+
+	// RenderEDL 扩展列（老库平滑升级）
+	renderCols := [][2]string{
+		{"task_type", "TEXT DEFAULT 'TRANSCODE'"},
+		{"payload_json", "TEXT"},
+		{"smb_output_path", "TEXT"},
+		{"stage", "TEXT"},
+		{"profile_key", "TEXT"},
+		{"degraded", "INTEGER DEFAULT 0"},
+		{"warnings", "TEXT"},
+		{"seg_done", "INTEGER DEFAULT 0"},
+		{"seg_total", "INTEGER DEFAULT 0"},
+		{"credential_id", "TEXT"},
+		{"error_code", "TEXT"},
+		{"error_message", "TEXT"},
+	}
+	for _, c := range renderCols {
+		if err := addColumnIfNotExists(db, "task_list", c[0], c[1]); err != nil {
+			logger.Warn("task", "Failed to add column "+c[0]+": ", err)
+		}
 	}
 
 	return nil
@@ -211,7 +282,17 @@ func loadTasksFromDB() error {
 	manager.mutex.Lock()
 	defer manager.mutex.Unlock()
 
-	rows, err := manager.db.Query("SELECT * FROM task_list")
+	// 显式列名 + COALESCE：新增列在旧库中为 NULL，避免 Scan 失败
+	rows, err := manager.db.Query(`SELECT
+		task_id, status, created_at, updated_at, source_file_name,
+		output_file_path, progress, client_conn_id, priority, ffmpeg_args,
+		resolution, bitrate, file_cleaned, total_chunks,
+		is_smb_mode, smb_path, smb_user, smb_password,
+		COALESCE(task_type, 'TRANSCODE'), COALESCE(payload_json, ''), COALESCE(smb_output_path, ''), COALESCE(stage, ''),
+		COALESCE(profile_key, ''), COALESCE(degraded, 0), COALESCE(warnings, ''),
+		COALESCE(seg_done, 0), COALESCE(seg_total, 0), COALESCE(credential_id, ''),
+		COALESCE(error_code, ''), COALESCE(error_message, '')
+		FROM task_list`)
 	if err != nil {
 		return err
 	}
@@ -222,6 +303,7 @@ func loadTasksFromDB() error {
 		var createdAtStr, updatedAtStr string
 		var fileCleaned int
 		var isSMBMode int
+		var degraded int
 
 		err := rows.Scan(
 			&task.TaskID,
@@ -242,6 +324,18 @@ func loadTasksFromDB() error {
 			&task.SMBPath,
 			&task.SMBUser,
 			&task.SMBPassword,
+			&task.TaskType,
+			&task.PayloadJSON,
+			&task.SMBOutputPath,
+			&task.Stage,
+			&task.ProfileKey,
+			&degraded,
+			&task.Warnings,
+			&task.SegDone,
+			&task.SegTotal,
+			&task.CredentialID,
+			&task.ErrorCode,
+			&task.ErrorMessage,
 		)
 		if err != nil {
 			continue
@@ -251,6 +345,7 @@ func loadTasksFromDB() error {
 		task.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
 		task.FileCleaned = fileCleaned == 1
 		task.IsSMBMode = isSMBMode == 1
+		task.Degraded = degraded == 1
 		task.ReceivedChunks = make(map[int]struct{})
 
 		if task.IsSMBMode && (task.Status == StatusCreated || task.Status == StatusUploading) {
@@ -265,12 +360,15 @@ func loadTasksFromDB() error {
 			if task.Status == StatusWaiting {
 				manager.waitingQueue = append(manager.waitingQueue, &task)
 			} else if task.Status == StatusTranscoding {
-				// FVCS重启后，转码进程已不存在，将任务重置为等待状态重新排队
-				task.Status = StatusWaiting
-				task.UpdatedAt = time.Now()
+				// FVCS 重启后进程已不存在：恢复决策见 recoverRuntimeTask（06 §3.4）。
+				if _, resumable := recoverRuntimeTask(&task); resumable {
+					logger.Info("task", "loadTasksFromDB: render task recovered for resume, taskID=%s, type=%s, segDone=%d, segTotal=%d",
+						task.TaskID, task.TaskType, task.SegDone, task.SegTotal)
+				} else {
+					logger.Info("task", "loadTasksFromDB: reset transcoding task to waiting, taskID=%s", task.TaskID)
+				}
 				saveTaskToDB(&task)
 				manager.waitingQueue = append(manager.waitingQueue, &task)
-				logger.Info("task", "loadTasksFromDB: reset transcoding task to waiting, taskID=%s", task.TaskID)
 			}
 		}
 	}
@@ -284,6 +382,179 @@ func loadTasksFromDB() error {
 	return nil
 }
 
+// recoverRuntimeTask 处理「FVCS 重启时库中仍为 RUNNING（StatusTranscoding）的任务」（06 §3.4）。
+//
+// 进程已不存在，故一律回到 Waiting 重新入队；差别只在渲染类任务会带 ResumePending 标记，
+// 由 executeRenderEDL 依据 workDir 内已完成片段续跑，传统转码任务仍整任务重跑。
+// 返回 (是否需要重新入队, 是否为断点续跑)；非 RUNNING 任务返回 (false, false) 且不改动状态。
+func recoverRuntimeTask(t *Task) (requeued bool, resumable bool) {
+	if t == nil || t.Status != StatusTranscoding {
+		return false, false
+	}
+	t.Status = StatusWaiting
+	t.UpdatedAt = time.Now()
+	if isRenderTaskType(t.TaskType) {
+		t.ResumePending = true
+		return true, true
+	}
+	return true, false
+}
+
+// isRenderTaskType 是否为结构化渲染类任务（可断点续跑）
+func isRenderTaskType(taskType string) bool {
+	switch strings.ToUpper(strings.TrimSpace(taskType)) {
+	case TaskTypeRenderEDL, TaskTypeGenProxy:
+		return true
+	default:
+		return false
+	}
+}
+
+// effectiveResumeSegDone 计算本次执行可复用的已完成片段数（06 §3.3 / §3.4）。
+//
+// 仅在「重启恢复」（ResumePending）且 workDir 未被清理（!FileCleaned）、
+// 载荷可重放（PayloadJSON 非空）时允许续跑；返回值为待校验的段数上限，
+// 实际可跳过段数由 ffmpeg.ResumableSegmentPrefix 按产物完整性二次确认。
+func effectiveResumeSegDone(task *Task) int {
+	if task == nil || !task.ResumePending {
+		return 0
+	}
+	if task.FileCleaned || strings.TrimSpace(task.PayloadJSON) == "" {
+		return 0
+	}
+	if task.SegDone <= 0 {
+		return 0
+	}
+	if task.SegTotal > 0 && task.SegDone > task.SegTotal {
+		return task.SegTotal
+	}
+	return task.SegDone
+}
+
+// mergeRenderRunInfo 把执行器上报的阶段信息合并进任务（纯函数，便于单测）。
+// 返回进度是否发生变化；阶段与段序号按 06 §4.2「只允许正向推进」处理。
+func mergeRenderRunInfo(t *Task, info ffmpeg.StageRunInfo) bool {
+	if t == nil {
+		return false
+	}
+	if info.Stage != "" {
+		t.Stage = info.Stage
+	}
+	if info.Total > 0 {
+		t.StageTotal = info.Total
+	}
+	if info.SegDone > 0 {
+		t.SegDone = info.SegDone
+	}
+	if info.Index > 0 && info.Index >= t.StageIndex {
+		t.StageIndex = info.Index
+	}
+	changed := false
+	if info.OverallPct > t.Progress {
+		t.Progress = info.OverallPct
+		changed = true
+	}
+	t.UpdatedAt = time.Now()
+	return changed
+}
+
+// ============================================================
+// 孤儿 workDir 清理（05 §4.5、06 §3.4）
+// ============================================================
+
+const (
+	// renderWorkDirTTL 孤儿 workDir 保留时长：超过该时长且无对应任务则删除（05 §4.5「7 天前」）
+	renderWorkDirTTL = 7 * 24 * time.Hour
+	// renderWorkDirKeep 失败任务 workDir 无条件保留个数（05 §4.5「保留最近 3 个」）
+	renderWorkDirKeep = 3
+)
+
+// orphanWorkDir 待判定的中间产物目录
+type orphanWorkDir struct {
+	Name    string
+	ModTime time.Time
+}
+
+// planOrphanWorkDirCleanup 计算需要删除的孤儿目录名（纯函数，便于单测）。
+//
+// 规则（05 §4.5）：
+//  1. 仅处理「无对应任务」的目录（活跃任务的 workDir 一律保留）；
+//  2. 按 mtime 倒序，最新 renderWorkDirKeep 个目录无条件保留（供续跑/排查）；
+//  3. 其余目录，mtime 早于 now-renderWorkDirTTL 的删除；未过期的保留。
+func planOrphanWorkDirCleanup(orphans []orphanWorkDir, now time.Time) []string {
+	if len(orphans) == 0 {
+		return nil
+	}
+	sorted := make([]orphanWorkDir, len(orphans))
+	copy(sorted, orphans)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ModTime.After(sorted[j].ModTime) })
+
+	cutoff := now.Add(-renderWorkDirTTL)
+	deleted := make([]string, 0, len(sorted))
+	for i, o := range sorted {
+		if i < renderWorkDirKeep {
+			continue
+		}
+		if o.ModTime.Before(cutoff) {
+			deleted = append(deleted, o.Name)
+		}
+	}
+	return deleted
+}
+
+// cleanupOrphanWorkDirs 扫描临时根目录，删除无对应任务且过期的孤儿 workDir。
+// 活跃（manager.tasks 中存在且未清理）的任务目录一律保留。
+func cleanupOrphanWorkDirs() {
+	if manager == nil {
+		return
+	}
+	var tempDir string
+	cfg := config.Get()
+	if filepath.IsAbs(cfg.TempDir) {
+		tempDir = cfg.TempDir
+	} else {
+		tempDir = filepath.Join(getAppDir(), cfg.TempDir)
+	}
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		return
+	}
+
+	manager.mutex.RLock()
+	active := make(map[string]struct{}, len(manager.tasks))
+	for id, t := range manager.tasks {
+		if t != nil && !t.FileCleaned {
+			active[id] = struct{}{}
+		}
+	}
+	manager.mutex.RUnlock()
+
+	now := time.Now()
+	orphans := make([]orphanWorkDir, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, ok := active[entry.Name()]; ok {
+			continue
+		}
+		info, ierr := entry.Info()
+		if ierr != nil {
+			continue
+		}
+		orphans = append(orphans, orphanWorkDir{Name: entry.Name(), ModTime: info.ModTime()})
+	}
+
+	for _, name := range planOrphanWorkDirCleanup(orphans, now) {
+		full := filepath.Join(tempDir, name)
+		if rerr := os.RemoveAll(full); rerr != nil {
+			logger.Warn("task", "孤儿 workDir 清理失败 %v: %v", full, rerr)
+			continue
+		}
+		logger.Info("task", "已清理孤儿 workDir: %v", name)
+	}
+}
+
 func startGCTimer() {
 	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
@@ -292,6 +563,7 @@ func startGCTimer() {
 		select {
 		case <-ticker.C:
 			cleanupTempFiles()
+			cleanupOrphanWorkDirs()
 			cleanupFinishedTasks()
 		case <-manager.stopChan:
 			return
@@ -341,13 +613,27 @@ func cleanupTempFiles() {
 	}
 
 	cutoff := time.Now().Add(-ttl)
+
+	// 活跃任务的中间目录一律保留（断点续跑依赖 workDir，见 06 §3.4）
+	manager.mutex.RLock()
+	active := make(map[string]struct{}, len(manager.tasks))
+	for id, t := range manager.tasks {
+		if t != nil && !t.FileCleaned {
+			active[id] = struct{}{}
+		}
+	}
+	manager.mutex.RUnlock()
+
 	for _, entry := range entries {
 		if entry.IsDir() {
+			if _, ok := active[entry.Name()]; ok {
+				continue
+			}
 			fullPath := filepath.Join(tempDir, entry.Name())
 			info, err := os.Stat(fullPath)
 			if err == nil && info.ModTime().Before(cutoff) {
 				os.RemoveAll(fullPath)
-				logger.Info("task", "Cleaned expired temp dir: ", entry.Name())
+				logger.Info("task", "Cleaned expired temp dir: %v", entry.Name())
 			}
 		}
 	}
@@ -403,7 +689,16 @@ func tryStartNext() {
 
 	saveTaskToDB(task)
 	fireTaskUpdateLocked(task.TaskID, true)
-	go executeTranscode(task)
+
+	// 按任务类型分派执行器（04 §3：RENDER_EDL / GEN_PROXY 走结构化渲染链路）
+	switch normalizeTaskType(task.TaskType) {
+	case TaskTypeRenderEDL:
+		go executeRenderEDL(task)
+	case TaskTypeGenProxy:
+		go executeGenProxy(task)
+	default:
+		go executeTranscode(task)
+	}
 }
 
 func executeTranscode(task *Task) {
@@ -423,9 +718,9 @@ func executeTranscode(task *Task) {
 	if task.IsSMBMode {
 		logger.Info("task", "executeTranscode: SMB mode enabled, smbPath=%s", task.SMBPath)
 
-		smbMountPath, err = smb.MountSMBShare(task.SMBPath, task.SMBUser, task.SMBPassword)
+		smbMountPath, err = mountTaskShare(task)
 		if err != nil {
-			logger.Error("task", "Failed to mount SMB share for task ", task.TaskID, ": ", err)
+			logger.Error("task", "Failed to mount SMB share for task %v: %v", task.TaskID, err)
 			MarkFailed(task.TaskID)
 			return
 		}
@@ -443,7 +738,7 @@ func executeTranscode(task *Task) {
 		chunkIndices := copyChunks(task)
 
 		if err := assembleChunks(task, inputPath, chunkIndices); err != nil {
-			logger.Error("task", "Failed to assemble chunks for task ", task.TaskID, ": ", err)
+			logger.Error("task", "Failed to assemble chunks for task %v: %v", task.TaskID, err)
 			MarkFailed(task.TaskID)
 			return
 		}
@@ -460,7 +755,7 @@ func executeTranscode(task *Task) {
 		task.OutputFilePath = outputPath
 		saveTaskToDB(task)
 		if err := ffmpeg.StartSMBTranscode(taskInfo, inputPath, outputPath); err != nil {
-			logger.Error("task", "Failed to start SMB transcode for task ", task.TaskID, ": ", err)
+			logger.Error("task", "Failed to start SMB transcode for task %v: %v", task.TaskID, err)
 			smb.UnmountSMBShare(smbMountPath)
 			MarkFailed(task.TaskID)
 			return
@@ -478,7 +773,7 @@ func executeTranscode(task *Task) {
 		}()
 	} else {
 		if err := ffmpeg.StartTranscode(taskInfo, inputPath); err != nil {
-			logger.Error("task", "Failed to start transcode for task ", task.TaskID, ": ", err)
+			logger.Error("task", "Failed to start transcode for task %v: %v", task.TaskID, err)
 			MarkFailed(task.TaskID)
 			return
 		}
@@ -614,6 +909,20 @@ func CreateTask(taskID, sourceFileName, outputName, clientConnID string, ffmpegA
 }
 
 func CreateSMBTask(taskID, sourceFileName, outputName, clientConnID, ffmpegArgs, smbPath, smbUser, smbPassword string) *Task {
+	return CreateSMBTaskEx(taskID, sourceFileName, outputName, clientConnID, ffmpegArgs, smbPath, smbUser, smbPassword, "")
+}
+
+// CreateSMBTaskWithCredential 07 §5.3 M1 支路：只下发 credentialId，密码不出 NAS
+func CreateSMBTaskWithCredential(taskID, sourceFileName, outputName, clientConnID, ffmpegArgs, smbPath, credentialID string) *Task {
+	return CreateSMBTaskEx(taskID, sourceFileName, outputName, clientConnID, ffmpegArgs, smbPath, "", "", credentialID)
+}
+
+func CreateSMBTaskEx(taskID, sourceFileName, outputName, clientConnID, ffmpegArgs, smbPath, smbUser, smbPassword, credentialID string) *Task {
+	return CreateSMBTaskExWithTrace(taskID, sourceFileName, outputName, clientConnID, ffmpegArgs, smbPath, smbUser, smbPassword, credentialID, "")
+}
+
+// CreateSMBTaskExWithTrace 与 CreateSMBTaskEx 等价，额外透传任务链路追踪 ID（P2-1）。
+func CreateSMBTaskExWithTrace(taskID, sourceFileName, outputName, clientConnID, ffmpegArgs, smbPath, smbUser, smbPassword, credentialID, traceID string) *Task {
 	manager.mutex.Lock()
 	defer manager.mutex.Unlock()
 
@@ -634,7 +943,10 @@ func CreateSMBTask(taskID, sourceFileName, outputName, clientConnID, ffmpegArgs,
 		SMBPath:        smbPath,
 		SMBUser:        smbUser,
 		SMBPassword:    smbPassword,
+		CredentialID:   credentialID,
+		TraceID:        traceID,
 	}
+	applyCredentialPrecedence(task)
 
 	manager.tasks[taskID] = task
 	saveTaskToDB(task)
@@ -874,9 +1186,18 @@ func MarkSuccess(taskID string, outputPath string) {
 	saveTaskToDB(task)
 	fireTaskUpdateLocked(taskID, true)
 	manager.mutex.Unlock()
+	logger.InfoT("task", task.TraceID, "Task completed: %s, output=%s", taskID, outputPath)
 }
 
 func MarkFailed(taskID string) {
+	MarkFailedWithReason(taskID, "", "")
+}
+
+// MarkFailedWithReason 失败收口并记录"失败节点"信息（代理 E_RENDER_FAILED 闭环）。
+// code / msg 非空时写入任务持久化字段，随 GetTask / QueryTask 上报 FVCC，
+// 使客户端能定位失败阶段（挂载/素材/命令构造/ffmpeg 执行/产物缺失），
+// 而不是只看到"节点状态 Failed"。msg 严禁包含账号口令等敏感内容。
+func MarkFailedWithReason(taskID, code, msg string) {
 	manager.mutex.Lock()
 	task, ok := manager.tasks[taskID]
 	if !ok {
@@ -895,6 +1216,12 @@ func MarkFailed(taskID string) {
 	}
 
 	task.Status = StatusFailed
+	if c := strings.TrimSpace(code); c != "" {
+		task.ErrorCode = c
+	}
+	if m := strings.TrimSpace(msg); m != "" {
+		task.ErrorMessage = m
+	}
 	task.UpdatedAt = time.Now()
 	manager.runningCount--
 	maybeAllowSleep()
@@ -902,6 +1229,7 @@ func MarkFailed(taskID string) {
 	saveTaskToDB(task)
 	fireTaskUpdateLocked(taskID, true)
 	manager.mutex.Unlock()
+	logger.ErrorT("task", task.TraceID, "Task failed: %s, code=%s, msg=%s", taskID, code, msg)
 
 	// 文件清理在锁外执行，避免 I/O 阻塞其他任务操作
 	cleanupTaskFiles(task)
@@ -976,9 +1304,17 @@ func saveTaskToDB(task *Task) {
 		task_id, status, created_at, updated_at, source_file_name,
 		output_file_path, progress, client_conn_id, priority, ffmpeg_args,
 		resolution, bitrate, file_cleaned, total_chunks,
-		is_smb_mode, smb_path, smb_user, smb_password
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		is_smb_mode, smb_path, smb_user, smb_password,
+		task_type, payload_json, smb_output_path, stage, profile_key, degraded, warnings,
+		seg_done, seg_total, credential_id, error_code, error_message
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
+
+	// 07 §5.6.5：载荷落库前剔除凭据字段（检测到才重写，避免改动原文）
+	payloadJSON, stripped := sanitizePayloadJSON(task.PayloadJSON)
+	if stripped {
+		task.PayloadJSON = payloadJSON
+	}
 
 	_, err := manager.db.Exec(
 		query,
@@ -1000,10 +1336,22 @@ func saveTaskToDB(task *Task) {
 		task.SMBPath,
 		task.SMBUser,
 		task.SMBPassword,
+		normalizeTaskType(task.TaskType),
+		payloadJSON,
+		task.SMBOutputPath,
+		task.Stage,
+		task.ProfileKey,
+		btoi(task.Degraded),
+		task.Warnings,
+		task.SegDone,
+		task.SegTotal,
+		task.CredentialID,
+		task.ErrorCode,
+		task.ErrorMessage,
 	)
 
 	if err != nil {
-		logger.Error("task", "Failed to save task: ", err)
+		logger.Error("task", "Failed to save task: %v", err)
 	}
 }
 
@@ -1029,7 +1377,7 @@ func cleanupTaskFiles(task *Task) {
 	if err := os.RemoveAll(taskDir); err == nil {
 		task.FileCleaned = true
 		saveTaskToDB(task)
-		logger.Info("task", "Cleaned task files: ", task.TaskID)
+		logger.Info("task", "Cleaned task files: %v", task.TaskID)
 	}
 }
 

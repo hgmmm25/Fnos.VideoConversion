@@ -42,6 +42,16 @@ type WebSocketRequest struct {
 	SMBPath        string          `json:"SMBPath,omitempty"`
 	SMBUser        string          `json:"SMBUser,omitempty"`
 	SMBPassword    string          `json:"SMBPassword,omitempty"`
+
+	// ---- 03 §3.1 新增字段（RenderEDL / GenProxy）----
+	// 说明：既有 FVCC 客户端使用 PascalCase 线上字段名，新增字段延续 PascalCase 以保持一致性；
+	// 同时兼容设计文档中的小写驼峰写法，见 wire_compat.go 的 UnmarshalJSON 归一化。
+	TaskType      string          `json:"TaskType,omitempty"`      // "TRANSCODE"(默认) | "RENDER_EDL" | "GEN_PROXY"
+	PriorityLevel string          `json:"PriorityLevel,omitempty"` // "low" | "normal" | "high"（与既有 Priority int 并存）
+	SMBOutputPath string          `json:"SMBOutputPath,omitempty"` // 目标目录 UNC
+	CredentialID  string          `json:"CredentialId,omitempty"`  // 本地凭据档案键；空=默认档案
+	Payload       json.RawMessage `json:"Payload,omitempty"`       // RenderEDL / GenProxy 结构化载荷
+	TraceId       string          `json:"TraceId,omitempty"`       // P2-1：任务链路追踪 ID（FVCC 下发时生成，跨端日志聚合）
 }
 
 type WebSocketResponse struct {
@@ -75,6 +85,19 @@ type CreateTaskResponseData struct {
 	TaskId string `json:"TaskId"`
 }
 
+// CreateRenderEDLResponseData CreateRenderEDL 回包（03 §3.1）
+type CreateRenderEDLResponseData struct {
+	TaskId             string   `json:"TaskId"`
+	TaskType           string   `json:"TaskType"`
+	Status             string   `json:"Status"`
+	ProjectID          string   `json:"ProjectId,omitempty"`
+	ProjectRev         int      `json:"ProjectRev,omitempty"`
+	Checksum           string   `json:"Checksum,omitempty"`
+	FastCopyAllowed    bool     `json:"FastCopyAllowed"`
+	EffectivePresetKey string   `json:"EffectivePresetKey,omitempty"`
+	Warnings           []string `json:"Warnings,omitempty"`
+}
+
 type GetTaskResponseData struct {
 	TaskId         string  `json:"TaskId"`
 	Status         string  `json:"Status"`
@@ -84,6 +107,21 @@ type GetTaskResponseData struct {
 	Resolution     string  `json:"Resolution"`
 	Bitrate        string  `json:"Bitrate"`
 	CreateTime     string  `json:"CreateTime"`
+
+	// ---- 阶段化进度（03 §3.3 / 05 §6.1）----
+	TaskType   string `json:"TaskType,omitempty"`
+	Stage      string `json:"Stage,omitempty"`
+	StageIndex int    `json:"StageIndex,omitempty"`
+	StageTotal int    `json:"StageTotal,omitempty"`
+	ProfileKey string `json:"ProfileKey,omitempty"`
+	Degraded   bool   `json:"Degraded,omitempty"`
+	Warnings   string `json:"Warnings,omitempty"`
+
+	// ---- 失败节点细化上报（03 §3.3；代理 E_RENDER_FAILED 闭环）----
+	// Status=Failed 时携带具体错误码与失败原因，供 FVCC 侧任务面板直接展示，
+	// 避免只剩"节点状态 Failed"这类无法定位的泛化信息。
+	ErrorCode    string `json:"ErrorCode,omitempty"`
+	ErrorMessage string `json:"ErrorMessage,omitempty"`
 }
 
 type GetHttpPortResponseData struct {
@@ -94,6 +132,14 @@ type GetHttpPortResponseData struct {
 type ProgressData struct {
 	TaskId   string  `json:"task_id"`
 	Progress float64 `json:"progress"`
+
+	// ---- 阶段化进度（03 §3.3 / 05 §6.1，仅 RenderEDL 任务有值）----
+	TaskType   string `json:"TaskType,omitempty"`
+	Stage      string `json:"Stage,omitempty"`
+	StageIndex int    `json:"StageIndex,omitempty"`
+	StageTotal int    `json:"StageTotal,omitempty"`
+	ProfileKey string `json:"ProfileKey,omitempty"`
+	Degraded   bool   `json:"Degraded,omitempty"`
 }
 
 type SystemStatusData struct {
@@ -162,6 +208,27 @@ func BuildProgress(taskID string, progress float64) ([]byte, error) {
 		Progress: progress,
 	}
 
+	return buildProgressFrame(data)
+}
+
+// BuildProgressEx 构建带阶段信息的进度帧（03 §3.3 / 05 §6.1）。
+// stageInfo 为 nil 时退化为普通进度帧。
+func BuildProgressEx(taskID string, progress float64, taskType, stage string, stageIndex, stageTotal int, profileKey string, degraded bool) ([]byte, error) {
+	data := ProgressData{
+		TaskId:     taskID,
+		Progress:   progress,
+		TaskType:   taskType,
+		Stage:      stage,
+		StageIndex: stageIndex,
+		StageTotal: stageTotal,
+		ProfileKey: profileKey,
+		Degraded:   degraded,
+	}
+
+	return buildProgressFrame(data)
+}
+
+func buildProgressFrame(data ProgressData) ([]byte, error) {
 	req := WebSocketRequest{
 		Cmd: string(CmdProgress),
 	}

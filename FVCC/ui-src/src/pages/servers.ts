@@ -1,0 +1,373 @@
+import { store } from '../store'
+import { api } from '../api'
+import { el, toast, emptyState, formatTime, svgIcon } from '../ui'
+import { type Server } from '../types'
+import { crudActions } from '../lib/crudActions'
+import { useListPage } from '../lib/useListPage'
+
+// ===== C-阶段（7.3 servers 行）：迷你负载仪表盘 =====
+// 服务器侧无负载接口（§7.1 边界：不动 API 契约），改用 store.tasks 按 serverId 聚合
+// 真实任务状态作为负载代理：进行中/待执行/完成/错误/冷却 计数 + 进行中占比圆环。
+// 纯 SVG 自绘零依赖；颜色全部走 token 色板（check-design R1 hex 规则）。
+interface ServerLoad {
+  active: number
+  waiting: number
+  completed: number
+  error: number
+  cooling: number
+}
+
+function tokenColor(name: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--c-${name}`).trim()
+  const parts = v.split(/\s+/).filter(Boolean)
+  return parts.length === 3 ? `rgb(${parts.join(' ')})` : v || 'transparent'
+}
+
+function serverLoadOf(id: string): ServerLoad {
+  const acc: ServerLoad = { active: 0, waiting: 0, completed: 0, error: 0, cooling: 0 }
+  for (const t of store.tasks) {
+    if (t.serverId !== id) continue
+    switch (t.status) {
+      case 'UPLOADING':
+      case 'TRANSCODING':
+      case 'DOWNLOADING':
+        acc.active++
+        break
+      case 'QUEUE':
+      case 'WAITING_TRANS':
+      case 'WAITING_DOWN':
+        acc.waiting++
+        break
+      case 'COMPLETED':
+        acc.completed++
+        break
+      case 'ERROR':
+        acc.error++
+        break
+      case 'COOLDOWN':
+        acc.cooling++
+        break
+    }
+  }
+  return acc
+}
+
+function miniGauge(load: ServerLoad, online: boolean): HTMLElement {
+  const total = load.active + load.waiting + load.completed + load.error + load.cooling
+  const ratio = total > 0 ? load.active / total : 0
+  const NS = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(NS, 'svg')
+  svg.setAttribute('width', '56')
+  svg.setAttribute('height', '56')
+  svg.setAttribute('viewBox', '0 0 56 56')
+  const r = 22
+  const c = 2 * Math.PI * r
+  const track = document.createElementNS(NS, 'circle')
+  track.setAttribute('cx', '28')
+  track.setAttribute('cy', '28')
+  track.setAttribute('r', String(r))
+  track.setAttribute('fill', 'none')
+  track.setAttribute('stroke', tokenColor('neutral-soft'))
+  track.setAttribute('stroke-width', '5')
+  const arc = document.createElementNS(NS, 'circle')
+  arc.setAttribute('cx', '28')
+  arc.setAttribute('cy', '28')
+  arc.setAttribute('r', String(r))
+  arc.setAttribute('fill', 'none')
+  arc.setAttribute('stroke', online ? tokenColor('signal') : tokenColor('neutral'))
+  arc.setAttribute('stroke-width', '5')
+  arc.setAttribute('stroke-linecap', 'round')
+  arc.setAttribute('transform', 'rotate(-90 28 28)')
+  arc.setAttribute('stroke-dasharray', `${ratio * c} ${c}`)
+  arc.setAttribute('stroke-dashoffset', '0')
+  svg.append(track, arc)
+  const center = el('div', { class: 'absolute inset-0 flex items-center justify-center text-sm font-semibold font-mono tabular-nums' }, [String(load.active)])
+  const box = el('div', { class: 'relative w-14 h-14 shrink-0', title: `进行中 ${load.active} / 共 ${total} 个关联任务` })
+  box.appendChild(svg)
+  box.appendChild(center)
+  return box
+}
+
+export function renderServers(container: HTMLElement) {
+  const wrap = el('div', { class: 'flex flex-col h-full p-4 gap-3' })
+
+  // 视图状态：list=服务器清单，edit=编辑/创建
+  let view: 'list' | 'edit' = 'list'
+  let currentId: string | null = null
+
+  const render = () => {
+    wrap.innerHTML = ''
+    if (view === 'list') {
+      wrap.appendChild(renderList())
+    } else {
+      const s = store.servers.find((x) => x.id === currentId)
+      wrap.appendChild(renderEdit(s))
+    }
+  }
+
+  // P2-2：列表卡片删除走公共 CRUD 四件套（确认弹窗 → api → toast → reload）
+  const serverActions = crudActions<Server>({
+    confirmTitle: (x) => `确定删除服务器「${x.name}」？`,
+    danger: false,
+    apiCall: (_action, item) => api.deleteServer(item.id),
+    reload: () => store.loadServers(),
+    successMsg: () => '已删除',
+  })
+
+  function renderList(): HTMLElement {
+    const addBtn = el('button', { class: 'btn btn-primary ml-auto flex items-center gap-1.5' }, [])
+    addBtn.append(svgIcon('plus', 16) as unknown as Node, el('span', {}, ['新增服务器']))
+    const header = el('div', { class: 'flex items-center' }, [
+      el('h2', { class: 'text-lg font-semibold' }, ['转码服务器']),
+      addBtn,
+    ])
+    addBtn.onclick = () => {
+      currentId = null
+      view = 'edit'
+      render()
+    }
+
+    const list = el('div', { class: 'flex-1 overflow-auto' })
+    // 过滤掉 isLocal 服务器（fnNAS 自转码由创建转码任务时自动提供，无需在此管理）
+    const remoteServers = store.servers.filter(s => !s.isLocal)
+    if (remoteServers.length === 0) {
+      // P2-1：空状态承载"下一步动作"
+      list.appendChild(
+        emptyState('暂无服务器，请点击右上角「新增服务器」添加', 'server', {
+          label: '新增服务器',
+          onClick: () => {
+            addBtn.click()
+          },
+        })
+      )
+    } else {
+      const grid = el('div', { class: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3' })
+      for (const s of remoteServers) {
+        grid.appendChild(serverCard(s))
+      }
+      list.appendChild(grid)
+    }
+
+    return el('div', { class: 'flex flex-col flex-1 gap-3 overflow-hidden' }, [header, list])
+  }
+
+  function serverCard(s: Server): HTMLElement {
+    const card = el('div', {
+      class: 'card p-4 cursor-pointer hover:ring-2 hover:ring-primary/30 transition flex flex-col gap-3',
+    })
+    const head = el('div', { class: 'flex items-center justify-between' }, [
+      el('div', { class: 'flex items-center gap-2' }, [
+        el('span', {
+          class: `inline-block w-2.5 h-2.5 rounded-full ${s.status === 'online' ? 'bg-success' : 'bg-neutral'}`,
+        }),
+        el('div', { class: 'font-medium' }, [s.name]),
+      ]),
+      el('div', { class: 'flex items-center gap-1' }, [
+        (() => {
+          const editBtn = el('button', { class: 'btn btn-sm' }, [])
+          editBtn.append(svgIcon('edit', 14) as unknown as Node)
+          editBtn.title = '编辑'
+          editBtn.onclick = (e) => {
+            e.stopPropagation()
+            currentId = s.id
+            view = 'edit'
+            render()
+          }
+          return editBtn
+        })(),
+        (() => {
+          const delBtn = el('button', { class: 'btn btn-sm btn-danger' }, [])
+          delBtn.append(svgIcon('trash', 14) as unknown as Node)
+          delBtn.title = '删除'
+          delBtn.onclick = (e) => {
+            e.stopPropagation()
+            serverActions.remove(s)
+          }
+          return delBtn
+        })(),
+      ]),
+    ])
+    const info = el('div', { class: 'text-xs text-ink-muted space-y-1' }, [
+      el('div', {}, [`地址: ${s.ip}:${s.port}`]),
+      el('div', {}, [`状态: ${s.status === 'online' ? '在线' : '离线'}`]),
+    ])
+    if (s.keyExpireAt) {
+      info.appendChild(el('div', { class: 'text-warning' }, [`密钥过期: ${formatTime(s.keyExpireAt)}`]))
+    }
+    // C-阶段（7.3 servers 行）：迷你负载仪表盘 —— 进行中占比圆环 + 状态计数行
+    const load = serverLoadOf(s.id)
+    const gauge = miniGauge(load, s.status === 'online')
+    const loadStats = el('div', { class: 'flex-1 min-w-0 space-y-1 text-xs' }, [
+      el('div', { class: 'flex items-center gap-2' }, [
+        el('span', { class: 'inline-block w-2 h-2 rounded-full bg-signal shrink-0' }),
+        el('span', { class: 'text-ink-muted' }, [`进行中 ${load.active}`]),
+        el('span', { class: 'inline-block w-2 h-2 rounded-full bg-neutral-soft shrink-0' }),
+        el('span', { class: 'text-ink-muted' }, [`待执行 ${load.waiting}`]),
+      ]),
+      el('div', { class: 'flex items-center gap-2' }, [
+        el('span', { class: 'inline-block w-2 h-2 rounded-full bg-success shrink-0' }),
+        el('span', { class: 'text-ink-muted' }, [`完成 ${load.completed}`]),
+        el('span', { class: 'inline-block w-2 h-2 rounded-full bg-danger shrink-0' }),
+        el('span', { class: 'text-ink-muted' }, [`错误 ${load.error}`]),
+      ]),
+    ])
+    const gaugeWrap = el('div', { class: 'flex items-center gap-3 rounded-lg bg-surface-alt px-3 py-2' }, [gauge, loadStats])
+    const testBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5 self-start' }, [])
+    testBtn.append(svgIcon('circle', 14) as unknown as Node, el('span', {}, ['测试连接']))
+    testBtn.onclick = async (e) => {
+      e.stopPropagation()
+      testBtn.disabled = true
+      try {
+        const r = await api.testServer(s.id)
+        if (r.ok) toast('连接成功', 'success')
+        else toast(`连接失败: ${r.msg ?? r.error}`, 'error')
+        await store.loadServers()
+        render()
+      } catch (err) {
+        toast((err as Error).message, 'error')
+      }
+      testBtn.disabled = false
+    }
+    card.append(head, info, gaugeWrap, testBtn)
+    card.onclick = () => {
+      currentId = s.id
+      view = 'edit'
+      render()
+    }
+    return card
+  }
+
+  function renderEdit(s: Server | undefined): HTMLElement {
+    const goBack = () => { view = 'list'; render() }
+    const backBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5' }, [])
+    backBtn.append(svgIcon('back', 14) as unknown as Node, el('span', {}, ['返回清单']))
+    backBtn.onclick = goBack
+    const header = el('div', { class: 'flex items-center gap-2' }, [
+      backBtn,
+      el('h2', { class: 'text-lg font-semibold' }, [s ? '编辑服务器' : '新增服务器']),
+    ])
+    const body = el('div', { class: 'flex-1 overflow-auto' }, [editForm(s, goBack)])
+    return el('div', { class: 'flex flex-col flex-1 gap-3 overflow-hidden' }, [header, body])
+  }
+
+  // P2-2：列表加载/订阅走 useListPage 统一生命周期
+  // 2026-09-19 修复：编辑视图下不响应 store 通知（与 profiles.ts 对齐），
+  // 否则 loadServers→notify→refresh→render 会重建编辑表单，吞掉用户正在输入的值，
+  // 表现为「保存时提示请填写服务器名称」「表单无法交互」。
+  const page = useListPage({
+    load: async () => {
+      // C-阶段（7.3 servers 行）：仪表盘依赖任务分布，进页时一并拉取
+      await Promise.all([store.loadServers(), store.loadTasks()])
+      return store.servers
+    },
+    render: () => render(),
+    subscribe: (cb) => store.subscribe(() => { if (view === 'list') cb() }),
+    errorLabel: '服务器列表',
+  })
+  page.mount()
+  refreshServerStatus()
+  container.appendChild(wrap)
+  return page.dispose
+}
+
+async function refreshServerStatus() {
+  for (const s of store.servers) {
+    if (s.isLocal) continue
+    try {
+      await api.testServer(s.id)
+    } catch {
+      /* ignore */
+    }
+  }
+  await store.loadServers()
+}
+
+function editForm(s: Server | undefined, onBack: () => void): HTMLElement {
+  const form = el('div', { class: 'card p-4 max-w-3xl mx-auto w-full' })
+
+  // P2-2：编辑页删除/保存走公共 CRUD 四件套；成功后刷新并返回清单
+  const editActions = crudActions<Partial<Server>>({
+    confirmTitle: (x) => `确定删除服务器「${x.name}」？`,
+    danger: false,
+    apiCall: (action, item) => {
+      if (action === 'delete') return api.deleteServer(item.id!)
+      return s ? api.updateServer(s.id, { ...s, ...item }) : api.createServer(item)
+    },
+    reload: async () => {
+      await store.loadServers()
+      onBack()
+    },
+    successMsg: () => '保存成功',
+  })
+
+  const nameInput = el('input', { class: 'input', placeholder: '服务器名称', value: s?.name ?? '' }) as HTMLInputElement
+  const ipInput = el('input', { class: 'input', placeholder: 'IP 地址，如 192.168.1.100', value: s?.ip ?? '' }) as HTMLInputElement
+  const portInput = el('input', { type: 'number', class: 'input', placeholder: '端口', value: s ? String(s.port) : '8080' }) as HTMLInputElement
+  const keyInput = el('input', { type: 'password', class: 'input', placeholder: '已保存，留空则不修改', value: '' }) as HTMLInputElement
+  const lockInput = el('input', { type: 'number', class: 'input', placeholder: '锁自动过期(秒)', value: s ? String(s.lockExpireSec || 120) : '120' }) as HTMLInputElement
+
+  const field = (label: string, control: HTMLElement, description?: string) => {
+    const children: (string | Node)[] = [el('label', { class: 'block text-sm mb-1' }, [label]), control]
+    if (description) {
+      children.push(el('div', { class: 'text-xs text-ink-muted mt-1' }, [description]))
+    }
+    return el('div', { class: 'mb-3' }, children)
+  }
+
+  const row = (a: HTMLElement, b: HTMLElement) =>
+    el('div', { class: 'grid grid-cols-1 sm:grid-cols-2 gap-3' }, [a, b])
+
+  const connectionSection = el('div', { class: 'border-t border-line my-3 pt-3' }, [
+    el('div', { class: 'text-sm font-medium mb-2' }, ['连接信息']),
+    row(field('IP 地址 *', ipInput), field('端口', portInput)),
+  ])
+
+  const authSection = el('div', { class: 'border-t border-line my-3 pt-3' }, [
+    el('div', { class: 'text-sm font-medium mb-2' }, ['认证与锁']),
+    field('API 密钥', keyInput),
+    field('锁自动过期（秒）', lockInput),
+  ])
+
+  form.append(
+    field('服务器名称 *', nameInput),
+    connectionSection,
+    authSection,
+  )
+
+  const btns = el('div', { class: 'flex justify-end gap-2 mt-4 pt-3 border-t border-line' })
+  if (s) {
+    const del = el('button', { class: 'btn btn-danger mr-auto flex items-center gap-1.5' }, [])
+    del.append(svgIcon('trash', 14) as unknown as Node, el('span', {}, ['删除']))
+    del.onclick = () => {
+      editActions.remove(s!)
+    }
+    btns.append(del)
+  }
+  const cancel = el('button', { class: 'btn' }, ['取消'])
+  cancel.onclick = onBack
+  const save = el('button', { class: 'btn btn-primary flex items-center gap-1.5' }, [])
+  save.append(svgIcon('save', 16) as unknown as Node, el('span', {}, ['保存']))
+  save.onclick = async () => {
+    const body = {
+      name: nameInput.value.trim(),
+      ip: ipInput.value.trim(),
+      port: Number(portInput.value) || 8080,
+      authKey: keyInput.value.trim(),
+      lockExpireSec: Number(lockInput.value) || 120,
+      isLocal: false,
+    }
+    if (!body.name) {
+      toast('请填写服务器名称')
+      return
+    }
+    if (!body.ip) {
+      toast('请填写 IP 地址')
+      return
+    }
+    if (s) await editActions.update({ ...s, ...body })
+    else await editActions.create(body)
+  }
+  btns.append(cancel, save)
+  form.appendChild(btns)
+  return form
+}

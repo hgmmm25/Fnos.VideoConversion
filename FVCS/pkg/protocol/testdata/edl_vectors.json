@@ -1,0 +1,363 @@
+{
+  "version": 1,
+  "spec": "WebVideoEditor_Design/07-安全校验与凭据管理细则.md §3.2 / §3.5 / §3.6 / §8",
+  "usage": "FVCS/pkg/protocol/edl_validate_test.go 与 FVCC/server/edl_validate_test.go 共用；规则以 07 文档为唯一来源，两侧实现不得各自改向量。",
+  "relpath": [
+    { "id": "S1", "in": "../../etc/passwd", "wantCode": "E_ASSET_NOT_IN_ROOT", "note": "§8 S1 穿越（L2：含 .. 段）" },
+    { "id": "S2", "in": "/media/videos/../exports/x.mp4", "wantCode": "E_EDL_INVALID", "note": "§8 S2 绝对路径（L1 先于 L2 命中；HTTP 403/400 映射由 FVCC 决定）" },
+    { "id": "S3", "in": "a%2F..%2F..%2Fsecret.mp4", "decoded": true, "wantCode": "E_ASSET_NOT_IN_ROOT", "note": "§8 S3 URL 编码穿越，需先解码再校验" },
+    { "id": "S4", "in": "a.mp4\n-rf", "wantCode": "E_EDL_INVALID", "note": "§8 S4 file 含换行 → L1 控制字符" },
+    { "id": "P-EMPTY", "in": "", "wantCode": "E_EDL_INVALID", "note": "L1 非空" },
+    { "id": "P-BACKSLASH", "in": "videos\\a.mp4", "wantCode": "E_EDL_INVALID", "note": "L1 协议统一 /" },
+    { "id": "P-DOUBLE-SLASH", "in": "a//b.mp4", "wantCode": "E_ASSET_NOT_IN_ROOT", "note": "L2 空段（段级检查先于 L3 的 Clean 比较命中；L3 为冗余兜底）" },
+    { "id": "P-DOTSEG", "in": "a/./b.mp4", "wantCode": "E_ASSET_NOT_IN_ROOT", "note": "L2 . 段（L2 先于 L3 的 Clean 比较命中）" },
+    { "id": "P-ABS", "in": "/videos/a.mp4", "wantCode": "E_EDL_INVALID", "note": "L1 不以 / 开头" },
+    { "id": "P-EXT", "in": "videos/2024/a.txt", "wantCode": "E_EDL_INVALID", "note": "L3 扩展名白名单" },
+    { "id": "P-DEPTH", "in": "a/b/c/d/e/f/g/h/i.mp4", "wantCode": "E_ASSET_NOT_IN_ROOT", "note": "L2 段数 > 8" },
+    { "id": "P-COLON", "in": "videos/c:evil.mp4", "wantCode": "E_EDL_INVALID", "note": "L2 非法字符 :" },
+    { "id": "P-OK-ASCII", "in": "videos/2024-09/final.mp4", "wantCode": "OK", "note": "合法素材路径" },
+    { "id": "P-OK-CJK", "in": "成片素材/2024 秋/片段 01.mp4", "wantCode": "OK", "note": "合法中文 + 空格路径" }
+  ],
+  "output": [
+    { "id": "S8", "in": "../../windows/system32/x.mp4", "wantCode": "E_EDL_INVALID", "note": "§8 S8 穿越 + 子目录" },
+    { "id": "O-OK", "in": "demo.mp4", "wantCode": "OK", "note": "常规输出名" },
+    { "id": "O-OK-CJK", "in": "成片 v2 (最终).mp4", "wantCode": "OK", "note": "中文 + 空格 + 括号" },
+    { "id": "O-EMPTY", "in": "", "wantCode": "E_EDL_INVALID", "note": "空名" },
+    { "id": "O-SUBDIR", "in": "sub/demo.mp4", "wantCode": "E_EDL_INVALID", "note": "P0 不允许子目录" },
+    { "id": "O-MULTIEXT", "in": "a.b.mp4", "wantCode": "E_EDL_INVALID", "note": "§3.5 禁多重扩展名" },
+    { "id": "O-RESERVED-CON", "in": "CON.mp4", "wantCode": "E_EDL_INVALID", "note": "§3.5 Windows 保留设备名" },
+    { "id": "O-RESERVED-LPT", "in": "lpt1.mp4", "wantCode": "E_EDL_INVALID", "note": "§3.5 保留设备名（大小写不敏感）" },
+    { "id": "O-EXT", "in": "out.mkv", "wantCode": "E_EDL_INVALID", "note": "P0 强制 .mp4" },
+    { "id": "O-COLON", "in": "has:colon.mp4", "wantCode": "E_EDL_INVALID", "note": "非法字符" },
+    { "id": "O-TRAILSPACE", "in": "a.mp4 ", "wantCode": "E_EDL_INVALID", "note": "尾部空格 → 非 .mp4 结尾" }
+  ],
+  "payload": [
+    {
+      "id": "PL-OK",
+      "wantCode": "OK",
+      "note": "单片段合法基线载荷",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "S4",
+      "wantCode": "E_EDL_INVALID",
+      "note": "§8 S4 clips[].file 含换行",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "a.mp4\n-rf", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "S5",
+      "wantCode": "E_EDL_INVALID",
+      "note": "§8 S5 out 早于 in",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:10.000", "out": "00:00:09.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "S6",
+      "wantCode": "E_PAYLOAD_INVALID",
+      "note": "§8 S6 未知字段 filters（P0 禁用，未知字段即拒绝）",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "filters": { "movie": "file=/etc/passwd" },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "S7",
+      "wantCode": "E_PROFILE_INVALID",
+      "note": "§8 S7 presetKey 参数注入",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264 -y /etc/x",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "S8",
+      "wantCode": "E_EDL_INVALID",
+      "note": "§8 S8 output 穿越",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "../../windows/system32/x.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "S12",
+      "wantCode": "E_PAYLOAD_INVALID",
+      "note": "§8 S12 / §5.6 载荷中出现凭据字段（禁止 secret 进 payload）",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "smbPassword": "p@ssw0rd",
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "PL-SPEED",
+      "wantCode": "E_EDL_INVALID",
+      "note": "P0 不支持变速",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1.5 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "PL-EMPTY-CLIPS",
+      "wantCode": "E_EDL_INVALID",
+      "note": "clips 为空",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "PL-FPS0",
+      "wantCode": "E_EDL_INVALID",
+      "note": "timeline.fps 越界",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 0, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "PL-TOTAL-MISMATCH",
+      "wantCode": "E_EDL_INVALID",
+      "note": "totalMs 与 Σ(out-in) 不一致",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 9999,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "PL-BADFILE",
+      "wantCode": "E_EDL_INVALID",
+      "note": "clips[].file 扩展名不在白名单",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.txt", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "PL-ROOT-TRAVERSAL",
+      "wantCode": "E_ASSET_NOT_IN_ROOT",
+      "note": "sourceRoot 穿越（07 §3.2 三根同样过白名单）",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "../../etc",
+        "destRoot": "exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    },
+    {
+      "id": "PL-ROOT-ABS",
+      "wantCode": "E_EDL_INVALID",
+      "note": "destRoot 绝对路径",
+      "raw": {
+        "type": "RenderEDL",
+        "projectId": "p-1",
+        "projectRev": 1,
+        "sourceRoot": "videos",
+        "destRoot": "/media/videos/_exports",
+        "output": "demo.mp4",
+        "timeline": { "width": 1920, "height": 1080, "fps": 30, "sampleRate": 48000, "audio": true },
+        "clips": [{ "file": "videos/a.mp4", "in": "00:00:00.000", "out": "00:00:10.000", "speed": 1 }],
+        "profile": {
+          "presetKey": "libx264_medium",
+          "container": "mp4",
+          "video": { "codec": "libx264", "crf": 23, "preset": "medium", "pixFmt": "yuv420p" },
+          "audio": { "codec": "aac", "bitrate": "128k", "channels": 2, "sampleRate": 48000 }
+        },
+        "totalMs": 10000,
+        "checksum": ""
+      }
+    }
+  ],
+  "symlink": [
+    { "id": "S15", "rel": "link/secret.mp4", "wantCode": "E_ASSET_NOT_IN_ROOT", "note": "§8 S15 符号链接指向根外（L4）" }
+  ]
+}

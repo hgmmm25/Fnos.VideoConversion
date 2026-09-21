@@ -1,0 +1,69 @@
+# Fnos.VideoConversion 仓库治理（P2-3 改进方向落实，2026-09-17）
+
+# ---- 构建产物（勿提交）----
+FVCC/app/
+FVCC/temp/
+FVCC/fvcc.exe
+FVCC/fvcs-service.exe
+FVCC/fvcc.fpk
+FVCC/FVCC_v*_fnos_x86.fpk
+FVCS/bin/
+FVCS/*.exe
+dist/
+
+# ---- 归档与备份（archive/ 内为历史快照，不入库）----
+archive/
+
+# ---- 临时文件（根目录/各子目录）----
+temp/
+temp_vet.txt
+_build_check.txt
+*.log
+.DS_Store
+Thumbs.db
+
+# ---- 前后端依赖与构建缓存 ----
+node_modules/
+dist-ssr/
+*.tsbuildinfo
+.vite/
+
+# ---- IDE / 编辑器 ----
+.vscode/
+.idea/
+*.swp
+
+# ---- 运行期数据（用户态存储，不得入库）----
+FVCC/server/data/
+FVCS/data/
+
+# ---- 凭据/密钥与运行时数据库（2026-09-20 追加，P0 凭据加密产物，不得入库）----
+FVCC/config.enc.json
+FVCC/credentials.db
+FVCC/credentials.db-shm
+FVCC/credentials.db-wal
+FVCC/master.key
+FVCC/secret.key
+FVCC/task.db
+FVCC/tasks.json
+FVCC/history_tasks.json
+FVCC/locks.json
+
+# ---- FVCC 后端编译产物与调试残留（2026-09-18 追加）----
+FVCC/server/fvcc.exe
+FVCC/server/build_err.txt
+FVCC/server/out.txt
+
+# ---- FVCS 调试残留、备份与安装包 ----
+FVCS/_cgo_full.txt
+FVCS/build_check.txt
+FVCS/*.bak_preupgrade
+*.fpk
+
+# ---- 根目录工具安装包 ----
+fnpack-*.exe
+
+# ---- 大体积/第三方参考目录（不入库）----
+FVCC_official_unpack/
+freecut/
+test-media/
