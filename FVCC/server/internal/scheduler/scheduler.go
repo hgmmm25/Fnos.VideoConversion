@@ -23,8 +23,9 @@ import (
 	"fvcc/smbshare"
 )
 
-// Scheduler 任务调度器，每 1 秒执行一次状态分发。
-// 主循环仅做快速状态检查与分发，IO 操作（上传/下载）丢入独立协程。
+// Scheduler 任务调度器（P1-1 事件驱动 + 1s tick 兜底）。
+// 主循环 select 多路复用：任务变更事件（即时调度）/ 1s tick（兜底全量扫描）/
+// 定时落盘 / 停止信号；IO 操作（上传/下载）丢入独立协程。
 type Scheduler struct {
 	store      *store.Store
 	remote     *remote.RemoteClient
@@ -38,6 +39,15 @@ type Scheduler struct {
 
 	// proxyWf：M4 代理工作流收尾（04 §3.4；P2-1 B轮迁入 internal/media，实现见 internal/media/proxy.go）。
 	proxyWf *media.ProxyWorkflow
+
+	// ===== P1-1：调度器事件驱动优化（2026-09-21）=====
+	stopCh          chan struct{}            // 停止信号（Stop 关闭，事件循环退出前落盘）
+	stopOnce        sync.Once
+	done            chan struct{}            // 事件循环退出信号（Start defer close，Stop 等待 Flush 完成）
+	eventCh         chan string              // 任务变更事件队列（taskID），256 缓冲，满时丢弃并告警
+	flushEvery      time.Duration            // 定时落盘周期（默认 5s）
+	cooldownMu      sync.Mutex
+	cooldownTimers  map[string]*time.Timer   // taskID → 冷却到期唤醒 timer（COOLDOWN → QUEUE 无需等 tick）
 }
 
 // SetRenderDispatcher 注入渲染下发通道（B-06）。B-05 单测与 main.go 装配均走此入口。
@@ -54,7 +64,14 @@ func NewScheduler(store *store.Store, remote *remote.RemoteClient, hub *ws.Hub, 
 		pv:        pv,
 		sel:       node.NewSelector(store, hub), // 节点选机与健康分（B-08）：指标窗口迁入 internal/node
 		chunkSize: model.DefaultChunkSizeMB * 1024 * 1024, // 默认 4MB 分片（与设置项 ChunkSizeMB 同源，MB→字节换算）
+		stopCh:    make(chan struct{}),
+		done:      make(chan struct{}),
+		eventCh:   make(chan string, 256),
+		flushEvery: 5 * time.Second, // P1-1 定时落盘周期：脏任务数据每 5s 落盘一次
+		cooldownTimers: make(map[string]*time.Timer),
 	}
+	// P1-1：注册 store 任务变更钩子 → 事件循环即时推进调度（替代 1s tick 全量扫描）。
+	store.SetTaskChangeHook(s.Notify)
 	// M4 代理收尾（internal/media）：失败收口走调度域 failRenderTaskPermanent，
 	// 源/代理本地根推导由本包 security 域（resolveMediaRootsFor）注入，与提交侧同源。
 	s.proxyWf = media.NewProxyWorkflow(store, hub, remote, s,
@@ -77,16 +94,97 @@ func NewScheduler(store *store.Store, remote *remote.RemoteClient, hub *ws.Hub, 
 	return s
 }
 
-// Start 启动 1 秒调度循环。
+// Start 启动调度事件循环（P1-1 事件驱动）。
+// select 多路复用四类信号：
+//  1. 任务变更事件（store 钩子投递）→ 立即推进 QUEUE / 提升到期 COOLDOWN，降低调度延迟；
+//  2. 1s tick → 兜底全量扫描（防事件丢失/通道溢出/启动恢复），保持既有正确性语义；
+//  3. 定时落盘（默认 5s）→ 脏任务数据批量写盘，降低高频状态变更的 IO；
+//  4. stopCh → 停止前 Flush 剩余脏数据。
 func (s *Scheduler) Start() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+	flushTicker := time.NewTicker(s.flushEvery)
+	defer flushTicker.Stop()
+	defer close(s.done) // P1-1：事件循环退出信号（Stop 等待 Flush 完成）
 
-	logger.Info("scheduler", "started, interval=1s")
+	logger.Info("scheduler", "started: event-driven (eventCh=%d), tick=1s (fallback), flush=%s",
+		cap(s.eventCh), s.flushEvery)
 
-	for range ticker.C {
-		s.tick()
+	for {
+		select {
+		case <-s.stopCh:
+			s.store.Flush()
+			logger.Info("scheduler", "stopped, flushed pending tasks")
+			return
+		case taskID := <-s.eventCh:
+			s.handleEvent(taskID)
+		case <-ticker.C:
+			s.tick()
+		case <-flushTicker.C:
+			s.store.Flush()
+		}
 	}
+}
+
+// Stop 停止调度事件循环（幂等）。阻塞等待事件循环退出并完成 Flush（最长 5s），
+// 保证退出前剩余脏数据已落盘。
+func (s *Scheduler) Stop() {
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+		select {
+		case <-s.done:
+		case <-time.After(5 * time.Second):
+			logger.Warn("scheduler", "stop timeout: event loop did not exit in 5s")
+		}
+	})
+}
+
+// Notify 由 store 任务变更钩子调用（P1-1）：非阻塞投递任务事件。
+// 通道满时丢弃并告警——1s tick 兜底扫描会重新发现该任务，事件丢失不致任务停滞。
+func (s *Scheduler) Notify(taskID string, status model.TaskStatus) {
+	select {
+	case s.eventCh <- taskID:
+	default:
+		logger.Warn("scheduler", "event channel full, dropping event: task=%s status=%s (tick will fallback)", taskID, status)
+	}
+}
+
+// handleEvent 处理单个任务变更事件（P1-1 事件驱动核心）：
+// - QUEUE → 立即推进调度（新建/重新入队无需等下一 tick）；
+// - COOLDOWN 且已到期 → 立即提升回 QUEUE 并推进（冷却唤醒 timer 投递，或迟到的 tick 兜底）；
+// - 其余状态（RUNNING/UPLOADING/...）由各自协程或兜底 tick 持续推进，无需重复处理。
+func (s *Scheduler) handleEvent(taskID string) {
+	t, ok := s.store.GetTask(taskID)
+	if !ok {
+		return // 任务已删除/移历史
+	}
+	switch t.Status {
+	case model.StatusQueue:
+		if _, loaded := s.processing.Load(t.ID); loaded {
+			return // 已有协程在处理
+		}
+		go s.processTask(t)
+	case model.StatusCooldown:
+		if t.CoolDownUntil == nil || !time.Now().Before(*t.CoolDownUntil) {
+			s.promoteCooldownTask(t)
+		}
+	}
+}
+
+// scheduleCooldownWake 为冷却任务注册到期唤醒 timer（P1-1）：到期后投递事件，
+// COOLDOWN → QUEUE 无需等待下一 tick 扫描。重复注册时替换旧 timer（新冷却以新到期为准）。
+func (s *Scheduler) scheduleCooldownWake(taskID string, delay time.Duration) {
+	if delay <= 0 {
+		return
+	}
+	s.cooldownMu.Lock()
+	if old, ok := s.cooldownTimers[taskID]; ok {
+		old.Stop()
+	}
+	s.cooldownTimers[taskID] = time.AfterFunc(delay, func() {
+		s.Notify(taskID, model.StatusQueue)
+	})
+	s.cooldownMu.Unlock()
 }
 
 func (s *Scheduler) tick() {
@@ -130,7 +228,9 @@ func (s *Scheduler) tick() {
 		if t.CoolDownUntil != nil && time.Now().Before(*t.CoolDownUntil) {
 			continue
 		}
-		if _, loaded := s.processing.LoadOrStore(t.ID, true); loaded {
+		// P1-1：仅检查是否已在处理（Load 不占位），真正占位在 processTask 内完成，
+		// 避免 tick 预占后 processTask 自身防重误判。
+		if _, loaded := s.processing.Load(t.ID); loaded {
 			continue
 		}
 		go s.processTask(t)
@@ -138,7 +238,13 @@ func (s *Scheduler) tick() {
 }
 
 // processTask 处理单个任务的状态机流转。
+// P1-1：入口统一 LoadOrStore 占位防重（事件/tick/nextQueueTask 多路可能同时选中同一任务），
+// 保证任何时刻同一任务至多一个处理协程。
 func (s *Scheduler) processTask(t model.Task) {
+	if _, loaded := s.processing.LoadOrStore(t.ID, true); loaded {
+		logger.Debug("scheduler", "skip process task already running: id=%s", t.ID)
+		return
+	}
 	defer s.processing.Delete(t.ID)
 
 	logger.Debug("scheduler", "processing task: id=%s status=%s file=%s", t.ID, t.Status, t.FileName)
@@ -714,6 +820,8 @@ func (s *Scheduler) failTaskWithCooldown(t model.Task, msg string, retryType mod
 	if coolDownSec > 0 {
 		coolDown := time.Now().Add(time.Duration(coolDownSec) * time.Second)
 		t.CoolDownUntil = &coolDown
+		// P1-1：冷却到期唤醒 timer，到期即重入队并调度，无需等 1s tick 扫描。
+		s.scheduleCooldownWake(t.ID, time.Duration(coolDownSec)*time.Second)
 	}
 	now := time.Now()
 	t.FinishedAt = &now
@@ -801,7 +909,8 @@ func (s *Scheduler) nextQueueTask(tasks []model.Task) (model.Task, bool) {
 		if t.CoolDownUntil != nil && now.Before(*t.CoolDownUntil) {
 			continue
 		}
-		if _, loaded := s.processing.LoadOrStore(t.ID, true); loaded {
+		// P1-1：仅检查是否已在处理（Load 不占位），真正占位在 processTask 内完成。
+		if _, loaded := s.processing.Load(t.ID); loaded {
 			continue
 		}
 		return t, true
@@ -1079,27 +1188,37 @@ func (s *Scheduler) failRenderTaskWithCooldown(t model.Task, code, msg string) {
 	t.CooldownReason = code
 	t.RetryType = model.Retryable
 	t.ErrorMsg = fmt.Sprintf("[%s] %s", code, msg)
+	// P1-1：冷却到期唤醒 timer，到期即重入队并调度，无需等 1s tick 扫描。
+	s.scheduleCooldownWake(t.ID, time.Duration(coolSec)*time.Second)
 	s.store.UpsertTask(t)
 	s.hub.BroadcastTaskUpdate(t.ID, model.StatusCooldown.WireName(), t.Progress, t.ErrorMsg)
 	logger.WarnT("scheduler", t.TraceID, "任务 %s → COOLDOWN %ds (code=%s, retry=%d/%d)",
 		t.ID, coolSec, code, t.RetryCount, renderMaxRetryDefault)
 }
 
-// promoteCooldownTasks 冷却到期扫描（06 §4.3）：
+// promoteCooldownTasks 冷却到期扫描（06 §4.3，P1-1 兜底路径）：
 // status=COOLDOWN 且 next_retry_at <= now → 置 QUEUE，保留原 OrderID（不改变用户可见顺序）。
+// 事件驱动下到期唤醒由 scheduleCooldownWake 即时触发，本函数仅在 tick 兜底时调用。
 func (s *Scheduler) promoteCooldownTasks(now time.Time) {
 	for _, t := range s.store.ListCooldownDue(now) {
-		if t.Status != model.StatusCooldown {
-			continue
-		}
-		t.Status = model.StatusQueue
-		t.CoolDownUntil = nil // next_retry_at = null
-		t.CoolDownSec = 0
-		s.store.UpsertTask(t)
-		s.hub.BroadcastTaskUpdate(t.ID, model.StatusQueue.WireName(), t.Progress, "冷却到期，重新入队")
-		logger.Info("scheduler", "冷却到期 → QUEUE: id=%s type=%s attempt=%d orderID=%d",
-			t.ID, t.TaskType, t.RetryCount, t.OrderID)
+		s.promoteCooldownTask(t)
 	}
+}
+
+// promoteCooldownTask 单任务冷却到期提升（P1-1）：COOLDOWN → QUEUE 后立即推进调度。
+// 推进由 UpsertTask 钩子投递的事件驱动（handleEvent QUEUE 分支），此处不直接开协程，
+// 避免"重入队瞬间即被异步重试拉回 COOLDOWN"的竞态；单测未启动事件循环时任务稳定 QUEUE。
+func (s *Scheduler) promoteCooldownTask(t model.Task) {
+	if t.Status != model.StatusCooldown {
+		return
+	}
+	t.Status = model.StatusQueue
+	t.CoolDownUntil = nil // next_retry_at = null
+	t.CoolDownSec = 0
+	s.store.UpsertTask(t)
+	s.hub.BroadcastTaskUpdate(t.ID, model.StatusQueue.WireName(), t.Progress, "冷却到期，重新入队")
+	logger.Info("scheduler", "冷却到期 → QUEUE: id=%s type=%s attempt=%d orderID=%d",
+		t.ID, t.TaskType, t.RetryCount, t.OrderID)
 }
 
 // fileSizeSafe 安全获取文件大小，失败返回 1。

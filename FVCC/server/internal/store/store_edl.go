@@ -603,33 +603,44 @@ func (s *Store) ListAudit(limit int, action string) []model.AuditEntry {
 // ===== 任务查询：幂等与冷却（06 §4.3 / §4.4）=====
 
 // FindActiveTaskByChecksum 查找 checksum 相同且仍在调度中的任务（状态 ∈ QUEUE/RUNNING/COOLDOWN 等非终态）。
+// P1-1：优先走 checksumIdx 内存索引，替代全量遍历。
 func (s *Store) FindActiveTaskByChecksum(checksum string) (model.Task, bool) {
 	if checksum == "" {
 		return model.Task{}, false
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, t := range s.tasks {
-		if t.Checksum == checksum && t.Status.IsActive() {
+	s.mu.Lock()
+	s.ensureIndexLocked()
+	for _, i := range s.checksumIdx[checksum] {
+		if i >= 0 && i < len(s.tasks) && s.tasks[i].Checksum == checksum && s.tasks[i].Status.IsActive() {
+			t := s.tasks[i]
+			s.mu.Unlock()
 			return t, true
 		}
 	}
+	s.mu.Unlock()
 	return model.Task{}, false
 }
 
 // FindSuccessTaskByChecksum 查找 checksum 相同且已完成的任务（先队列后历史），
 // 调用方需再校验成品文件是否存在（fileExists(t.OutputFile)）后才可复用。
+// P1-1：活动任务走 checksumIdx 索引；历史表不建索引（低频查询），保持遍历。
 func (s *Store) FindSuccessTaskByChecksum(checksum string) (model.Task, bool) {
 	if checksum == "" {
 		return model.Task{}, false
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, t := range s.tasks {
-		if t.Checksum == checksum && t.Status == model.StatusCompleted {
+	s.mu.Lock()
+	s.ensureIndexLocked()
+	for _, i := range s.checksumIdx[checksum] {
+		if i >= 0 && i < len(s.tasks) && s.tasks[i].Checksum == checksum && s.tasks[i].Status == model.StatusCompleted {
+			t := s.tasks[i]
+			s.mu.Unlock()
 			return t, true
 		}
 	}
+	s.mu.Unlock()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, t := range s.history {
 		if t.Checksum == checksum && t.Status == model.StatusCompleted {
 			return t, true

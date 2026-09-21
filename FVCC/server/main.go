@@ -224,6 +224,8 @@ func main() {
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutCancel()
 	_ = srv.Shutdown(shutCtx)
+	// P1-1：先停调度事件循环（内部 Flush 剩余脏数据），再关闭 WS/远端/锁。
+	scheduler.Stop()
 	hub.CloseAll()
 	remote.CloseAll()
 	store.ReleaseAllLocks()

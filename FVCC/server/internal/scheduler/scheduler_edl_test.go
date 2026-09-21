@@ -140,6 +140,8 @@ func TestB05GenProxyDispatchAndLowPriority(t *testing.T) {
 	}
 
 	// 优先级：代理任务 OrderID 最小（100），但档位最低，不得插到 RenderEDL/TRANSCODE 之前。
+	// P1-1：nextQueueTask 只做只读查询（占位防重已移入 processTask），
+	// 连续调用需用 processing.Store 模拟"上一任务已在处理"，才能取到下一个可推进任务。
 	queued := sortQueueTasks([]model.Task{
 		{ID: "t_proxy", OrderID: 100, Status: model.StatusQueue, TaskType: model.TaskTypeGenProxy},
 		{ID: "t_render", OrderID: 200, Status: model.StatusQueue, TaskType: model.TaskTypeRenderEDL},
@@ -149,10 +151,12 @@ func TestB05GenProxyDispatchAndLowPriority(t *testing.T) {
 	if !ok || first.ID != "t_render" {
 		t.Fatalf("首个可推进任务应为 RENDER_EDL(OrderID=200)，实际 %q", first.ID)
 	}
+	sch.processing.Store(first.ID, true)
 	second, ok := sch.nextQueueTask(queued)
 	if !ok || second.ID != "t_trans" {
 		t.Fatalf("第二个应为 TRANSCODE(OrderID=300)，实际 %q", second.ID)
 	}
+	sch.processing.Store(second.ID, true)
 	third, ok := sch.nextQueueTask(queued)
 	if !ok || third.ID != "t_proxy" {
 		t.Fatalf("代理任务应最后被调度，实际 %q", third.ID)
@@ -163,8 +167,13 @@ func TestB05GenProxyDispatchAndLowPriority(t *testing.T) {
 		{ID: "t_b", OrderID: 20, Status: model.StatusQueue, TaskType: model.TaskTypeRenderEDL},
 		{ID: "t_a", OrderID: 10, Status: model.StatusQueue, TaskType: model.TaskTypeRenderEDL},
 	})
-	if picked, ok := sch.nextQueueTask(sameRank); !ok || picked.ID != "t_a" {
+	picked, ok := sch.nextQueueTask(sameRank)
+	if !ok || picked.ID != "t_a" {
 		t.Fatalf("同档位应按 OrderID 升序，实际 %q", picked.ID)
+	}
+	sch.processing.Store(picked.ID, true)
+	if picked2, ok2 := sch.nextQueueTask(sameRank); !ok2 || picked2.ID != "t_b" {
+		t.Fatalf("同档位按 OrderID 升序的次个应为 t_b，实际 %q", picked2.ID)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fvcc/logger"
@@ -37,6 +38,21 @@ type Store struct {
 	assetProxies []model.AssetProxy // 素材代理映射（asset_proxies.json）
 	loaded       bool
 	orderCounter int64 // 任务顺序号计数器，保证任务按创建顺序处理
+
+	// ===== P1-1：调度器事件驱动优化（2026-09-21）=====
+	// 内存索引：taskByID 提供 O(1) 定位（替代 GetTask 全量遍历），checksumIdx 供
+	// 渲染幂等去重（06 §4.4）。索引惰性重建：任何 slice 结构变动（追加/删除/移历史）
+	// 置 indexDirty，下次查询时一次重建，避免每次 Upsert 维护索引的额外开销。
+	taskByID    map[string]int
+	checksumIdx map[string][]int
+	indexDirty  bool
+	// 脏标记：高频任务状态变更仅标记，由 Flush 定时落盘，替代每次变更即时全量写盘
+	// （降低 IO；锁/服务器/项目等低频敏感集合保持即时落盘）。
+	dirtyTasks   atomic.Bool
+	dirtyHistory atomic.Bool
+	// 任务变更钩子（解锁后回调）：调度器经此钩子即时感知任务创建/状态变更，
+	// 驱动事件循环替代 1s tick 全量扫描。
+	taskHook func(taskID string, status model.TaskStatus)
 }
 
 // DataDir 返回数据目录（供日志等旁路文件定位）。
@@ -131,6 +147,8 @@ func (s *Store) Load() error {
 	}
 
 	s.loaded = true
+	// P1-1：加载完成后重建任务内存索引（taskByID / checksumIdx）。
+	s.ensureIndexLocked()
 	logger.Info("store", "loaded: tasks=%d history=%d servers=%d profiles=%d locks=%d projects=%d nodeCaps=%d healthSamples=%d audit=%d proxies=%d",
 		len(s.tasks), len(s.history), len(s.servers), len(s.profiles), len(s.locks),
 		len(s.projects), len(s.nodeCaps), len(s.healthSamples), len(s.auditLog), len(s.assetProxies))
@@ -150,15 +168,31 @@ func (s *Store) GetTasks() []model.Task {
 	return out
 }
 
+// GetTask 按 ID 定位任务（P1-1：优先走内存索引，索引失效时惰性重建）。
 func (s *Store) GetTask(id string) (model.Task, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, t := range s.tasks {
-		if t.ID == id {
+	if s.indexReadyLocked() {
+		if idx, ok := s.taskByID[id]; ok && idx >= 0 && idx < len(s.tasks) && s.tasks[idx].ID == id {
+			t := s.tasks[idx]
+			s.mu.RUnlock()
 			return t, true
 		}
+		s.mu.RUnlock()
+		return model.Task{}, false
 	}
-	return model.Task{}, false
+	s.mu.RUnlock()
+
+	// 索引未就绪：升级写锁重建（读多写少，重建频率低可接受）。
+	s.mu.Lock()
+	s.ensureIndexLocked()
+	idx, ok := s.taskByID[id]
+	if !ok || idx < 0 || idx >= len(s.tasks) || s.tasks[idx].ID != id {
+		s.mu.Unlock()
+		return model.Task{}, false
+	}
+	t := s.tasks[idx]
+	s.mu.Unlock()
+	return t, true
 }
 
 func (s *Store) UpsertTask(t model.Task) {
@@ -186,17 +220,32 @@ func (s *Store) UpsertTask(t model.Task) {
 			if t.Status == ex.Status && t.Progress == ex.Progress && t.ErrorMsg == ex.ErrorMsg {
 				needPersist = false
 			}
+			// P1-1：元素下标不变，仅当校验码变化时置脏索引（下次查询重建）。
+			if s.indexReadyLocked() && t.Checksum != ex.Checksum {
+				s.indexDirty = true
+			}
 			s.tasks[i] = t
 			s.mu.Unlock()
 			if needPersist {
-				s.persistTasks()
+				s.markTasksDirty()
 			}
+			s.fireTaskChange(t.ID, t.Status)
 			return
 		}
 	}
 	s.tasks = append(s.tasks, t)
+	// P1-1：索引就绪时增量维护（追加不改变既有下标）；未就绪则整体重建。
+	if s.indexReadyLocked() {
+		s.taskByID[t.ID] = len(s.tasks) - 1
+		if t.Checksum != "" {
+			s.checksumIdx[t.Checksum] = append(s.checksumIdx[t.Checksum], len(s.tasks)-1)
+		}
+	} else {
+		s.indexDirty = true
+	}
 	s.mu.Unlock()
-	s.persistTasks()
+	s.markTasksDirty()
+	s.fireTaskChange(t.ID, t.Status)
 }
 
 // SetTaskFinishedAt 记录任务终态时刻（P2-1：FinishedAt 由成功/失败终态写入）。
@@ -238,6 +287,7 @@ func (s *Store) NextOrderID() int64 {
 func (s *Store) UpdateTaskStatus(id string, status model.TaskStatus, progress float64, errMsg string) {
 	s.mu.Lock()
 	needPersist := true
+	statusChanged := false
 	for i := range s.tasks {
 		if s.tasks[i].ID == id {
 			oldStatus := s.tasks[i].Status
@@ -273,6 +323,7 @@ func (s *Store) UpdateTaskStatus(id string, status model.TaskStatus, progress fl
 				s.tasks[i].ErrorMsg = errMsg
 			}
 			s.tasks[i].UpdatedAt = time.Now()
+			statusChanged = status != oldStatus
 
 			// 报错任务移到队列末尾
 			if status == model.StatusError && oldStatus != model.StatusError {
@@ -284,7 +335,11 @@ func (s *Store) UpdateTaskStatus(id string, status model.TaskStatus, progress fl
 	}
 	s.mu.Unlock()
 	if needPersist {
-		s.persistTasks()
+		s.markTasksDirty()
+	}
+	// P1-1：状态变更时触发事件（进度更新不触发，避免事件风暴）。
+	if statusChanged {
+		s.fireTaskChange(id, status)
 	}
 }
 
@@ -304,10 +359,14 @@ func (s *Store) MoveToHistory(id string) {
 			s.history = s.history[1:]
 		}
 		s.history = append(s.history, *moved)
+		// P1-1：slice 结构变动，索引待重建。
+		s.indexDirty = true
 	}
 	s.mu.Unlock()
-	s.persistTasks()
-	s.persistHistory()
+	if moved != nil {
+		s.markTasksDirty()
+		s.markHistoryDirty()
+	}
 }
 
 func (s *Store) DeleteTask(id string) bool {
@@ -316,7 +375,9 @@ func (s *Store) DeleteTask(id string) bool {
 	for i, t := range s.tasks {
 		if t.ID == id {
 			s.tasks = append(s.tasks[:i], s.tasks[i+1:]...)
-			s.persistTasks()
+			// P1-1：slice 结构变动，索引待重建。
+			s.indexDirty = true
+			s.markTasksDirty()
 			return true
 		}
 	}
@@ -329,7 +390,7 @@ func (s *Store) DeleteHistoryTask(id string) bool {
 	for i, t := range s.history {
 		if t.ID == id {
 			s.history = append(s.history[:i], s.history[i+1:]...)
-			s.persistHistory()
+			s.markHistoryDirty()
 			return true
 		}
 	}
@@ -364,7 +425,8 @@ func (s *Store) ReorderTasks(taskIDs []string) error {
 
 	s.orderCounter = maxOrder - 1
 
-	s.persistTasks()
+	// P1-1：仅 OrderID 变化（元素顺序不变），索引无需重建，标记落盘即可。
+	s.markTasksDirty()
 	return nil
 }
 
@@ -612,6 +674,65 @@ func (s *Store) ReleaseAllLocks() {
 		s.locks[i].CodeLock = nil
 	}
 	s.persistLocks()
+}
+
+// ===== P1-1：内存索引 + 事件钩子 + 定时落盘（2026-09-21）=====
+
+// ensureIndexLocked 惰性重建任务内存索引（需持有写锁）：
+// taskByID 按 ID 定位任务下标（GetTask O(1)），checksumIdx 供渲染幂等去重（06 §4.4）。
+func (s *Store) ensureIndexLocked() {
+	if s.indexReadyLocked() {
+		return
+	}
+	s.taskByID = make(map[string]int, len(s.tasks))
+	s.checksumIdx = make(map[string][]int)
+	for i := range s.tasks {
+		s.taskByID[s.tasks[i].ID] = i
+		if s.tasks[i].Checksum != "" {
+			s.checksumIdx[s.tasks[i].Checksum] = append(s.checksumIdx[s.tasks[i].Checksum], i)
+		}
+	}
+	s.indexDirty = false
+}
+
+// indexReadyLocked 索引是否已就绪（需持有读锁）。
+func (s *Store) indexReadyLocked() bool { return !s.indexDirty && s.taskByID != nil }
+
+// SetTaskChangeHook 注册任务变更钩子（解锁后回调）。P1-1 事件驱动：
+// 调度器经此钩子即时感知任务创建/状态变更，替代 1s tick 全量扫描。
+func (s *Store) SetTaskChangeHook(h func(taskID string, status model.TaskStatus)) {
+	s.mu.Lock()
+	s.taskHook = h
+	s.mu.Unlock()
+}
+
+// fireTaskChange 在解锁后调用任务变更钩子（调用方须保证已释放写锁，避免回调死锁）。
+func (s *Store) fireTaskChange(taskID string, status model.TaskStatus) {
+	if h := s.taskHook; h != nil {
+		h(taskID, status)
+	}
+}
+
+// markTasksDirty 标记任务集合待落盘（P1-1 定时落盘：高频状态变更不再逐次写盘）。
+func (s *Store) markTasksDirty()   { s.dirtyTasks.Store(true) }
+func (s *Store) markHistoryDirty() { s.dirtyHistory.Store(true) }
+
+// Flush 将脏标记的 tasks/history 立即落盘（调度器定时触发与优雅退出时调用）。
+// 无脏数据时直接返回，不产生任何 IO。
+func (s *Store) Flush() {
+	if !s.dirtyTasks.Load() && !s.dirtyHistory.Load() {
+		return
+	}
+	s.mu.Lock()
+	if s.dirtyTasks.Load() {
+		s.persistTasks()
+		s.dirtyTasks.Store(false)
+	}
+	if s.dirtyHistory.Load() {
+		s.persistHistory()
+		s.dirtyHistory.Store(false)
+	}
+	s.mu.Unlock()
 }
 
 // ===== 持久化 =====
