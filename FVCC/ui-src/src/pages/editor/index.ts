@@ -21,7 +21,7 @@ function defaultTimeline(): Project['timeline'] {
   return { width: 1920, height: 1080, fps: 30, sampleRate: 48000, audio: true }
 }
 
-/** 各面板接入前的占位说明（后续任务替换为真实面板） */
+/** 空态兜底：素材库/预览器/时间线等面板未接入或内容为空时的占位展示 */
 function placeholder(text: string, icon: 'folder' | 'play' | 'film' = 'film'): HTMLElement {
   return el(
     'div',

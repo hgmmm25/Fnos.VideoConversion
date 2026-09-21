@@ -10,7 +10,7 @@
 
 FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 Web 客户端：浏览本地素材、把转码/代理/渲染任务下发给 FVCS 渲染端、通过 WebSocket 实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript 零框架原生 DOM，产物以 fpk 形式打包供 fnOS 安装。
 
-当前版本 **v1.4.9**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-09-20 实测复核）。
+当前版本 **v1.5.3**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-09-21 实测复核；工作区 1.5.3 基线 + 本轮代码清理改动未提交）。
 
 治理进展：P1 组（P1-1 ~ P1-5）全部落地或部分落地；P2 组（P2-1 ~ P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。
 
@@ -27,8 +27,8 @@ FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 W
 
 ### 1.2 构建产物与运行形态
 
-- 根目录：`fvcc.exe`（本地构建）、`fvcs-service.exe`（FVCS 渲染端二进制）、历史 fpk 包（v1.4.0 ~ v1.4.9，10 个）+ 最近打包产物 `fvcc.fpk`、`manifest`（应用清单，version=1.4.9）。
-- 运行时数据：`config.enc.json`（加密配置）、`master.key` / `secret.key`（凭据密钥）、`credentials.db`（凭据库 SQLite，含 -shm/-wal）、`tasks.json` / `history_tasks.json`（任务存储）、`locks.json`（锁表）、`task.db`（疑似早期 SQLite 遗留，当前存储为 JSON 文件，需确认是否仍被引用）。
+- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.5.3）。实测修正：根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
+- 运行时数据（2026-09-21 复核，按禁删原则保留原位）：`config.enc.json`（加密配置）、`master.key` / `secret.key`（凭据密钥）、`credentials.db`（凭据库 SQLite，含 -shm/-wal）、`tasks.json` / `history_tasks.json`（任务存储）、`locks.json`（锁表）。实测修正：根目录**无** `task.db`（仅 `archive/` 下存 12KB 备份）。
 - `config/`：fnOS 应用配置目录（privilege / resource）。
 - `logs/`：运行时日志（按日期 + app_*.log）。
 - `app/`：前端构建产物（vite 输出 + 静态资源），由 fpk 打包；`app/ui/assets` 为 hash 资源目录（当前 13 个文件）。
@@ -84,13 +84,13 @@ D:\Fnos.VideoConversion\FVCC\
 │   ├── P2-1_后端分层_阶段A实施记录.md
 │   └── P2-2_细化细则.md
 ├── logs/                      # 运行时日志（git 忽略）
-├── temp/                      # 打包 stage（fpk_stage*、CDP 调试缓存、调试脚本，git 忽略）
-├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.4.9）
+├── temp/                      # 打包 stage 目录（2026-09-21 已清理 15 个 fpk_stage* 与 fvcc-win-debug.exe，现仅剩 logs/，git 忽略）
+├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.5.3）
 ├── config.enc.json            # 加密配置（凭据相关）
 ├── credentials.db / -shm / -wal   # 凭据库（SQLite）
 ├── master.key / secret.key    # 凭据密钥
-├── locks.json / tasks.json / history_tasks.json / task.db   # 运行时数据
-├── fvcc.exe / fvcs-service.exe / fvcc.fpk / FVCC_v1.4.0~1.4.9_fnos_x86.fpk   # 构建产物
+├── locks.json / tasks.json / history_tasks.json   # 运行时数据（task.db 无——为 FVCS 侧运行产物，仅 archive/ 下 12KB 备份）
+├── fvcc.fpk / FVCC_v1.4.0~1.4.8_fnos_x86.fpk 已归档   # 构建产物已移入根仓库 archive/fpk/（现完整收纳 v1.1.0~v1.5.3；根目录无 exe / fpk 堆积）
 └── .gitignore
 ```
 
@@ -202,17 +202,17 @@ D:\Fnos.VideoConversion\FVCC\
 
 ## 6. 待办与缺口
 
-> 2026-09-20 复核：以下代码级 TODO 经全量关键词扫描确认**全部仍存在**，无新关闭项。
+> 2026-09-21 复核：以下代码级 TODO 经全量关键词扫描确认；本轮已关闭 3 项（步骤 3 代码清理），其余仍存在。
 
 ### 6.1 代码级真实 TODO（需开发处理）
 
 | 位置 | 内容 | 影响 | 建议 |
 |---|---|---|---|
 | `server/internal/store/store.go:19` | `TODO(P1)`：定时备份、配置迁移、快照回滚 | JSON 文件存储无备份机制，升级或误操作后不可回滚 | 高优先级：实现备份/迁移/快照三件套（见 §8 步骤 4） |
-| `server/internal/scheduler/scheduler.go:487 / 667` | `checkUploadProgress` / `checkDownloadProgress` 为空操作占位 | 上传/下载阶段的进度不做主动轮询（仅依赖远端推送推进阶段） | 确认远端是否推送阶段内进度；若无通道则明确注释或移除占位 |
-| `server/internal/scheduler/scheduler.go:828` | `TODO(B-06)` 注释：RenderDispatcher 未注入时保持 QUEUE | 经查 `main.go` 已注入 `scheduler.SetRenderDispatcher`，该分支为**防御性死代码**，非功能缺口 | 清理过时注释 + 防注入守卫（可选），不阻塞功能 |
+| ~~`server/internal/scheduler/scheduler.go:487 / 667`~~ | ~~`checkUploadProgress` / `checkDownloadProgress` 为空操作占位~~ | ✅ 已清理（2026-09-21）：remote 进度协议 Stage 不含上传/下载阶段内进度，空函数已删除并注释说明进度来源 | — |
+| ~~`server/internal/scheduler/scheduler.go:828`~~ | ~~`TODO(B-06)` 注释：RenderDispatcher 未注入时保持 QUEUE~~ | ✅ 已清理（2026-09-21）：`main.go:170` 已注入 `scheduler.SetRenderDispatcher`，防注入死分支与过时注释已删除 | — |
 | `server/internal/store/model/models.go:463` | Transition 片段转场字段 P0 为 nil 仅占位固化 JSON 形状 | EDL 转场能力未启用，数据结构已预留 | 与 FVCS 渲染端同步评估转场支持（跨端特性，建议单独立项） |
-| `ui-src/src/pages/editor/index.ts:24` | `placeholder()` 占位函数（"各面板接入前的占位说明"） | assets/preview/timeline 真实面板已接入，placeholder 现仅用于空态兜底与未启用面板 | 保留为空态兜底即可，注释可更新为"空态兜底" |
+| `ui-src/src/pages/editor/index.ts:24` | `placeholder()` 占位函数 | assets/preview/timeline 真实面板已接入，现仅用于空态兜底与未启用面板 | ✅ 已更新（2026-09-21）：注释改为"空态兜底"，功能保留 |
 | `server/internal/media/ffprobe.go:49` | ffprobe 二进制缺失时降级 stub 数据 | 探测结果非真实（功能可用但数据失真） | 运行时环境安装 ffmpeg/ffprobe（见 §8 步骤 1） |
 
 ### 6.2 环境依赖缺口
@@ -233,14 +233,14 @@ D:\Fnos.VideoConversion\FVCC\
 
 ### 6.4 清理项（低风险，不阻塞功能）
 
-| 项 | 位置 | 说明 |
-|---|---|---|
-| 调试重定向残留 | `server/temp/` 下 `build*.txt` / `commit*.txt` / `fmt_out.txt`（61KB）/ `c2~c6.txt` / `t.txt` / `v.txt` 等 | 历史构建/提交重定向残留（含 0 字节与非 0 字节），移入回收站 |
-| CDP 调试缓存 | `temp/chrome-profile-9223/`、`temp/chrome-profile-9224/` | 调试用 Chrome 用户数据，确认无用时清理 |
-| 打包 stage 残留 | `temp/fpk_stage/`、`fpk_stage_145/146/147/149/` | 历史打包 stage 目录，确认无用时清理 |
-| 调试脚本/二进制 | `temp/cdp-fine-test.mjs`、`cdp-real-test.mjs`、`fvcc-win-debug.exe`、`temp/repro-data/`、`temp/secret.key`、`temp/locks.json` | 调试期产物，确认无用时清理 |
-| 历史 fpk 包 | FVCC 根目录 `FVCC_v1.4.0_fnos_x86.fpk` ~ `FVCC_v1.4.9_fnos_x86.fpk`（10 个，约 89MB） | 确认 fnOS 安装机制不再需要历史包后归档/清理 |
-| app/ui/assets 旧 hash | `FVCC/app/ui/assets/`（当前 13 文件） | 以 index.html 引用为准核对；vite 现配置 `emptyOutDir:true`，新构建后核对无多余 hash 资源 |
+| 项 | 位置 | 说明 | 处置（2026-09-21） |
+|---|---|---|---|
+| 调试重定向残留 | `server/temp/` 下 `build*.txt` / `commit*.txt` / `fmt_out.txt` / `c2~c6.txt` 等 | 历史构建/提交重定向残留（含 0 字节与非 0 字节） | ✅ 已清理：`vet_err.txt`（0 字节空文件）已移入回收站；`build*/commit*/fmt_out.txt` / `c2~c6.txt` 等实测不存在 |
+| CDP 调试缓存 | `temp/chrome-profile-9223/`、`temp/chrome-profile-9224/` | 调试用 Chrome 用户数据 | ✅ 实测不存在，无需清理 |
+| 打包 stage 残留 | `temp/fpk_stage/`、`fpk_stage_145/146/147/149/` 等 | 历史打包 stage 目录 | ✅ 已清理：15 个 `fpk_stage*` 目录已移入回收站 |
+| 调试脚本/二进制 | `temp/cdp-fine-test.mjs`、`cdp-real-test.mjs`、`fvcc-win-debug.exe`、`temp/repro-data/`、`temp/secret.key`、`temp/locks.json` | 调试期产物 | ✅ 已清理：`fvcc-win-debug.exe`（34.19MB）已移入回收站；`cdp-*.mjs` / `repro-data/` / `secret.key` / `locks.json` 实测不存在 |
+| 历史 fpk 包 | FVCC 根目录 `FVCC_v1.4.0_fnos_x86.fpk` ~ `FVCC_v1.4.9_fnos_x86.fpk` | 确认 fnOS 安装机制不再需要历史包后归档/清理 | ✅ 已归档：实测历史包非 10 个（v1.4.0~v1.4.8 早已归档）；本轮 6 个 fpk（v1.4.9~v1.5.3 + fvcc.fpk 副本）归档至根仓库 `archive/fpk/`，现完整收纳 v1.1.0~v1.5.3 |
+| app/ui/assets 旧 hash | `FVCC/app/ui/assets/`（当前 13 文件） | 以 index.html 引用为准核对；vite 现配置 `emptyOutDir:true`，新构建后核对无多余 hash 资源 | 保持核对（13 文件，未变） |
 
 ### 6.5 规划中未触发项（决策门保留）
 
@@ -268,7 +268,7 @@ D:\Fnos.VideoConversion\FVCC\
 
 ## 8. 下一步开发步骤
 
-> 完成状态总览（2026-09-20 实测）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 / 5 部分完成**；**步骤 3 / 4 / 6 / 7 / 8 未动**。各步骤标题后〔〕内为实测状态标注。
+> 完成状态总览（2026-09-21 实测）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 / 5 部分完成**；**步骤 3 / 6 已完成（2026-09-21）**；**步骤 4 / 7 / 8 未动**。各步骤标题后〔〕内为实测状态标注。
 
 按"环境就绪 → 数据安全 → 代码清理 → 文档同步 → 质量门禁 → 端到端验收"顺序执行，每步含验收标准。
 
@@ -289,12 +289,12 @@ D:\Fnos.VideoConversion\FVCC\
 2. 对比返回 `VideoInfo`（分辨率/时长/编码）与 `ffprobe` 直接输出是否一致；若返回 stub 数据（如默认 1080p），说明运行时缺 ffprobe。
 3. **验收**：探测结果与 ffprobe 一致；缺 ffprobe 时启动日志有明确告警（若无，需在 main.go 装配阶段加启动自检提示）。
 
-### 步骤 3：清理调度器占位与过时注释（约 0.5 天）〔❌ 未动〕
+### 步骤 3：清理调度器占位与过时注释（约 0.5 天）〔✅ 已完成（2026-09-21）〕
 
-1. `server/internal/scheduler/scheduler.go:828`：确认 `main.go` 已注入 RenderDispatcher 后，删除 TODO(B-06) 注释与 `s.dispatcher == nil` 防注入分支（或改为启动时断言）。
-2. `server/internal/scheduler/scheduler.go:487/667`：核对 remote 进度推送协议是否含上传/下载阶段内进度；若含则实现 checkUploadProgress/checkDownloadProgress 消费；若不含则删除空函数并注释说明进度来源。
-3. `ui-src/src/pages/editor/index.ts:24`：把 placeholder 注释由"接入前占位"改为"空态兜底"。
-4. **验收**：`go vet ./...` + `go test ./...` 全绿；编辑器空态显示正常。
+1. ✅ 已执行：`main.go:170` 已注入 `scheduler.SetRenderDispatcher(remote)`，TODO(B-06) 注释与 `s.dispatcher == nil` 防注入死分支已删除。
+2. ✅ 已执行：remote 进度协议 Stage 不含上传/下载阶段内进度，`checkUploadProgress` / `checkDownloadProgress` 空占位已删除并注释说明进度来源；`scheduler_edl_test.go` 中 TestB05SideGuards 过时用例一并移除。
+3. ✅ 已执行：placeholder 注释已更新为"空态兜底"。
+4. **验收（2026-09-21 通过）**：`go vet ./...` + `go test ./...` 全绿（11 包）；`npm run build` 通过；编辑器空态显示正常。
 
 ### 步骤 4：实现 store 备份/配置迁移/快照回滚（P1 TODO，约 2~3 天，🔴 涉及数据写入，需先评审）〔❌ 未动：store 无 backup.go，P1 TODO 仍在〕
 
@@ -305,23 +305,23 @@ D:\Fnos.VideoConversion\FVCC\
 2. 路由挂载到 `server/internal/api/router.go`；破坏性恢复操作接入 `security_audit.go` 的 `auditDestructive`（新增 `destructive.restore` 类型）。
 3. **验收**：模拟损坏 settings.json → 回滚快照恢复；连续 3 次备份仅保留最新 N 份；`go test ./...` 含备份/迁移/回滚单测。
 
-### 步骤 5：文档同步（约 0.5 天）〔⚠️ 部分完成：README 目录树/治理状态表已补，SECURITY.md 与 README 版本表未同步〕
+### 步骤 5：文档同步（约 0.5 天）〔⚠️ 部分完成：README 版本表/目录树已同步 1.5.3，FVCC/docs/SECURITY.md 未补写〕
 
 1. 按 `WebVideoEditor_Design/07-安全校验与凭据管理细则.md` 补写 `FVCC/docs/SECURITY.md`（网关鉴权、requireAdmin、DPAPI 凭据、限流、审计、路径约束），消除 gateway.go 注释悬空引用。
 2. 更新 `FVCC/README.md`：
-   - 「版本号单一来源」表 1.4.4 → 1.4.9；
-   - 目录树补 `ui-src/src/lib/` 与 `FVCC/docs/` 下 P2-1/P2-2 文档；
+   - 「版本号单一来源」表 1.4.4 → 1.5.3（✅ 已于 2026-09-21 同步）；
+   - 目录树补 `ui-src/src/lib/` 与 `FVCC/docs/` 下 P2-1/P2-2 文档（✅ 已同步）；
    - 治理状态表追加本次变更记录。
 3. **验收**：README 三处版本与 `manifest` / `package.json` / `VERSION` 一致；`npm run check:design` 不回归。
 
-### 步骤 6：清理低风险残留（约 0.5 天，🟡 删除类操作逐项确认）〔❌ 未动：temp 残留全在〕
+### 步骤 6：清理低风险残留（约 0.5 天，🟡 删除类操作逐项确认）〔✅ 已完成（2026-09-21）〕
 
-1. `server/temp/` 调试重定向残留（build*/commit*/fmt_out.txt 等）→ 移入回收站。
-2. `temp/chrome-profile-9223/9224` CDP 缓存 → 确认无调试需求后移入回收站。
-3. `temp/fpk_stage*`（145/146/147/149 等）与 `temp/cdp-*.mjs` / `fvcc-win-debug.exe` / `repro-data/` / `secret.key` / `locks.json` → 确认无调试需求后清理。
-4. 以 `FVCC/app/ui/index.html` 引用为准，核对 `app/ui/assets/` 是否存在未被引用的旧 hash 资源，清理多余文件（注意：**只清理未被 index.html 引用的旧 hash 文件**，防止历史 emptyOutDir:false 产物膨胀 fpk）。
-5. 历史 fpk 包（v1.4.0~v1.4.9，10 个）：确认 fnOS 应用市场/安装脚本是否需要保留，不需要则归档到独立目录或删除。
-6. **验收**：删除走回收站；`npm run build` 后重新核对 assets 无多余 hash 残留。
+1. ✅ 已执行：`server/temp/` 打包 stage（`fpk_stage*` 共 15 目录）与调试残留 18 项已移入回收站，释放约 560.3MB（含误构建嵌套目录 `FVCC/FVCC/` 22.16MB、`fvcc-win-debug.exe` 34.19MB、`server/vet_err.txt` 0 字节空文件）；实测不存在 `build*/commit*/fmt_out.txt` / `c2~c6.txt` 等。
+2. ✅ 已执行：`temp/chrome-profile-9223/9224` CDP 缓存实测不存在。
+3. ✅ 已执行：`temp/cdp-*.mjs` / `repro-data/` / `secret.key` / `locks.json` 实测不存在；`temp/` 现仅剩 `logs/`（9KB）保留。
+4. ✅ 已核对：`app/ui/assets/` 当前 13 文件，无多余 hash 残留（vite `emptyOutDir:true` 生效）。
+5. ✅ 已执行：历史 fpk 实测非 10 个（v1.4.0~v1.4.8 早已归档）；本轮 6 个 fpk（`FVCC_v1.4.9~v1.5.3_fnos_x86.fpk` + `fvcc.fpk` 副本）归档至根仓库 `archive/fpk/`，现完整收纳 v1.1.0~v1.5.3。
+6. **验收（2026-09-21 通过）**：删除全走回收站；`npm run build` 后 assets 无多余 hash 残留。
 
 ### 步骤 7：质量门禁与 CI 上调（约 1 天）〔❌ 未动：覆盖率 56.1%/57.0% 未达 60%，门槛保持 55%〕
 
@@ -347,7 +347,7 @@ D:\Fnos.VideoConversion\FVCC\
 
 - 目录树：`D:\Fnos.VideoConversion\FVCC`（深度 3 递归扫描，2026-09-20）
 - 代码规模：Go 87 文件 / 19,315 行（含测试 38 文件 / 6,208 行）；TS 33 文件 / 10,035 行
-- 版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = 1.4.9
+- 版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = 1.5.3（2026-09-21 复核；2026-09-20 实测为 1.4.9）
 - TODO 扫描：`server/`、`ui-src/src/`、`cmd/` 全量关键词扫描（TODO/FIXME/未完成/占位/stub）
 - 关键文件：`server/main.go`、`server/internal/api/router.go`、`server/internal/scheduler/scheduler.go`、`server/internal/store/store.go`、`ui-src/src/main.ts`、`ui-src/src/store.ts`、`ui-src/src/api.ts`、`ui-src/src/pages/editor/*.ts`
 - 文档：`FVCC/README.md`、`FVCC/docs/*.md`、`D:\Fnos.VideoConversion\docs\*`

@@ -4,6 +4,8 @@
 #   -Short      加 -short（本地快速回归；CI 不用）
 #   -Race       加 -race -covermode=atomic（CI 用）
 # 输出：go tool cover -func 汇总 + 总覆盖率，达标退出码 0，未达标退出码 1。
+# 口径修正（2026-09-21）：测试目标原为 '.'（仅主包），主包无测试文件导致恒 0%，
+# 改为 './...' 使 -coverpkg 与测试目标一致，总覆盖率方为真实值。
 
 param(
     [int]$Threshold = 55,
@@ -26,9 +28,9 @@ try {
     } elseif ($Short) {
         $goArgs += '-short'
     }
-    # 覆盖口径：-coverpkg=./... 全包插桩（含 logger/smbshare 等无测试子包），
-    # 单测试目标 '.' 保证 coverprofile 落盘；与 CI 全包统计口径一致。
-    $goArgs += @('-coverpkg=./...', "-coverprofile=$covFile", '.')
+    # 覆盖口径：-coverpkg=./... 全包插桩，测试目标 './...' 全包运行，
+    # 使总覆盖率为全仓库真实值（2026-09-21 修正：原目标 '.' 仅主包，恒 0%）。
+    $goArgs += @('-coverpkg=./...', "-coverprofile=$covFile", './...')
 
     Write-Host "==> go $($goArgs -join ' ')"
     & go @goArgs

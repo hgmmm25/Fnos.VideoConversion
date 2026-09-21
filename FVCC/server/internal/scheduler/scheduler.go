@@ -264,8 +264,7 @@ func (s *Scheduler) processTask(t model.Task) {
 		// 冷却中的任务只等 tick 的到期扫描转回 QUEUE（06 §4.3），此处不推进状态。
 		return
 	case model.StatusUploading:
-		// 上传在 handleQueue 中启动的协程内持续推进，此处仅检查远端状态
-		s.checkUploadProgress(t)
+		// 上传进度由 handleQueue 启动的 doUpload 协程本地计算并广播（远端不推送上传阶段进度）
 	case model.StatusWaitingTrans:
 		s.checkTranscodeProgress(t)
 	case model.StatusTranscoding:
@@ -283,8 +282,7 @@ func (s *Scheduler) processTask(t model.Task) {
 	case model.StatusWaitingDown:
 		s.startDownload(t)
 	case model.StatusDownloading:
-		// 下载在 startDownload 协程内持续推进
-		s.checkDownloadProgress(t)
+		// 下载进度由 startDownload 启动的 doDownload 协程本地计算并广播（远端不推送下载阶段进度）
 	case model.StatusError:
 		s.handleError(t)
 	}
@@ -590,11 +588,6 @@ func (s *Scheduler) doUpload(ctx context.Context, t model.Task, server model.Ser
 	s.hub.BroadcastTaskUpdate(t.ID, string(model.StatusWaitingTrans), 100, "上传完成，等待转码")
 }
 
-// checkUploadProgress 上传协程在自行推进，此处为空操作占位。
-func (s *Scheduler) checkUploadProgress(t model.Task) {
-	// 上传由 doUpload 协程持续推进，主循环不干预
-}
-
 // checkTranscodeProgress 查询转码进度。
 func (s *Scheduler) checkTranscodeProgress(t model.Task) {
 	server, ok := s.store.GetServer(t.ServerID)
@@ -770,11 +763,6 @@ func (s *Scheduler) doDownload(t model.Task, server model.Server) {
 	})
 }
 
-// checkDownloadProgress 下载协程在自行推进，此处为空操作占位。
-func (s *Scheduler) checkDownloadProgress(t model.Task) {
-	// 下载由 doDownload 协程持续推进
-}
-
 // handleError 错误状态处理：可重试且重试次数 < 3 则回到 QUEUE。
 func (s *Scheduler) handleError(t model.Task) {
 	if t.RetryType == model.Retryable && t.RetryCount < 3 {
@@ -933,12 +921,6 @@ func (s *Scheduler) dispatchRenderLike(t model.Task) {
 		s.failRenderTaskPermanent(t, remote.ErrCodePayloadMissing, "任务载荷为空（payload_json 缺失），无法下发")
 		return
 	}
-	if s.dispatcher == nil {
-		// TODO(B-06): remote.go 实现 RenderDispatcher 并经 main.go 注入后，本分支不再触发。
-		logger.Warn("scheduler", "渲染下发通道未就绪(B-06)，任务保持 QUEUE: id=%s type=%s", t.ID, t.TaskType)
-		return
-	}
-
 	server, ok := s.resolveRenderNode(t)
 	if !ok {
 		return // 状态已就地推进，或有意保持 QUEUE（等待 B-08 选机）

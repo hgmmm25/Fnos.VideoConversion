@@ -345,18 +345,12 @@ func TestB05SideGuards(t *testing.T) {
 		t.Fatalf("载荷缺失应直接失败(E_PAYLOAD_MISSING): %+v", empty)
 	}
 
-	// 2) 下发通道未注入（B-06 未到）→ 保持 QUEUE，不得误置 RUNNING。
+	// 2) processTask 分流：COOLDOWN / RUNNING(渲染) 空转，QUEUE(GEN_PROXY) 正常派发。
 	sch2, s2 := newSchedTestEnv(t)
-	s2.UpsertTask(model.Task{ID: "t_wait", OrderID: 1, Status: model.StatusQueue, TaskType: model.TaskTypeRenderEDL,
-		ServerID: "srv1", PayloadJSON: `{"clips":[]}`})
-	sch2.handleRenderEDL(mustTask(t, s2, "t_wait"))
-	if got := mustTask(t, s2, "t_wait"); got.Status != model.StatusQueue || got.RemoteTaskID != "" {
-		t.Fatalf("下发通道未就绪应保持 QUEUE: %+v", got)
-	}
-
-	// 3) processTask 分流：COOLDOWN / RUNNING(渲染) 空转，QUEUE(GEN_PROXY) 正常派发。
 	d := &fakeDispatcher{}
 	sch2.SetRenderDispatcher(d)
+	s2.UpsertTask(model.Task{ID: "t_wait", OrderID: 1, Status: model.StatusQueue, TaskType: model.TaskTypeRenderEDL,
+		ServerID: "srv1", PayloadJSON: `{"clips":[]}`})
 	sch2.processTask(model.Task{ID: "t_cd", Status: model.StatusCooldown, TaskType: model.TaskTypeRenderEDL})
 	if d.edlCalls != 0 || d.proxyCalls != 0 {
 		t.Fatalf("COOLDOWN 任务不应触发下发")
