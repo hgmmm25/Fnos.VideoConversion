@@ -134,9 +134,11 @@ export function buildEditorLayout(opts: LayoutOptions): EditorLayout {
   tasksBtn.append(svgIcon('list', 16) as unknown as Node, el('span', { class: 'hidden lg:inline' }, ['任务中心']))
   tasksBtn.onclick = () => opts.onOpenTasks()
 
-  const renderBtn = el('button', { class: 'btn btn-sm btn-primary flex items-center gap-1' }, [
-    '渲染导出',
-  ])
+  const renderBtn = el('button', {
+    class: 'btn btn-sm btn-primary flex items-center gap-1',
+    title: '渲染导出（Ctrl+Enter）',
+  })
+  renderBtn.append(svgIcon('arrow-right', 16) as unknown as Node, el('span', {}, ['渲染导出']))
   renderBtn.onclick = () => opts.onRender()
 
   const top = el('div', {

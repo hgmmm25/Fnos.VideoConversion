@@ -1,5 +1,7 @@
 # FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-09-21 更新至 v1.5.3）
 
+> **现状快照（2026-09-21 第十八轮，本次文档校准）**：当前版本 **v1.5.3**（三处一致 + tag）。**P0-2 SQLite 迁移已落地**（2026-09-21 三个提交 a72b8ff / 9e122d5 / 5dd373e，modernc.org/sqlite v1.14.0 纯 Go 驱动 + 12 张实体表 + schema v1 迁移链 + 存量 JSON 导入 + SQLite 读回主路径与 persist 载体切换，store 内存索引 + 脏标记 Flush 批量落盘）；**P1-1 事件驱动调度已落地**（提交 eab7688：事件循环 + 内存索引 + 定时落盘 + WS 广播全覆盖，第十六轮漏登，第十八轮补登记）；store.go:19 `TODO(P1)`（定时备份/快照回滚）延续，方案评审稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 已出、代码未落地；其余未落实项见 §十。
+
 > 依据《项目分析与改进方向.md》逐项落实。原则：低风险直接改码并验证；结构性大改（SQLite 迁移、事件驱动调度、freecut 收敛）如实说明未落实原因，不强行破坏既有稳定链路。
 > 验证基线：`go build ./...` / `go vet ./...` / `go test -short ./...` 全部通过；`tsc --noEmit` 通过；`scripts/check-versions.ps1` 退出码 0。
 >

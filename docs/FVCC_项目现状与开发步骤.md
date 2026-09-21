@@ -10,20 +10,20 @@
 
 FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 Web 客户端：浏览本地素材、把转码/代理/渲染任务下发给 FVCS 渲染端、通过 WebSocket 实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript 零框架原生 DOM，产物以 fpk 形式打包供 fnOS 安装。
 
-当前版本 **v1.5.3**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-09-21 实测复核；工作区 1.5.3 基线 + 本轮代码清理改动未提交）。
+当前版本 **v1.5.3**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-09-21 实测复核；v1.5.3 已打 tag，SQLite 迁移三个提交已入库，工作区剩 5 个文件未提交——见 §6.3/§8）。
 
-治理进展：P1 组（P1-1 ~ P1-5）全部落地或部分落地；P2 组（P2-1 ~ P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。
+治理进展：P0-2 SQLite 迁移已落地（2026-09-21，提交 a72b8ff / 9e122d5 / 5dd373e）；P1 组（P1-1 ~ P1-5）全部落地或部分落地（P1-1 事件驱动调度已落地，提交 eab7688）；P2 组（P2-1 ~ P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。
 
-**总体判断**：项目主干功能完整、工程质量较高（分层清晰、测试齐全、契约规范），处于"功能已闭环、局部待打磨"阶段。真实待办集中在：store 持久化健壮性（定时备份/配置迁移/快照回滚）、ffprobe 运行时环境依赖、少数占位/防御性代码清理、以及文档同步滞后。
+**总体判断**：项目主干功能完整、工程质量较高（分层清晰、测试齐全、契约规范、SQLite 持久化落地），处于"功能已闭环、局部待打磨"阶段。真实待办集中在：store 定时备份/快照回滚（P1 TODO，方案评审稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 已出、代码待落地）、ffprobe 运行时环境依赖、覆盖率门槛上调、以及少数清理残留（server/build_err.txt 0 字节文件）。
 
 ### 1.1 代码规模（实测）
 
 | 维度 | 文件数 | 行数 | 说明 |
 |---|---|---|---|
-| Go 后端（非测试） | 49 | 13,107 | `server/` 根包 + `internal/` 11 包 + `logger/` + `smbshare/` |
-| Go 测试 | 38 | 6,208 | 含 e2e / 并发 / 迁移回归 |
-| TypeScript 前端 | 33 | 10,035 | `ui-src/src/` 全部页面与逻辑 |
-| **合计** | **120** | **29,350** | 不含 node_modules、构建产物、fpk 包 |
+| Go 后端（非测试） | 53 | 14,218 | `server/` 根包 + `internal/` 11 包 + `logger/` + `smbshare/`（2026-09-21 实测） |
+| Go 测试 | 43 | 6,853 | 含 e2e / 并发 / SQLite 迁移回归（sqlite_*_test.go 3 份） |
+| TypeScript 前端 | 33 | 10,315 | `ui-src/src/` 全部页面与逻辑（2026-09-21 实测） |
+| **合计** | **129** | **31,386** | 不含 node_modules、构建产物、fpk 包 |
 
 ### 1.2 构建产物与运行形态
 
@@ -52,12 +52,12 @@ D:\Fnos.VideoConversion\FVCC\
 │   │   ├── remote/            # FVCS 远程连接（WSS 数据面）与渲染分发（remote.go 42K、export.go）
 │   │   ├── scheduler/         # 任务调度（scheduler.go 46K/1268 行：队列分发、转码/编码锁、健康分、熔断）
 │   │   ├── security/          # 凭据加密/审计/网关鉴权/限流核心/路径校验（audit.go、crypto.go、gateway.go、smb_validate.go、ratelimit_core.go）
-│   │   ├── store/             # JSON 文件存储 + model 数据模型域（store.go、store_edl.go、store_proxy.go、trash.go、model/models.go 32K）
+│   │   ├── store/             # 持久化（P0-2 已迁 SQLite 主载体 + JSON 回退 + 内存索引 + Flush 批量落盘）：store.go、store_edl.go、store_proxy.go、trash.go、sqlite.go、sqlite_import.go、sqlite_load.go、sqlite_persist.go、model/models.go 32K
 │   │   ├── version/           # 版本信息（go:embed VERSION 单一来源）
 │   │   └── ws/                # WebSocket Hub 推送与限流（ws.go、ws_limit.go）
 │   ├── logger/                # 日志
 │   ├── smbshare/              # SMB 共享能力
-│   ├── temp/                  # 调试重定向残留（build*/commit*/fmt_out.txt 等，见 §6.4）
+│   ├── temp/                  # 调试重定向残留（2026-09-21 已清空，当前为空目录）
 │   └── go.mod / go.sum
 ├── ui-src/                    # 前端源码（Vite + TS，零框架 el() 手工 DOM）
 │   ├── src/
@@ -77,12 +77,14 @@ D:\Fnos.VideoConversion\FVCC\
 ├── cmd/                       # fnOS 应用生命周期脚本（install / upgrade / uninstall / config，各含 init/callback）
 ├── config/                    # fnOS 应用配置（privilege / resource）
 ├── app/                       # 前端构建产物（git 忽略，vite outDir）
-├── docs/                      # 项目内文档
+├── docs/                      # 项目内文档（7 份）
 │   ├── API_CONTRACT.md        # 前后端 API 契约（错误码、路由、载荷）
 │   ├── DESIGN.md              # 前端设计契约（Named Rules + check:design 门禁）
 │   ├── PRODUCT.md             # 产品定位与反参照
 │   ├── P2-1_后端分层_阶段A实施记录.md
-│   └── P2-2_细化细则.md
+│   ├── P2-2_细化细则.md
+│   ├── SECURITY.md            # 安全设计落地文档（2026-09-21 补写，消除 main.go/models.go 悬空引用，见 §6.3）
+│   └── STORE_PERSISTENCE_ROADMAP.md  # 持久化方案评审稿（SQLite 迁移已落地，剩余定时备份/快照回滚方案见 §8 步骤 4）
 ├── logs/                      # 运行时日志（git 忽略）
 ├── temp/                      # 打包 stage 目录（2026-09-21 已清理 15 个 fpk_stage* 与 fvcc-win-debug.exe，现仅剩 logs/，git 忽略）
 ├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.5.3）
@@ -109,7 +111,7 @@ D:\Fnos.VideoConversion\FVCC\
 | Web 框架 | gin-gonic/gin v1.12.0 |
 | WebSocket | gorilla/websocket v1.5.3 |
 | 间接依赖 | goccy/go-yaml、quic-go（gin http3 引入）、golang.org/x/crypto、mongo-driver v2（gin 直接 require） |
-| 存储 | JSON 文件原子写（settings.json / tasks.json / history_tasks.json / servers.json / profiles.json / projects.json 等）+ `credentials.db` 凭据库 + `_trash` 回收站目录 |
+| 存储 | SQLite 主载体（P0-2 已落地：modernc.org/sqlite v1.14.0 纯 Go 驱动，运行时 `fvcc.db`，12 张实体表 + schema v1 迁移链）+ JSON 文件回退（settings.json / tasks.json / history_tasks.json / servers.json / profiles.json / projects.json 等）+ `credentials.db` 凭据库（FVCS 侧运行产物）+ `_trash` 回收站目录 |
 | 网络形态 | 生产：fnOS 网关 Unix Socket；开发：TCP 127.0.0.1:8088，前缀 `/app/fvcc` |
 
 ### 3.2 前端（ui-src/）
@@ -130,7 +132,7 @@ D:\Fnos.VideoConversion\FVCC\
 | 项 | 内容 |
 |---|---|
 | 全量构建 | `D:\Fnos.VideoConversion\build.ps1 -Target FVCC`（前端 + 后端 + fnpack 打 fpk） |
-| CI | `.github/workflows/fvcc-ci.yml`（paths 限定 FVCC/**）+ `scripts/check-coverage.ps1`（覆盖率门槛 ≥55%，基线 56.1%） |
+| CI | `.github/workflows/fvcc-ci.yml`（paths 限定 FVCC/**）+ `scripts/check-coverage.ps1`（覆盖率门槛 ≥55%，口径修复后实测基线 56.7%，第十七轮） |
 | 版本单一来源 | `server/internal/version/VERSION`，构建时 `check-versions.ps1` 校验三处一致 |
 
 ---
@@ -142,7 +144,7 @@ D:\Fnos.VideoConversion\FVCC\
 | 模块 | 位置 | 职责 |
 |---|---|---|
 | **api** | `server/internal/api/` | HTTP 全部入口：handlers（settings/video/trash/servers/profiles/tasks/history/projects/render/edl）、router.go 路由挂载、stream.go 票据流、trash_handlers.go 回收站、ratelimit.go 限流、security_roots.go、aliases.go（P2-1 内联 shim 转发符号）、config.go 装配入口（NewHandlers / NewRouter） |
-| **store** | `server/internal/store/` | JSON 文件持久化（原子写）；EDL 项目（store_edl.go）、代理任务（store_proxy.go）、回收站（trash.go，删除移入 `_trash` 同名时间戳后缀）；`model/models.go` 数据模型域（32K，含 Task/Server/Profile/Settings/Project/EDLClip 等 40+ 类型） |
+| **store** | `server/internal/store/` | 持久化域（P0-2 已迁 SQLite 主载体 + JSON 回退 + 内存索引 + 脏标记 Flush 批量落盘）：store.go（核心 + 定时落盘）、sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go（SQLite 迁移四件套）、store_edl.go（EDL 项目）、store_proxy.go（代理任务）、trash.go（回收站，删除移入 `_trash` 同名时间戳后缀）；`model/models.go` 数据模型域（32K，含 Task/Server/Profile/Settings/Project/EDLClip 等 40+ 类型）；store.go:19 仍保留 `TODO(P1)`（定时备份/快照回滚，见 §8 步骤 4） |
 | **scheduler** | `server/internal/scheduler/` | 调度核心：任务队列分发（RENDER_EDL / GEN_PROXY 共用 dispatchRenderLike）、节点选机（resolveRenderNode）、转码锁 + 编码锁（同节点/同 checksum 互斥）、健康分与失败率记账（B-08）、熔断与 COOLDOWN、重试策略（failRenderTaskWithCooldown / failRenderTaskPermanent） |
 | **remote** | `server/internal/remote/` | 与 FVCS 渲染端的 WSS 数据面连接：Hello 能力上报（ParseHelloCaps）、进度推送消费、`RenderDispatcher` 接口（CreateRenderEDLWithTrace / CreateGenProxyWithTrace）、错误码归类（classifyRenderError） |
 | **ws** | `server/internal/ws/` | WebSocket Hub：任务进度广播、proxy_ready / node_status / snapshot 事件；限流（ws_limit.go）；SetClock / SetEmitHook 可注入 |
@@ -202,13 +204,13 @@ D:\Fnos.VideoConversion\FVCC\
 
 ## 6. 待办与缺口
 
-> 2026-09-21 复核：以下代码级 TODO 经全量关键词扫描确认；本轮已关闭 3 项（步骤 3 代码清理），其余仍存在。
+> 2026-09-21 复核：以下代码级 TODO 经全量关键词扫描确认；步骤 3 代码清理已关闭 3 项，其余仍存在；store.go:19 TODO(P1) 方案稿已出（见 §8 步骤 4）。
 
 ### 6.1 代码级真实 TODO（需开发处理）
 
 | 位置 | 内容 | 影响 | 建议 |
 |---|---|---|---|
-| `server/internal/store/store.go:19` | `TODO(P1)`：定时备份、配置迁移、快照回滚 | JSON 文件存储无备份机制，升级或误操作后不可回滚 | 高优先级：实现备份/迁移/快照三件套（见 §8 步骤 4） |
+| `server/internal/store/store.go:19` | `TODO(P1)`：定时备份、配置迁移、快照回滚 | SQLite 载体已落地但备份/回滚机制未实现，升级或误操作后仍不可回滚 | 方案评审稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 已出（2026-09-21），代码待评审后落地（见 §8 步骤 4） |
 | ~~`server/internal/scheduler/scheduler.go:487 / 667`~~ | ~~`checkUploadProgress` / `checkDownloadProgress` 为空操作占位~~ | ✅ 已清理（2026-09-21）：remote 进度协议 Stage 不含上传/下载阶段内进度，空函数已删除并注释说明进度来源 | — |
 | ~~`server/internal/scheduler/scheduler.go:828`~~ | ~~`TODO(B-06)` 注释：RenderDispatcher 未注入时保持 QUEUE~~ | ✅ 已清理（2026-09-21）：`main.go:170` 已注入 `scheduler.SetRenderDispatcher`，防注入死分支与过时注释已删除 | — |
 | `server/internal/store/model/models.go:463` | Transition 片段转场字段 P0 为 nil 仅占位固化 JSON 形状 | EDL 转场能力未启用，数据结构已预留 | 与 FVCS 渲染端同步评估转场支持（跨端特性，建议单独立项） |
@@ -226,7 +228,7 @@ D:\Fnos.VideoConversion\FVCC\
 
 | 项 | 现状 | 动作 |
 |---|---|---|
-| `FVCC/docs/SECURITY.md` | **不存在**（2026-09-20 复核仍缺），但 `server/internal/security/gateway.go` 注释引用 `docs/SECURITY.md` | 按 07 号安全设计规格补写（网关鉴权/凭据加密/审计/限流/路径约束） |
+| `FVCC/docs/SECURITY.md` | ✅ 已补写（2026-09-21，第十七轮步骤 5），消除 `server/main.go:205/207`、`models.go:158` 与 gateway.go 对 docs/SECURITY.md 的悬空引用 | 无需处理（内容覆盖网关鉴权/凭据加密/审计/限流/路径约束） |
 | `FVCC/README.md` 版本表 | 已更新至 **1.5.3**（2026-09-21），与工作区三处版本一致 | 无需处理 |
 | `FVCC/README.md` 目录树 | 已同步（2026-09-20 复核：已列 `ui-src/src/lib/` 速查与 `FVCC/docs/` 下 P2-1/P2-2 文档） | 无需处理 |
 | 上层 `docs/IMPROVEMENT_LOG.md` 等 | 与代码现状需定期核对（如 P2 状态表） | 纳入版本发布 checklist |
@@ -235,7 +237,7 @@ D:\Fnos.VideoConversion\FVCC\
 
 | 项 | 位置 | 说明 | 处置（2026-09-21） |
 |---|---|---|---|
-| 调试重定向残留 | `server/temp/` 下 `build*.txt` / `commit*.txt` / `fmt_out.txt` / `c2~c6.txt` 等 | 历史构建/提交重定向残留（含 0 字节与非 0 字节） | ✅ 已清理：`vet_err.txt`（0 字节空文件）已移入回收站；`build*/commit*/fmt_out.txt` / `c2~c6.txt` 等实测不存在 |
+| 调试重定向残留 | `server/temp/` 下 `build*.txt` / `commit*.txt` / `fmt_out.txt` / `c2~c6.txt` 等 | 历史构建/提交重定向残留（含 0 字节与非 0 字节） | ✅ 已清理：`vet_err.txt`（0 字节空文件）已移入回收站；`build*/commit*/fmt_out.txt` / `c2~c6.txt` 等实测不存在；实测 server/ 根现存 `build_err.txt` 0 字节空文件 1 个（旧文档误记为 vet_err.txt，登记混乱报告 P3-9 待清） |
 | CDP 调试缓存 | `temp/chrome-profile-9223/`、`temp/chrome-profile-9224/` | 调试用 Chrome 用户数据 | ✅ 实测不存在，无需清理 |
 | 打包 stage 残留 | `temp/fpk_stage/`、`fpk_stage_145/146/147/149/` 等 | 历史打包 stage 目录 | ✅ 已清理：15 个 `fpk_stage*` 目录已移入回收站 |
 | 调试脚本/二进制 | `temp/cdp-fine-test.mjs`、`cdp-real-test.mjs`、`fvcc-win-debug.exe`、`temp/repro-data/`、`temp/secret.key`、`temp/locks.json` | 调试期产物 | ✅ 已清理：`fvcc-win-debug.exe`（34.19MB）已移入回收站；`cdp-*.mjs` / `repro-data/` / `secret.key` / `locks.json` 实测不存在 |
@@ -247,11 +249,11 @@ D:\Fnos.VideoConversion\FVCC\
 | 项 | 说明 |
 |---|---|
 | P2-2 决策门 | 组件化收敛已达标（样板残留 0），渐进式框架（Svelte 5 试点）评估**未触发**，作为远期选项保留 |
-| CI 覆盖率门槛 | 当前 ≥55%（基线 56.1%），计划后续上调 60% |
+| CI 覆盖率门槛 | 当前 ≥55%（口径修复后实测基线 56.7%），计划后续上调 60%（P3-7） |
 
 ---
 
-## 7. 剪辑页功能改进可行性方案（实现状态：功能 1 已实现 3/4，功能 2 已完整实现，功能 3 已删除；工作区 1.5.3 未提交）
+## 7. 剪辑页功能改进可行性方案（实现状态：功能 1 已实现 3/4，功能 2 已完整实现，功能 3 已删除；2026-09-21 复核：1.5.3 已提交并打 tag v1.5.3，当前工作区为文档校准改动未提交）
 
 > 适用范围：`ui-src/src/pages/editor/`（剪辑编辑器，14 个 TS 模块）；功能 1/2 均为前端层改动，无架构性风险。
 > 现状标注（2026-09-21 代码核查）：功能 1「视频栏改造」**已实现 3/4**——标题半透明浮层（timeline.ts `buildClipEl` 内 titleBar `bg-black/55` 覆盖缩略图下缘）、删除时长信息（行内 label + 时长已移除，移入片段 tooltip）、随时间滚动指示条（`playBarByClip` + `updatePlayhead` 按播放比例覆盖 + 底部亮线）；**未实现**：视频/音频双栏（仍为单轨 v1，无 `{videoTracks,audioTracks}` 数据模型）。功能 2「ALT+滚轮 / 双指缩放时间轴」**已完整实现**——ALT+滚轮（timeline.ts `onWheel` 校验 `e.altKey`、±20%/格、锚点 ms 回正滚动）、双指捏合（`onPinchDown/Move/End` 两指距离比值驱动、中点锚定、`touch-action:pan-x`）、scale 状态入 editorStore（0.25~8、`setScale`、缩放百分比 chip）。
@@ -268,7 +270,7 @@ D:\Fnos.VideoConversion\FVCC\
 
 ## 8. 下一步开发步骤
 
-> 完成状态总览（2026-09-21 实测）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 / 5 部分完成**；**步骤 3 / 6 已完成（2026-09-21）**；**步骤 4 / 7 / 8 未动**。各步骤标题后〔〕内为实测状态标注。
+> 完成状态总览（2026-09-21 实测）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 部分完成**；**步骤 3 / 5 / 6 已完成（2026-09-21）**；**步骤 4 方案稿已出（代码待落地）**；**步骤 7 门禁修复已完成（覆盖率上调未达 60%，延续 P3-7）**；**步骤 8 未执行**。各步骤标题后〔〕内为实测状态标注。
 
 按"环境就绪 → 数据安全 → 代码清理 → 文档同步 → 质量门禁 → 端到端验收"顺序执行，每步含验收标准。
 
@@ -296,22 +298,19 @@ D:\Fnos.VideoConversion\FVCC\
 3. ✅ 已执行：placeholder 注释已更新为"空态兜底"。
 4. **验收（2026-09-21 通过）**：`go vet ./...` + `go test ./...` 全绿（11 包）；`npm run build` 通过；编辑器空态显示正常。
 
-### 步骤 4：实现 store 备份/配置迁移/快照回滚（P1 TODO，约 2~3 天，🔴 涉及数据写入，需先评审）〔❌ 未动：store 无 backup.go，P1 TODO 仍在〕
+### 步骤 4：实现 store 备份/配置迁移/快照回滚（P1 TODO，约 2~3 天，🔴 涉及数据写入，需先评审）〔🟡 方案稿已出（2026-09-21）：STORE_PERSISTENCE_ROADMAP.md 评审稿已写，代码未落地〕
 
-1. 在 `server/internal/store/` 新增 `backup.go`：
-   - 定时备份：每日/每周将 `settings.json`、`servers.json`、`profiles.json`、`tasks.json`、`projects.json` 等原子打包到授权根下 `_backup/`（时间戳后缀，保留最近 N 份）。
-   - 配置迁移：`model/models.go` 增加 `schema_version` 字段；启动时执行版本化 `migrate(from, to)` 迁移链。
-   - 快照回滚：新增管理接口（建议 `POST /admin/snapshot`、`POST /admin/restore`），restore 前自动先备份当前状态。
-2. 路由挂载到 `server/internal/api/router.go`；破坏性恢复操作接入 `security_audit.go` 的 `auditDestructive`（新增 `destructive.restore` 类型）。
+1. **方案评审稿已产出（2026-09-21，`FVCC/docs/STORE_PERSISTENCE_ROADMAP.md`）**，对齐 store.go:19 TODO(P1)，实施拆分 A（备份）→ B（迁移）→ C（回滚）→ D（收口）：
+   - 备份：定时（默认 30min）+ 关键写前 + 手动 `POST /api/store/backup`；zip 含 manifest（SHA-256 校验），定时备份保留 12 份；
+   - 迁移：`migrate.go` 版本化迁移链（From→To + Apply），幂等、迁移前自动备份、失败回滚；projects `SchemaVer=0→1` 收口为显式迁移；
+   - 快照回滚：`POST /api/store/restore` 整包恢复（禁止部分回滚），恢复后运行时态重置 QUEUE（同崩溃恢复语义），新增审计类型 `snapshot.restore`。
+2. 代码落地时路由挂载到 `server/internal/api/router.go`；破坏性恢复操作接入 `internal/security/audit.go` 的 `auditDestructive`。
 3. **验收**：模拟损坏 settings.json → 回滚快照恢复；连续 3 次备份仅保留最新 N 份；`go test ./...` 含备份/迁移/回滚单测。
 
-### 步骤 5：文档同步（约 0.5 天）〔⚠️ 部分完成：README 版本表/目录树已同步 1.5.3，FVCC/docs/SECURITY.md 未补写〕
+### 步骤 5：文档同步（约 0.5 天）〔✅ 已完成（2026-09-21）：README 版本表/目录树已同步 1.5.3，FVCC/docs/SECURITY.md 已补写〕
 
-1. 按 `WebVideoEditor_Design/07-安全校验与凭据管理细则.md` 补写 `FVCC/docs/SECURITY.md`（网关鉴权、requireAdmin、DPAPI 凭据、限流、审计、路径约束），消除 gateway.go 注释悬空引用。
-2. 更新 `FVCC/README.md`：
-   - 「版本号单一来源」表 1.4.4 → 1.5.3（✅ 已于 2026-09-21 同步）；
-   - 目录树补 `ui-src/src/lib/` 与 `FVCC/docs/` 下 P2-1/P2-2 文档（✅ 已同步）；
-   - 治理状态表追加本次变更记录。
+1. ✅ 已执行（2026-09-21 第十七轮）：按 `WebVideoEditor_Design/07-安全校验与凭据管理细则.md` 补写 `FVCC/docs/SECURITY.md`（网关鉴权、requireAdmin、DPAPI 凭据、限流、审计、路径约束），消除 `server/main.go:205/207`、`models.go:158`、gateway.go 注释悬空引用。
+2. ✅ 已执行（2026-09-21）：`FVCC/README.md`「版本号单一来源」表 1.4.4 → 1.5.3；目录树补 `ui-src/src/lib/` 与 `FVCC/docs/` 下 P2-1/P2-2 文档。README 非 docs/ 台账，治理状态记录统一维护于 `docs/IMPROVEMENT_LOG.md`。
 3. **验收**：README 三处版本与 `manifest` / `package.json` / `VERSION` 一致；`npm run check:design` 不回归。
 
 ### 步骤 6：清理低风险残留（约 0.5 天，🟡 删除类操作逐项确认）〔✅ 已完成（2026-09-21）〕
@@ -323,15 +322,15 @@ D:\Fnos.VideoConversion\FVCC\
 5. ✅ 已执行：历史 fpk 实测非 10 个（v1.4.0~v1.4.8 早已归档）；本轮 6 个 fpk（`FVCC_v1.4.9~v1.5.3_fnos_x86.fpk` + `fvcc.fpk` 副本）归档至根仓库 `archive/fpk/`，现完整收纳 v1.1.0~v1.5.3。
 6. **验收（2026-09-21 通过）**：删除全走回收站；`npm run build` 后 assets 无多余 hash 残留。
 
-### 步骤 7：质量门禁与 CI 上调（约 1 天）〔❌ 未动：覆盖率 56.1%/57.0% 未达 60%，门槛保持 55%〕
+### 步骤 7：质量门禁与 CI 上调（约 1 天）〔🟡 部分完成（2026-09-21 第十七轮）：check-coverage.ps1 口径 bug 已修复（`'.'`→`'./...'`，实测 56.7%），门槛 55% 保持，60% 上调延续（P3-7）〕
 
 1. 后端全量：`cd server && go build ./... && go vet ./... && go test ./...`（单测约 90s+，全绿为准）。
 2. 前端门禁：`cd ui-src && npm run check:design && npm run build`。
-3. 覆盖率：`scripts/check-coverage.ps1` 核对当前覆盖率；若 ≥60%，把 `.github/workflows/fvcc-ci.yml` 门槛从 55% 上调 60% 并提交。
+3. ✅ 已执行（2026-09-21 第十七轮）：修复 `check-coverage.ps1` 口径 bug（测试目标原为 `'.'` 仅主包导致恒 0%，改 `'./...'` 后实测 **56.7%**），55% 门槛 PASS（EXIT=0）；修复 flaky 测试 `TestP1EventDrivenQueueDispatch`（2s 超时等待事件 + 状态轮询断言，覆盖率模式连跑 5 次全绿）；`fvcc-ci.yml` 基线注释更新 56.1% → 56.7%。实测 56.7% < 60%，门槛不上调（P3-7 延续）。
 4. 全量打包回归：`D:\Fnos.VideoConversion\build.ps1 -Target FVCC` 产出新 fpk。
 5. **验收**：三项全绿；CI 流水线跑通；fpk 产出成功。
 
-### 步骤 8：端到端验收（约 1 天）〔❌ 未执行：IMPROVEMENT_LOG 无 v1.4.8/1.4.9 走查记录〕
+### 步骤 8：端到端验收（约 1 天）〔❌ 未执行：IMPROVEMENT_LOG 无 v1.5.3 全链路走查记录〕
 
 按以下闭环走查，每项需 WS 实时进度可观察：
 1. **素材→转码**：扫描目录 → probe 真实数据 → 创建转码任务 → 调度下发 FVCS → RUNNING → 完成 → 历史记录落库。
@@ -346,7 +345,7 @@ D:\Fnos.VideoConversion\FVCC\
 ## 附：调查证据索引
 
 - 目录树：`D:\Fnos.VideoConversion\FVCC`（深度 3 递归扫描，2026-09-20）
-- 代码规模：Go 87 文件 / 19,315 行（含测试 38 文件 / 6,208 行）；TS 33 文件 / 10,035 行
+- 代码规模：Go 96 文件 / 21,071 行（含测试 43 文件 / 6,853 行）；TS 33 文件 / 10,315 行（2026-09-21 实测）
 - 版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = 1.5.3（2026-09-21 复核；2026-09-20 实测为 1.4.9）
 - TODO 扫描：`server/`、`ui-src/src/`、`cmd/` 全量关键词扫描（TODO/FIXME/未完成/占位/stub）
 - 关键文件：`server/main.go`、`server/internal/api/router.go`、`server/internal/scheduler/scheduler.go`、`server/internal/store/store.go`、`ui-src/src/main.ts`、`ui-src/src/store.ts`、`ui-src/src/api.ts`、`ui-src/src/pages/editor/*.ts`

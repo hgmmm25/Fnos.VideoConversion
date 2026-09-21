@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 839b5d1d4fff15220193598838e6072d_bace8b0fb59411f183e7525400de85a5
+    ReservedCode1: Doos8W1RmCRrBGJz7mRU7ksKJcD7CjfkazbSHt9J2dQgLecaCHWRrMnYD10+YIp1XGPncP8I8pD3bRdVFkNyjq2hkoa9HX249VP6a4j7mQnhNwWgnhlEjV7hgT2VcBzKaLB7UA6EQA0Cjhscj1V4TVtsybNmwYHKDqj60+jSttPRpaUTlzXCm1CrmOc=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 839b5d1d4fff15220193598838e6072d_bace8b0fb59411f183e7525400de85a5
+    ReservedCode2: Doos8W1RmCRrBGJz7mRU7ksKJcD7CjfkazbSHt9J2dQgLecaCHWRrMnYD10+YIp1XGPncP8I8pD3bRdVFkNyjq2hkoa9HX249VP6a4j7mQnhNwWgnhlEjV7hgT2VcBzKaLB7UA6EQA0Cjhscj1V4TVtsybNmwYHKDqj60+jSttPRpaUTlzXCm1CrmOc=
+---
+
 # FVCC 数据面安全策略
 
 > 依据《WebVideoEditor_Design/07-安全校验与凭据管理细则.md》补写（2026-09-21），消除 `server/main.go` 等注释对 `docs/SECURITY.md` 的悬空引用。
@@ -112,3 +123,4 @@
 安全自测用例（S1~S15）见 07 §8，覆盖路径穿越、注入、载荷上限、权限、票据、重名、符号链接等；实现位置：`server/internal/edl/edl_validate_test.go` 与 FVCS 侧 `pkg/protocol` 测试，两侧共用同一组测试向量保证规则一致。
 
 变更记录：2026-09-21 补写（消除 main.go:205/207 等悬空引用）。
+*（内容由AI生成，仅供参考）*

@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 839b5d1d4fff15220193598838e6072d_c06a2440b59411f1a816525400cd780f
+    ReservedCode1: oEkUmjrYEGuJydCtfyuk6gwLj9nyOdvlXMaX6tDS6FovoQR8HI13eO4tHJKR3xNZiQ9SuTGGIMVREB6IGlGY9pq26ya4oHsnVl9NPfjUgOlaL97MIuEgBkvBC+Y+qvA8JQ9YjmwvucVoqmbyCEPlV583T8X44CcOqdDh7BTx32I+Cr/PuxYwd61Gw3g=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 839b5d1d4fff15220193598838e6072d_c06a2440b59411f1a816525400cd780f
+    ReservedCode2: oEkUmjrYEGuJydCtfyuk6gwLj9nyOdvlXMaX6tDS6FovoQR8HI13eO4tHJKR3xNZiQ9SuTGGIMVREB6IGlGY9pq26ya4oHsnVl9NPfjUgOlaL97MIuEgBkvBC+Y+qvA8JQ9YjmwvucVoqmbyCEPlV583T8X44CcOqdDh7BTx32I+Cr/PuxYwd61Gw3g=
+---
+
 # FVCC Store 持久化健壮性方案（备份 / 迁移 / 快照回滚）
 
 > 依据《FVCC_项目现状与开发步骤.md》§8 步骤 4 编制（2026-09-21）。本轮为**方案评审稿**，未动高优先级代码；评审通过后按实施阶段拆分落地。
@@ -93,3 +104,4 @@
 4. 手动备份接口是否需前端入口（当前仅 API）。
 
 变更记录：2026-09-21 方案评审稿（未落地代码）。
+*（内容由AI生成，仅供参考）*

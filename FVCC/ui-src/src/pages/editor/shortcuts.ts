@@ -1,5 +1,6 @@
 // C-10：快捷键注册表（01 §6 全表）
 // Space 播放/暂停（输入框聚焦除外） · I/O 打点 · ←/→ ∓1 帧 · Shift+←/→ ∓1s
+// J 快退 / K 播放暂停 / L 快进（PR 惯例：同向 2x→3x→4x，最大 4x）
 // ,/. 入点 ∓1 帧 / 出点 ±1 帧 · Backspace/Delete 删除选中片段 · Ctrl+S 保存
 // Ctrl+Enter 渲染导出 · Ctrl+Z / Ctrl+Shift+Z 撤销/重做 · Esc 关闭抽屉/取消拖拽
 import { frameDeltaMs } from './format'
@@ -87,6 +88,21 @@ export function bindEditorShortcuts(opts: ShortcutOptions): () => void {
       case ' ':
         e.preventDefault()
         preview.toggle()
+        return
+      case 'j':
+      case 'J':
+        e.preventDefault()
+        preview.shuttle(-1)
+        return
+      case 'k':
+      case 'K':
+        e.preventDefault()
+        preview.toggle()
+        return
+      case 'l':
+      case 'L':
+        e.preventDefault()
+        preview.shuttle(1)
         return
       case 'i':
       case 'I':

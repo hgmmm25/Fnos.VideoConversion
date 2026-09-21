@@ -40,6 +40,8 @@ export interface PreviewController {
   play(): void
   pause(): void
   toggle(): void
+  /** 变速播放（PR 惯例）：dir=-1 快退 / 1 快进 / 0 停止；同向按 2x→3x→4x 递增 */
+  shuttle(dir: -1 | 0 | 1): void
   /** 运行时切换静音（设置变更 / 外部联动） */
   setMuted(muted: boolean): void
   /** 当前是否静音 */
@@ -141,14 +143,90 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
   const nextFrame = stepBtn('+1帧', 0, '下一帧（→）')
   const fwd1 = stepBtn('+1s', 1000, '前进 1 秒')
   const fwd5 = stepBtn('+5s', 5000, '前进 5 秒')
-  const muteBtn = el('button', { class: 'btn btn-sm' }, ['取消静音']) as HTMLButtonElement
+
+  // ===== 变速播放（PR 惯例 J/K/L）：同向 2x→3x→4x，最大 4x；反向重置回 1 档 =====
+  const SHUTTLE_RATES = [1, 2, 3, 4]
+  let shuttleDir: -1 | 0 | 1 = 0
+  let shuttleLevel = 0
+  let scrubTimer: number | null = null
+  const rewindBtn = el('button', { class: 'btn btn-sm flex items-center', title: '快退（J）：2x → 3x → 4x' }) as HTMLButtonElement
+  const ffBtn = el('button', { class: 'btn btn-sm flex items-center', title: '快进（L）：2x → 3x → 4x' }) as HTMLButtonElement
+  function syncShuttleBtns(): void {
+    rewindBtn.innerHTML = ''
+    rewindBtn.append(svgIcon('rewind', 14) as unknown as Node)
+    ffBtn.innerHTML = ''
+    ffBtn.append(svgIcon('fast-forward', 14) as unknown as Node)
+    const b = shuttleDir < 0 ? rewindBtn : shuttleDir > 0 ? ffBtn : null
+    if (b && shuttleLevel > 0) {
+      b.append(el('span', { class: 'text-xs leading-none font-mono' }, [SHUTTLE_RATES[shuttleLevel] + 'x']))
+    }
+  }
+  rewindBtn.onclick = () => shuttle(-1)
+  ffBtn.onclick = () => shuttle(1)
+  function stopSeekScrub(): void {
+    if (scrubTimer !== null) {
+      clearInterval(scrubTimer)
+      scrubTimer = null
+    }
+  }
+  function startSeekScrub(): void {
+    stopSeekScrub()
+    // 负速率不可用（如 Safari）时的降级：每 250ms 向后跳 速率×250ms，模拟倒放
+    scrubTimer = window.setInterval(() => {
+      const delta = SHUTTLE_RATES[shuttleLevel] * 250
+      seekMs(currentMs() + (shuttleDir < 0 ? -delta : delta))
+    }, 250)
+  }
+  function resetShuttle(): void {
+    shuttleDir = 0
+    shuttleLevel = 0
+    stopSeekScrub()
+    try {
+      video.playbackRate = 1
+    } catch {
+      /* 忽略 */
+    }
+    syncShuttleBtns()
+  }
+  function applyShuttle(): void {
+    stopSeekScrub()
+    const target = shuttleDir * SHUTTLE_RATES[shuttleLevel]
+    let ok = false
+    try {
+      video.playbackRate = target
+      // 负速率支持检测：立即回读，未生效则降级 seek 模拟
+      ok = target > 0 ? video.playbackRate === target : video.playbackRate <= 0
+    } catch {
+      ok = false
+    }
+    if (!ok && target < 0) startSeekScrub()
+    syncShuttleBtns()
+  }
+  function shuttle(dir: -1 | 0 | 1): void {
+    if (!asset) return
+    if (dir === 0) {
+      resetShuttle()
+      return
+    }
+    if (video.paused) void play()
+    if (shuttleDir === dir) shuttleLevel = Math.min(3, shuttleLevel + 1)
+    else {
+      shuttleDir = dir
+      shuttleLevel = 1
+    }
+    applyShuttle()
+  }
+  syncShuttleBtns()
+
+  const muteBtn = el('button', { class: 'btn btn-sm flex items-center' }) as HTMLButtonElement
   muteBtn.title = '静音开关'
   // 功能3（预览位）：最大化按钮 —— 铺满视口（再次点击 / Esc 还原）
   let previewFullscreen = false
-  const maxBtn = el('button', { class: 'btn btn-sm' }, ['最大化']) as HTMLButtonElement
+  const maxBtn = el('button', { class: 'btn btn-sm flex items-center' }) as HTMLButtonElement
   maxBtn.title = '最大化预览窗口'
   function syncMaxBtn() {
-    maxBtn.textContent = previewFullscreen ? '还原' : '最大化'
+    maxBtn.innerHTML = ''
+    maxBtn.append(svgIcon(previewFullscreen ? 'minimize' : 'maximize', 14) as unknown as Node)
     maxBtn.title = previewFullscreen ? '还原预览窗口' : '最大化预览窗口'
   }
   function setPreviewFullscreen(on: boolean): void {
@@ -166,7 +244,9 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
   }
   window.addEventListener('keydown', onEsc)
   function syncMuteBtn() {
-    muteBtn.textContent = video.muted ? '取消静音' : '静音'
+    muteBtn.innerHTML = ''
+    muteBtn.append(svgIcon(video.muted ? 'mute' : 'volume', 14) as unknown as Node)
+    muteBtn.title = video.muted ? '取消静音' : '静音'
   }
   function setMuted(muted: boolean) {
     video.muted = muted
@@ -184,7 +264,9 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
     back5,
     back1,
     prevFrame,
+    rewindBtn,
     playBtn,
+    ffBtn,
     nextFrame,
     fwd1,
     fwd5,
@@ -206,10 +288,11 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
 
   // ===== 打点区（C-06）=====
   const inBtn = el('button', { class: 'btn btn-sm', title: '设为入点（I）' }) as HTMLButtonElement
-  inBtn.textContent = '入点'
+  inBtn.textContent = '['
   const outBtn = el('button', { class: 'btn btn-sm', title: '设为出点（O）' }) as HTMLButtonElement
-  outBtn.textContent = '出点'
-  const clearBtn = el('button', { class: 'btn btn-sm' }, ['清除打点']) as HTMLButtonElement
+  outBtn.textContent = ']'
+  const clearBtn = el('button', { class: 'btn btn-sm flex items-center', title: '清除打点' }) as HTMLButtonElement
+  clearBtn.append(svgIcon('x', 14) as unknown as Node)
   const addBtn = el('button', { class: 'btn btn-sm btn-primary' }, ['添加到时间线']) as HTMLButtonElement
   const marksText = el('span', { class: 'text-xs text-ink-muted font-mono' }, ['入 --:--:--.--- · 出 --:--:--.---'])
 
@@ -511,11 +594,13 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
     setPlayIcon(false)
     stopRaf()
     tick()
+    resetShuttle()
   })
   video.addEventListener('ended', () => {
     setPlayIcon(false)
     stopRaf()
     tick()
+    resetShuttle()
   })
   video.addEventListener('error', () => {
     if (!asset) return
@@ -580,6 +665,7 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
     play,
     pause,
     toggle,
+    shuttle,
     setMuted,
     isMuted: () => video.muted,
     onTime(fn) {
