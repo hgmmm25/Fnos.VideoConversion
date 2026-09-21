@@ -1,9 +1,9 @@
 package store
 
 import (
-	"fvcc/internal/store/model"
 	"encoding/json"
 	"errors"
+	"fvcc/internal/store/model"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"fvcc/logger"
 	"fvcc/internal/security"
+	"fvcc/logger"
 )
 
 // Store 内存缓存 + 原子持久化的配置存储。
@@ -79,6 +79,22 @@ func (s *Store) Load() error {
 		return err
 	}
 	s.secretKey = key
+
+	// P0-2：打开 SQLite 载体并一次性导入存量 JSON（提交 2）。
+	// 采用短连接：导入完成即释放句柄（不长期持有），SQLite 不可用 / 导入失败
+	// 均不阻断启动（回退 JSON 持久化，下次启动重试）。提交 3 切换 persist 载体
+	// 时再评估连接生命周期（持久连接 or 短连接）。
+	if sq, err := openSQLite(s.dataDir); err != nil {
+		logger.Warn("store", "SQLite 不可用，回退 JSON 持久化: %v", err)
+	} else {
+		stats, impErr := importLegacyJSONLocked(sq, s.dataDir)
+		_ = sq.Close()
+		if impErr != nil {
+			logger.Error("store", "旧 JSON 导入 SQLite 失败: %v", impErr)
+		} else if stats.Imported {
+			logger.Info("store", "旧 JSON 导入 SQLite 完成: %s", stats.String())
+		}
+	}
 
 	// tasks.json 采用严格加载 + 列迁移（06 §2.2）：解析失败或版本过高直接拒绝启动，
 	// 禁止静默降级为"空任务列表"而丢失用户任务。
@@ -771,7 +787,7 @@ func (s *Store) SaveSettings(v model.Settings) {
 }
 
 func (s *Store) persistSettings() {
-	saveJSON(s.path("settings.json"), model.SettingsFile{Version: 1,Settings: security.EncryptSettingsForDisk(s.secretKey, s.settings)})
+	saveJSON(s.path("settings.json"), model.SettingsFile{Version: 1, Settings: security.EncryptSettingsForDisk(s.secretKey, s.settings)})
 }
 
 // ===== VideoCache =====
