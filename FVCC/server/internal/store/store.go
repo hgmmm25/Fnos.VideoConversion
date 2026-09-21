@@ -50,6 +50,15 @@ type Store struct {
 	// （降低 IO；锁/服务器/项目等低频敏感集合保持即时落盘）。
 	dirtyTasks   atomic.Bool
 	dirtyHistory atomic.Bool
+	// P0-2 提交 3：锁集合同样走脏标记 + Flush 合并落盘。锁是易失性状态
+	// （LockEntry 带过期时间），高频 Acquire/Release 逐次写 SQLite 短连接
+	// 在 scheduler 派发路径成本过高（每任务 4~5 次全量重写），改为 Flush 批量落盘；
+	// 崩溃丢失锁仅导致重新调度，无数据损坏语义。
+	dirtyLocks atomic.Bool
+	// P0-2 提交 3：SQLite 主载体门闩。Load 成功走 SQLite 读回后置 true，
+	// persist 才写 SQLite；JSON 回退模式（SQLite 不可用/导入失败）下 persist 写 JSON，
+	// 杜绝「SQLite 有新数据 + JSON 有旧数据」的两源分裂。
+	sqliteActive atomic.Bool
 	// 任务变更钩子（解锁后回调）：调度器经此钩子即时感知任务创建/状态变更，
 	// 驱动事件循环替代 1s tick 全量扫描。
 	taskHook func(taskID string, status model.TaskStatus)
@@ -80,22 +89,31 @@ func (s *Store) Load() error {
 	}
 	s.secretKey = key
 
-	// P0-2：打开 SQLite 载体并一次性导入存量 JSON（提交 2）。
-	// 采用短连接：导入完成即释放句柄（不长期持有），SQLite 不可用 / 导入失败
-	// 均不阻断启动（回退 JSON 持久化，下次启动重试）。提交 3 切换 persist 载体
-	// 时再评估连接生命周期（持久连接 or 短连接）。
-	if sq, err := openSQLite(s.dataDir); err != nil {
-		logger.Warn("store", "SQLite 不可用，回退 JSON 持久化: %v", err)
-	} else {
+	// P0-2 提交 3：SQLite 主路径——打开载体 → 存量 JSON 导入 → 从 SQLite 读回内存。
+	// 任一环节失败回退 JSON 路径（保持提交 2 之前的加载行为）。连接均为短连接，
+	// 不长期持有句柄；SQLite 读回成功才置 sqliteActive（persist 写 SQLite 的门闩）。
+	if sq, err := openSQLite(s.dataDir); err == nil {
 		stats, impErr := importLegacyJSONLocked(sq, s.dataDir)
-		_ = sq.Close()
-		if impErr != nil {
-			logger.Error("store", "旧 JSON 导入 SQLite 失败: %v", impErr)
-		} else if stats.Imported {
-			logger.Info("store", "旧 JSON 导入 SQLite 完成: %s", stats.String())
+		if impErr == nil {
+			if stats.Imported {
+				logger.Info("store", "旧 JSON 导入 SQLite 完成: %s", stats.String())
+			}
+			if loadErr := s.loadAllFromSQLiteLocked(sq); loadErr != nil {
+				_ = sq.Close()
+				return loadErr
+			}
+			_ = sq.Close()
+			s.sqliteActive.Store(true)
+			s.postLoadLocked()
+			return nil
 		}
+		logger.Error("store", "旧 JSON 导入 SQLite 失败，回退 JSON 持久化: %v", impErr)
+		_ = sq.Close()
+	} else {
+		logger.Warn("store", "SQLite 不可用，回退 JSON 持久化: %v", err)
 	}
 
+	// ===== JSON 回退路径（SQLite 不可用 / 导入失败时保持既有行为）=====
 	// tasks.json 采用严格加载 + 列迁移（06 §2.2）：解析失败或版本过高直接拒绝启动，
 	// 禁止静默降级为"空任务列表"而丢失用户任务。
 	if err := s.loadTasksLocked(); err != nil {
@@ -109,6 +127,19 @@ func (s *Store) Load() error {
 	s.videoCache = loadJSON[model.VideoCacheFile](s.path("video_cache.json"), model.VideoCacheFile{Version: 1, Entries: []model.VideoInfoCache{}}).Entries
 	// B-01 新增集合（06 §2.1）：不存在时按空集合初始化，不阻断启动。
 	s.projects = loadJSON[model.ProjectsFile](s.path("projects.json"), model.ProjectsFile{Version: 1, Projects: []model.Project{}}).Projects
+	s.nodeCaps = loadJSON[model.NodeCapsFile](s.path("node_caps.json"), model.NodeCapsFile{Version: 1, Items: []model.NodeCaps{}}).Items
+	s.healthSamples = loadJSON[model.NodeHealthFile](s.path("node_health_samples.json"), model.NodeHealthFile{Version: 1, Samples: []model.NodeHealthSample{}}).Samples
+	s.auditLog = loadJSON[model.AuditLogFile](s.path("audit_log.json"), model.AuditLogFile{Version: 1, Entries: []model.AuditEntry{}}).Entries
+	// M4 新增集合（04 §4.2）：不存在时按空集合初始化，不阻断启动。
+	s.assetProxies = loadJSON[model.AssetProxiesFile](s.path("asset_proxies.json"), model.AssetProxiesFile{Version: 1, Items: []model.AssetProxy{}}).Items
+
+	s.postLoadLocked()
+	return nil
+}
+
+// postLoadLocked 加载完成后的公共收尾：project 派生字段重算、崩溃恢复（运行中任务重置
+// QUEUE）、内存索引重建与加载统计。JSON 回退路径与 SQLite 主路径共用（需持 s.mu）。
+func (s *Store) postLoadLocked() {
 	// 派生字段不落盘（03 §2.2）：加载后统一重算，并补齐 schema_ver 缺省（03 §7）。
 	for i := range s.projects {
 		if s.projects[i].SchemaVer == 0 {
@@ -116,12 +147,6 @@ func (s *Store) Load() error {
 		}
 		normalizeProject(&s.projects[i])
 	}
-	s.nodeCaps = loadJSON[model.NodeCapsFile](s.path("node_caps.json"), model.NodeCapsFile{Version: 1, Items: []model.NodeCaps{}}).Items
-	s.healthSamples = loadJSON[model.NodeHealthFile](s.path("node_health_samples.json"), model.NodeHealthFile{Version: 1, Samples: []model.NodeHealthSample{}}).Samples
-	s.auditLog = loadJSON[model.AuditLogFile](s.path("audit_log.json"), model.AuditLogFile{Version: 1, Entries: []model.AuditEntry{}}).Entries
-	// M4 新增集合（04 §4.2）：不存在时按空集合初始化，不阻断启动。
-	s.assetProxies = loadJSON[model.AssetProxiesFile](s.path("asset_proxies.json"), model.AssetProxiesFile{Version: 1, Items: []model.AssetProxy{}}).Items
-
 	// 启动崩溃恢复：非终态的中断任务重置为 QUEUE
 	for i := range s.tasks {
 		t := &s.tasks[i]
@@ -168,7 +193,6 @@ func (s *Store) Load() error {
 	logger.Info("store", "loaded: tasks=%d history=%d servers=%d profiles=%d locks=%d projects=%d nodeCaps=%d healthSamples=%d audit=%d proxies=%d",
 		len(s.tasks), len(s.history), len(s.servers), len(s.profiles), len(s.locks),
 		len(s.projects), len(s.nodeCaps), len(s.healthSamples), len(s.auditLog), len(s.assetProxies))
-	return nil
 }
 
 // ===== Tasks =====
@@ -512,7 +536,7 @@ func (s *Store) DeleteServer(id string) bool {
 				}
 			}
 			s.persistServers()
-			s.persistLocks()
+			s.markLocksDirty()
 			return true
 		}
 	}
@@ -602,7 +626,7 @@ func (s *Store) AcquireTransLock(serverID, taskID string, expireSec int) bool {
 				}
 			}
 			s.locks[i].TransLock = &model.LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)}
-			s.persistLocks()
+			s.markLocksDirty()
 			return true
 		}
 	}
@@ -611,7 +635,7 @@ func (s *Store) AcquireTransLock(serverID, taskID string, expireSec int) bool {
 		ServerID:  serverID,
 		TransLock: &model.LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)},
 	})
-	s.persistLocks()
+	s.markLocksDirty()
 	return true
 }
 
@@ -627,7 +651,7 @@ func (s *Store) AcquireCodeLock(serverID, taskID string, expireSec int) bool {
 				}
 			}
 			s.locks[i].CodeLock = &model.LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)}
-			s.persistLocks()
+			s.markLocksDirty()
 			return true
 		}
 	}
@@ -635,7 +659,7 @@ func (s *Store) AcquireCodeLock(serverID, taskID string, expireSec int) bool {
 		ServerID: serverID,
 		CodeLock: &model.LockEntry{TaskID: taskID, LockExpireAt: time.Now().Add(time.Duration(expireSec) * time.Second)},
 	})
-	s.persistLocks()
+	s.markLocksDirty()
 	return true
 }
 
@@ -646,7 +670,7 @@ func (s *Store) ReleaseTransLock(serverID, taskID string) {
 	for i := range s.locks {
 		if s.locks[i].ServerID == serverID && s.locks[i].TransLock != nil && s.locks[i].TransLock.TaskID == taskID {
 			s.locks[i].TransLock = nil
-			s.persistLocks()
+			s.markLocksDirty()
 			return
 		}
 	}
@@ -659,7 +683,7 @@ func (s *Store) ReleaseCodeLock(serverID, taskID string) {
 	for i := range s.locks {
 		if s.locks[i].ServerID == serverID && s.locks[i].CodeLock != nil && s.locks[i].CodeLock.TaskID == taskID {
 			s.locks[i].CodeLock = nil
-			s.persistLocks()
+			s.markLocksDirty()
 			return
 		}
 	}
@@ -670,15 +694,20 @@ func (s *Store) SweepExpiredLocks() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
+	changed := false
 	for i := range s.locks {
 		if s.locks[i].TransLock != nil && !now.Before(s.locks[i].TransLock.LockExpireAt) {
 			s.locks[i].TransLock = nil
+			changed = true
 		}
 		if s.locks[i].CodeLock != nil && !now.Before(s.locks[i].CodeLock.LockExpireAt) {
 			s.locks[i].CodeLock = nil
+			changed = true
 		}
 	}
-	s.persistLocks()
+	if changed {
+		s.markLocksDirty()
+	}
 }
 
 // ReleaseAllLocks 释放所有锁（程序退出时调用）。
@@ -689,7 +718,7 @@ func (s *Store) ReleaseAllLocks() {
 		s.locks[i].TransLock = nil
 		s.locks[i].CodeLock = nil
 	}
-	s.persistLocks()
+	s.markLocksDirty()
 }
 
 // ===== P1-1：内存索引 + 事件钩子 + 定时落盘（2026-09-21）=====
@@ -732,42 +761,98 @@ func (s *Store) fireTaskChange(taskID string, status model.TaskStatus) {
 // markTasksDirty 标记任务集合待落盘（P1-1 定时落盘：高频状态变更不再逐次写盘）。
 func (s *Store) markTasksDirty()   { s.dirtyTasks.Store(true) }
 func (s *Store) markHistoryDirty() { s.dirtyHistory.Store(true) }
+func (s *Store) markLocksDirty()   { s.dirtyLocks.Store(true) }
 
 // Flush 将脏标记的 tasks/history 立即落盘（调度器定时触发与优雅退出时调用）。
 // 无脏数据时直接返回，不产生任何 IO。
+// P0-2 提交 3：SQLite 主模式下合并为单事务（tasks + history 同一次提交）；
+// 非主模式 / SQLite 不可用时分别回退 JSON（与提交 2 之前行为一致）。
 func (s *Store) Flush() {
-	if !s.dirtyTasks.Load() && !s.dirtyHistory.Load() {
+	if !s.dirtyTasks.Load() && !s.dirtyHistory.Load() && !s.dirtyLocks.Load() {
 		return
 	}
 	s.mu.Lock()
-	if s.dirtyTasks.Load() {
-		s.persistTasks()
+	defer s.mu.Unlock()
+	tDirty, hDirty, lDirty := s.dirtyTasks.Load(), s.dirtyHistory.Load(), s.dirtyLocks.Load()
+	if !tDirty && !hDirty && !lDirty {
+		return
+	}
+	if s.sqliteActive.Load() {
+		if sq, err := openSQLite(s.dataDir); err != nil {
+			logger.Warn("store", "Flush: SQLite 不可用，回退 JSON: %v", err)
+			if tDirty {
+				s.fallbackTasksJSON()
+			}
+			if hDirty {
+				s.fallbackHistoryJSON()
+			}
+			if lDirty {
+				s.fallbackLocksJSON()
+			}
+		} else {
+			werr := flushSQLiteTx(sq, s, tDirty, hDirty, lDirty)
+			sq.Close()
+			if werr != nil {
+				logger.Warn("store", "Flush: SQLite 事务写入失败，回退 JSON: %v", werr)
+				if tDirty {
+					s.fallbackTasksJSON()
+				}
+				if hDirty {
+					s.fallbackHistoryJSON()
+				}
+				if lDirty {
+					s.fallbackLocksJSON()
+				}
+			}
+		}
+	} else {
+		if tDirty {
+			s.fallbackTasksJSON()
+		}
+		if hDirty {
+			s.fallbackHistoryJSON()
+		}
+		if lDirty {
+			s.fallbackLocksJSON()
+		}
+	}
+	if tDirty {
 		s.dirtyTasks.Store(false)
 	}
-	if s.dirtyHistory.Load() {
-		s.persistHistory()
+	if hDirty {
 		s.dirtyHistory.Store(false)
 	}
-	s.mu.Unlock()
+	if lDirty {
+		s.dirtyLocks.Store(false)
+	}
 }
 
 // ===== 持久化 =====
 
 func (s *Store) path(name string) string { return filepath.Join(s.dataDir, name) }
 
+// P0-2 提交 3：persist 层以 SQLite 为优先载体（keyed/seq 表全量替换，语义同 saveJSON），
+// 仅当非主模式（Load 回退 JSON）或 SQLite 不可用/写入失败时回退 JSON 文件。
 func (s *Store) persistTasks() {
-	saveJSON(s.path("tasks.json"), model.TasksFile{Version: StoreSchemaVersion, Tasks: s.tasks})
+	s.persistKeyed("tasks", keyedRows(s.tasks, func(t model.Task) string { return t.ID }), s.fallbackTasksJSON)
 }
 func (s *Store) persistHistory() {
-	saveJSON(s.path("history_tasks.json"), model.HistoryFile{Version: 1, Tasks: s.history})
+	s.persistKeyed("history_tasks", keyedRows(s.history, func(t model.Task) string { return t.ID }), s.fallbackHistoryJSON)
 }
 func (s *Store) persistServers() {
-	saveJSON(s.path("server.json"), model.ServersFile{Version: 1, Servers: security.EncryptServersForDisk(s.secretKey, s.servers)})
+	enc := security.EncryptServersForDisk(s.secretKey, s.servers)
+	s.persistKeyed("servers", keyedRows(enc, func(v model.Server) string { return v.ID }), func() {
+		saveJSON(s.path("server.json"), model.ServersFile{Version: 1, Servers: enc})
+	})
 }
 func (s *Store) persistProfiles() {
-	saveJSON(s.path("transcode_profile.json"), model.ProfilesFile{Version: 1, Profiles: s.profiles})
+	s.persistKeyed("profiles", keyedRows(s.profiles, func(v model.Profile) string { return v.ID }), func() {
+		saveJSON(s.path("transcode_profile.json"), model.ProfilesFile{Version: 1, Profiles: s.profiles})
+	})
 }
-func (s *Store) persistLocks() {
+
+// fallbackLocksJSON 写 locks.json（Flush 回退路径：非主模式 / SQLite 不可用 / 写失败）。
+func (s *Store) fallbackLocksJSON() {
 	saveJSON(s.path("locks.json"), model.LocksFile{Version: 1, Locks: s.locks})
 }
 
@@ -787,7 +872,10 @@ func (s *Store) SaveSettings(v model.Settings) {
 }
 
 func (s *Store) persistSettings() {
-	saveJSON(s.path("settings.json"), model.SettingsFile{Version: 1, Settings: security.EncryptSettingsForDisk(s.secretKey, s.settings)})
+	enc := security.EncryptSettingsForDisk(s.secretKey, s.settings)
+	s.persistKeyed("settings", keyedRows([]model.Settings{enc}, func(model.Settings) string { return "default" }), func() {
+		saveJSON(s.path("settings.json"), model.SettingsFile{Version: 1, Settings: enc})
+	})
 }
 
 // ===== VideoCache =====
@@ -846,7 +934,9 @@ func (s *Store) GetVideoCacheCount() int {
 }
 
 func (s *Store) persistVideoCache() {
-	saveJSON(s.path("video_cache.json"), model.VideoCacheFile{Version: 1, Entries: s.videoCache})
+	s.persistKeyed("video_cache", keyedRows(s.videoCache, func(v model.VideoInfoCache) string { return v.Path }), func() {
+		saveJSON(s.path("video_cache.json"), model.VideoCacheFile{Version: 1, Entries: s.videoCache})
+	})
 }
 
 // loadJSON 从文件加载 JSON，不存在或解析失败时返回默认值。

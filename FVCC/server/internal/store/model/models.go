@@ -121,20 +121,20 @@ type Task struct {
 	// ===== B-01：tasks 表列迁移（06 §2.2）=====
 	// 说明：06 文档中的 next_retry_at / attempt 两列复用既有字段 CoolDownUntil / RetryCount，
 	// 避免同一语义出现双份字段；其余列按下述字段一一对应。
-	TaskType        TaskType  `json:"taskType,omitempty"`        // TRANSCODE(默认)|RENDER_EDL|GEN_PROXY
-	ProjectID       string    `json:"projectId,omitempty"`       // RenderEDL 关联项目 ID
-	ProjectRev      int       `json:"projectRev,omitempty"`      // 提交时刻的项目版本（冻结，03 §4.3）
-	PayloadJSON     string    `json:"payloadJson,omitempty"`     // 下发载荷快照（审计与重试依据）
-	Checksum        string    `json:"checksum,omitempty"`        // 幂等键（clips+profile 规范化 sha256 前 16 位）
-	CredentialID    string    `json:"credentialId,omitempty"`    // 渲染节点凭据档案键（07 §5，替代明文 SMB 口令）
-	Stage           string    `json:"stage,omitempty"`           // prepare|segment|concat|mux|finalize
-	SegIndex        int       `json:"segIndex,omitempty"`        // 当前分段序号（1-based，0=未开始）
-	SegTotal        int       `json:"segTotal,omitempty"`        // 分段总数
-	TotalMs         int64     `json:"totalMs,omitempty"`         // Σ(outMs-inMs)，段级进度加权基准
-	FastCopyAllowed bool      `json:"fastCopyAllowed,omitempty"` // 同源直通预判（05 §3.1，提交侧计算，仅展示）
-	OutTimeMs       int64     `json:"outTimeMs,omitempty"`       // 最近一次进度上报的输出时间（毫秒）
-	Speed           string    `json:"speed,omitempty"`           // 最近一次上报的 ffmpeg 倍速
-	CooldownReason  string    `json:"cooldownReason,omitempty"`  // 冷却原因（对应 cooldown_reason；到期时间见 CoolDownUntil）
+	TaskType        TaskType `json:"taskType,omitempty"`        // TRANSCODE(默认)|RENDER_EDL|GEN_PROXY
+	ProjectID       string   `json:"projectId,omitempty"`       // RenderEDL 关联项目 ID
+	ProjectRev      int      `json:"projectRev,omitempty"`      // 提交时刻的项目版本（冻结，03 §4.3）
+	PayloadJSON     string   `json:"payloadJson,omitempty"`     // 下发载荷快照（审计与重试依据）
+	Checksum        string   `json:"checksum,omitempty"`        // 幂等键（clips+profile 规范化 sha256 前 16 位）
+	CredentialID    string   `json:"credentialId,omitempty"`    // 渲染节点凭据档案键（07 §5，替代明文 SMB 口令）
+	Stage           string   `json:"stage,omitempty"`           // prepare|segment|concat|mux|finalize
+	SegIndex        int      `json:"segIndex,omitempty"`        // 当前分段序号（1-based，0=未开始）
+	SegTotal        int      `json:"segTotal,omitempty"`        // 分段总数
+	TotalMs         int64    `json:"totalMs,omitempty"`         // Σ(outMs-inMs)，段级进度加权基准
+	FastCopyAllowed bool     `json:"fastCopyAllowed,omitempty"` // 同源直通预判（05 §3.1，提交侧计算，仅展示）
+	OutTimeMs       int64    `json:"outTimeMs,omitempty"`       // 最近一次进度上报的输出时间（毫秒）
+	Speed           string   `json:"speed,omitempty"`           // 最近一次上报的 ffmpeg 倍速
+	CooldownReason  string   `json:"cooldownReason,omitempty"`  // 冷却原因（对应 cooldown_reason；到期时间见 CoolDownUntil）
 	// ===== P2-1：可观测性（trace ID 贯穿任务全生命周期 + 耗时指标）=====
 	TraceID    string     `json:"traceId,omitempty"`    // 任务链路追踪 ID（下发到 FVCS 透传，跨端日志聚合）
 	StartedAt  *time.Time `json:"startedAt,omitempty"`  // 首次进入执行态（RUNNING/本地转码）时刻，nil=未开始
@@ -435,7 +435,7 @@ func DefaultSettings() Settings {
 		SMBPassword:            "",
 		LogLevel:               "INFO",
 		MaxLocalTranscodeCount: 1,
-		PlayerMuted:            BoolPtr(true), // 修复⑤：默认静音（保持既有行为）
+		PlayerMuted:            BoolPtr(true),    // 修复⑤：默认静音（保持既有行为）
 		VideoRoot:              "/media/videos",  // 03 §2.3
 		ExportRoot:             "/media/exports", // 03 §2.3（缺省可回落 SourceRoot/_exports）
 	}

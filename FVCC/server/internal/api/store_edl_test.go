@@ -2,15 +2,15 @@ package api
 
 // B-01 验收测试（06 §2 持久化模型）：
 //  1) 旧库（version 1，无 task_type）加载后列迁移成功且幂等，重启不改写文件；
-//  2) 损坏 / 更高版本的 tasks.json 拒绝启动（禁止静默降级）；
+//  2) 损坏 / 更高版本的遗留 tasks.json 不阻断 SQLite 启动（一次性迁移源，宽松导入 + 备份）；
 //  3) projects CRUD + rev 乐观锁 + 名称唯一；
 //  4) checksum 幂等查询（活动 / 成功）；
 //  5) node_caps 主键覆盖、健康采样裁剪、审计日志过滤。
 
 import (
-	"fvcc/internal/store"
 	"encoding/json"
 	"errors"
+	"fvcc/internal/store"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,23 +55,22 @@ func TestLoadMigratesLegacyTasksFile(t *testing.T) {
 		t.Fatalf("task_type 未迁移，期望 %q，实际 %q", TaskTypeTranscode, got.TaskType)
 	}
 
+	// P0-2 提交 3：SQLite 主模式下遗留 JSON 是一次性迁移源，Load 不再回写版本号。
+	// 遗留文件应保持原样（迁移只读），数据以 SQLite 为准。
 	path := filepath.Join(dir, "tasks.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("读取回写后的 tasks.json 失败: %v", err)
+		t.Fatalf("读取 tasks.json 失败: %v", err)
 	}
 	var f TasksFile
 	if err := json.Unmarshal(raw, &f); err != nil {
-		t.Fatalf("回写文件不可解析: %v", err)
+		t.Fatalf("遗留文件不可解析: %v", err)
 	}
-	if f.Version != store.StoreSchemaVersion {
-		t.Fatalf("文件版本未升级到 %d，实际 %d", store.StoreSchemaVersion, f.Version)
-	}
-	if f.Tasks[0].TaskType != TaskTypeTranscode {
-		t.Fatalf("回写文件中的 task_type 不正确: %q", f.Tasks[0].TaskType)
+	if f.Version != 1 {
+		t.Fatalf("遗留 tasks.json 不应被回写，版本应保持 1，实际 %d", f.Version)
 	}
 
-	// 重启幂等：二次 Load 不应再改写文件
+	// 重启幂等：二次 Load 不应改写文件，任务仍在
 	s2 := loadStore(t, dir)
 	if _, ok := s2.GetTask("task_legacy_1"); !ok {
 		t.Fatalf("二次加载后任务丢失")
@@ -81,27 +80,38 @@ func TestLoadMigratesLegacyTasksFile(t *testing.T) {
 		t.Fatalf("二次读取失败: %v", err)
 	}
 	if string(raw2) != string(raw) {
-		t.Fatalf("二次 Load 改写了 tasks.json，迁移非幂等")
+		t.Fatalf("二次 Load 改写了 tasks.json，迁移非只读")
 	}
 }
 
-func TestLoadRejectsCorruptTasksFile(t *testing.T) {
+func TestLoadToleratesCorruptLegacyTasksFile(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "tasks.json"), []byte("{ this is not json"), 0o644); err != nil {
 		t.Fatalf("准备损坏文件失败: %v", err)
 	}
+	// P0-2 提交 3：SQLite 主模式下遗留 JSON 仅为一次性迁移源，损坏不再阻断启动
+	// （宽松导入 + 整目录备份，现场保留），数据以 SQLite 为准。
 	s := NewStore(dir)
-	if err := s.Load(); err == nil {
-		t.Fatalf("损坏的 tasks.json 必须拒绝启动（禁止静默降级）")
+	if err := s.Load(); err != nil {
+		t.Fatalf("损坏的遗留 tasks.json 不应阻断 SQLite 启动: %v", err)
+	}
+	if _, ok := s.GetTask("any"); ok {
+		t.Fatalf("损坏遗留文件不应迁移出任务")
+	}
+	backupRoot := filepath.Join(dir, "backup")
+	entries, err := os.ReadDir(backupRoot)
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("损坏遗留文件应被备份到 backup/ 目录: err=%v n=%d", err, len(entries))
 	}
 }
 
-func TestLoadRejectsFutureTasksVersion(t *testing.T) {
+func TestLoadToleratesFutureLegacyTasksVersion(t *testing.T) {
 	dir := t.TempDir()
 	writeTasksFile(t, dir, TasksFile{Version: store.StoreSchemaVersion + 1, Tasks: []Task{}})
+	// P0-2 提交 3：同损坏语义，未来版本遗留 JSON 不阻断 SQLite 启动。
 	s := NewStore(dir)
-	if err := s.Load(); err == nil {
-		t.Fatalf("高于支持版本的任务文件必须拒绝启动")
+	if err := s.Load(); err != nil {
+		t.Fatalf("未来版本遗留 tasks.json 不应阻断 SQLite 启动: %v", err)
 	}
 }
 

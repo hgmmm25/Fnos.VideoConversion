@@ -16,12 +16,15 @@ import (
 )
 
 // persistAssetProxies 把内存中的代理映射落盘（写盘为副本，避免持锁 IO 过长）。
+// P0-2 提交 3：SQLite 主模式下写 asset_proxies 表；非主模式回退 JSON 文件。
 func (s *Store) persistAssetProxies() {
 	s.mu.RLock()
 	items := make([]model.AssetProxy, len(s.assetProxies))
 	copy(items, s.assetProxies)
 	s.mu.RUnlock()
-	saveJSON(s.path("asset_proxies.json"), model.AssetProxiesFile{Version: 1, Items: items})
+	s.persistKeyed("asset_proxies", keyedRows(items, func(v model.AssetProxy) string { return v.AssetKey }), func() {
+		saveJSON(s.path("asset_proxies.json"), model.AssetProxiesFile{Version: 1, Items: items})
+	})
 }
 
 // GetAssetProxies 返回全部代理映射（副本，供诊断/测试）。

@@ -6,8 +6,7 @@ package store
 //  3) checksum 内存索引：活动/成功任务按 checksum 定位，删除/变更后索引正确失效重建。
 
 import (
-	"os"
-	"strings"
+	"encoding/json"
 	"testing"
 
 	"fvcc/internal/store/model"
@@ -84,17 +83,30 @@ func TestP1StoreDirtyFlush(t *testing.T) {
 		t.Fatalf("Flush 后任务应落盘")
 	}
 
-	// 直接校验磁盘 JSON 内容为最新状态（绕过 Load 崩溃恢复对运行态的可见性干扰）
-	data, err := os.ReadFile(s.path("tasks.json"))
+	// 直接校验 SQLite 落盘内容为最新状态（P0-2 提交 3：主模式落 SQLite，
+	// 绕过 Load 崩溃恢复对运行态的可见性干扰）
+	sq, err := openSQLite(dir)
 	if err != nil {
-		t.Fatalf("读取 tasks.json 失败: %v", err)
+		t.Fatalf("openSQLite 失败: %v", err)
 	}
-	disk := string(data)
-	if !strings.Contains(disk, `"t1"`) || !strings.Contains(disk, `"TRANSCODING"`) {
-		t.Fatalf("落盘数据应为最新状态 TRANSCODING，实际: %s", disk)
+	defer sq.Close()
+	var data string
+	if err := sq.db.QueryRow(`SELECT data FROM tasks WHERE id='t1'`).Scan(&data); err != nil {
+		t.Fatalf("读取 SQLite tasks.t1 失败: %v", err)
 	}
-	if !strings.Contains(disk, `"progress": 10`) {
-		t.Fatalf("落盘数据应包含进度 10，实际: %s", disk)
+	var rec struct {
+		ID       string `json:"id"`
+		Status   string `json:"status"`
+		Progress int    `json:"progress"`
+	}
+	if err := json.Unmarshal([]byte(data), &rec); err != nil {
+		t.Fatalf("解析落盘数据失败: %v", err)
+	}
+	if rec.ID != "t1" || rec.Status != "TRANSCODING" {
+		t.Fatalf("落盘数据应为最新状态 TRANSCODING，实际: %s", data)
+	}
+	if rec.Progress != 10 {
+		t.Fatalf("落盘数据应包含进度 10，实际: %s", data)
 	}
 
 	// 无脏数据时 Flush 为 no-op（不产生 IO，返回即可）

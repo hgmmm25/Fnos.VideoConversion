@@ -15,12 +15,12 @@ package store
 // 后续若替换为 SQLite，仅需替换本文件的读写实现，上层调用签名保持不变。
 
 import (
-	"fvcc/internal/store/model"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"fvcc/internal/store/model"
 	"os"
 	"sort"
 	"strings"
@@ -216,16 +216,24 @@ func (s *Store) persistProjects() {
 		out[i].ClipCount = 0
 		out[i].TotalMs = 0
 	}
-	saveJSON(s.path("projects.json"), model.ProjectsFile{Version: 1, Projects: out})
+	s.persistKeyed("projects", keyedRows(out, func(v model.Project) string { return v.ID }), func() {
+		saveJSON(s.path("projects.json"), model.ProjectsFile{Version: 1, Projects: out})
+	})
 }
 func (s *Store) persistNodeCaps() {
-	saveJSON(s.path("node_caps.json"), model.NodeCapsFile{Version: 1, Items: s.nodeCaps})
+	s.persistKeyed("node_caps", keyedRows(s.nodeCaps, func(v model.NodeCaps) string { return v.ServerID }), func() {
+		saveJSON(s.path("node_caps.json"), model.NodeCapsFile{Version: 1, Items: s.nodeCaps})
+	})
 }
 func (s *Store) persistHealthSamples() {
-	saveJSON(s.path("node_health_samples.json"), model.NodeHealthFile{Version: 1, Samples: s.healthSamples})
+	s.persistSeq("node_health_samples", toAnySlice(s.healthSamples), func() {
+		saveJSON(s.path("node_health_samples.json"), model.NodeHealthFile{Version: 1, Samples: s.healthSamples})
+	})
 }
 func (s *Store) persistAuditLog() {
-	saveJSON(s.path("audit_log.json"), model.AuditLogFile{Version: 1, Entries: s.auditLog})
+	s.persistSeq("audit_log", toAnySlice(s.auditLog), func() {
+		saveJSON(s.path("audit_log.json"), model.AuditLogFile{Version: 1, Entries: s.auditLog})
+	})
 }
 
 // ===== Projects（06 §2.1，03 §2.2 / §4.2）=====

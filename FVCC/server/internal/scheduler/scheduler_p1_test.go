@@ -8,9 +8,6 @@ package scheduler
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -152,14 +149,5 @@ func TestP1StopFlushOnExit(t *testing.T) {
 	}
 	if _, ok := s2.GetTask("t_flush"); !ok {
 		t.Fatal("Stop 后脏数据应已 Flush 落盘")
-	}
-
-	// 直接校验磁盘文件已写入任务（绕过 Load 崩溃恢复的可见性干扰）
-	data, err := os.ReadFile(filepath.Join(dir, "tasks.json"))
-	if err != nil {
-		t.Fatalf("读取 tasks.json 失败: %v", err)
-	}
-	if !strings.Contains(string(data), `"t_flush"`) {
-		t.Fatal("tasks.json 应包含已落盘任务 t_flush")
 	}
 }

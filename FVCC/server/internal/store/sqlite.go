@@ -33,8 +33,8 @@ const schemaVersion = 1
 
 // migration 单步迁移：从 from 版本迁移到 to 版本（要求 to == from+1，线性链）。
 type migration struct {
-	from int
-	to   int
+	from  int
+	to    int
 	apply func(tx *sql.Tx) error
 }
 
@@ -47,16 +47,16 @@ var migrations = []migration{
 		apply: func(tx *sql.Tx) error {
 			// keyed 表：id TEXT PRIMARY KEY（单列 JSON）
 			keyed := []string{
-				"tasks",            // model.Task.ID
-				"history_tasks",    // model.Task.ID（保留最近 1000 条）
-				"servers",          // model.Server.ID
-				"profiles",         // model.Profile.ID
-				"locks",            // model.Lock.ServerID（每 server 一条，含传输锁/转码锁）
-				"settings",         // 单对象，固定 id='default'
-				"video_cache",      // model.VideoInfoCache.Path
-				"projects",         // model.Project.ID
-				"node_caps",        // model.NodeCaps.ServerID
-				"asset_proxies",    // model.AssetProxy.AssetKey
+				"tasks",         // model.Task.ID
+				"history_tasks", // model.Task.ID（保留最近 1000 条）
+				"servers",       // model.Server.ID
+				"profiles",      // model.Profile.ID
+				"locks",         // model.Lock.ServerID（每 server 一条，含传输锁/转码锁）
+				"settings",      // 单对象，固定 id='default'
+				"video_cache",   // model.VideoInfoCache.Path
+				"projects",      // model.Project.ID
+				"node_caps",     // model.NodeCaps.ServerID
+				"asset_proxies", // model.AssetProxy.AssetKey
 			}
 			for _, name := range keyed {
 				if _, err := tx.Exec(fmt.Sprintf(
