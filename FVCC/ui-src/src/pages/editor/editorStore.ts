@@ -10,6 +10,8 @@ export interface EditorState {
   name: string
   timeline: Timeline // {width,height,fps,sampleRate,audio}
   clips: EDLClip[] // P0：单轨，顺序即时间线顺序
+  /** 时间轴缩放（功能2：ALT+滚轮 / 双指；视图层共享，不进撤销栈、不触发保存） */
+  scale: number
   selectedClipId: string | null
   previewAsset: PreviewAsset | null // 当前预览素材（含代理映射，04 §4.3）
   inMs: number | null // 预览器待添加片段的入点
@@ -22,6 +24,7 @@ export interface EditorState {
 export type EditorAction =
   | { type: 'load'; payload: { rev: number; name: string; timeline: Timeline; clips: EDLClip[] } }
   | { type: 'setName'; name: string }
+  | { type: 'setScale'; scale: number }
   | { type: 'setPreviewAsset'; asset: PreviewAsset | null }
   | { type: 'setIn'; ms: number }
   | { type: 'setOut'; ms: number }
@@ -53,6 +56,7 @@ export type EditorSlice =
   | 'selection'
   | 'preview'
   | 'marks'
+  | 'scale'
 
 export interface EditorDerived {
   totalMs: number
@@ -86,6 +90,9 @@ interface Snapshot {
 const UNDO_MAX = 50
 const DEBOUNCE_MS = 2000
 const RETRY_DELAYS = [1000, 3000, 9000]
+/** 功能2：时间轴缩放范围（ALT+滚轮 / 双指；跨设备统一夹具，下限保持片段 ≥MIN_CLIP_PX 可读） */
+export const EDITOR_SCALE_MIN = 0.25
+export const EDITOR_SCALE_MAX = 8
 /** 5.2：只有这 5 个动作入撤销栈（+ C-06 排序批量替换 setClips） */
 const UNDOABLE: ReadonlySet<EditorAction['type']> = new Set([
   'addClip',
@@ -119,6 +126,7 @@ function initialState(projectId: string): EditorState {
     name: '',
     timeline: initialTimeline(),
     clips: [],
+    scale: 1,
     selectedClipId: null,
     previewAsset: null,
     inMs: null,
@@ -238,14 +246,20 @@ export function createEditorStore(
             name: p.name,
             timeline: p.timeline,
             clips: p.clips,
+            scale: 1,
             selectedClipId: null,
             inMs: null,
             outMs: null,
             save: 'saved',
             rendering: null,
           },
-          changed: ['clips', 'name', 'save', 'selection', 'preview', 'marks'],
+          changed: ['clips', 'name', 'save', 'selection', 'preview', 'marks', 'scale'],
         }
+      }
+      case 'setScale': {
+        const scale = clamp(a.scale, EDITOR_SCALE_MIN, EDITOR_SCALE_MAX)
+        if (scale === s.scale) return { next: s, changed: [] }
+        return { next: { ...s, scale }, changed: ['scale'] }
       }
       case 'setName': {
         const name = a.name.slice(0, EDL_LIMITS.maxNameLen)

@@ -143,6 +143,28 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
   const fwd5 = stepBtn('+5s', 5000, '前进 5 秒')
   const muteBtn = el('button', { class: 'btn btn-sm' }, ['取消静音']) as HTMLButtonElement
   muteBtn.title = '静音开关'
+  // 功能3（预览位）：最大化按钮 —— 铺满视口（再次点击 / Esc 还原）
+  let previewFullscreen = false
+  const maxBtn = el('button', { class: 'btn btn-sm' }, ['最大化']) as HTMLButtonElement
+  maxBtn.title = '最大化预览窗口'
+  function syncMaxBtn() {
+    maxBtn.textContent = previewFullscreen ? '还原' : '最大化'
+    maxBtn.title = previewFullscreen ? '还原预览窗口' : '最大化预览窗口'
+  }
+  function setPreviewFullscreen(on: boolean): void {
+    if (previewFullscreen === on) return
+    previewFullscreen = on
+    root.classList.toggle('editor-preview-fullscreen', on)
+    syncMaxBtn()
+  }
+  maxBtn.onclick = () => setPreviewFullscreen(!previewFullscreen)
+  function onEsc(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && previewFullscreen) {
+      e.preventDefault()
+      setPreviewFullscreen(false)
+    }
+  }
+  window.addEventListener('keydown', onEsc)
   function syncMuteBtn() {
     muteBtn.textContent = video.muted ? '取消静音' : '静音'
   }
@@ -167,6 +189,7 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
     fwd1,
     fwd5,
     muteBtn,
+    maxBtn,
   ])
 
   // ===== 进度条（拖拽定位）=====
@@ -571,6 +594,7 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
       destroyed = true
       stopRaf()
       unsub()
+      window.removeEventListener('keydown', onEsc)
       timeListeners.clear()
       video.removeAttribute('src')
       video.load()

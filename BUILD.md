@@ -78,9 +78,9 @@ cd D:\Fnos.VideoConversion
 
 | 文件 | 当前值 |
 |------|--------|
-| `FVCC\manifest`（`version` 字段） | 1.4.6 |
-| `FVCC\ui-src\package.json`（`version` 字段） | 1.4.6 |
-| `FVCC\server\internal\version\VERSION` | 1.4.6 |
+| `FVCC\manifest`（`version` 字段） | 1.5.3 |
+| `FVCC\ui-src\package.json`（`version` 字段） | 1.5.3 |
+| `FVCC\server\internal\version\VERSION` | 1.5.3 |
 
 > 版本号不一致会导致 fpk 内 manifest 声明与实际产品版本不符，部署后难以排查。
 
@@ -193,7 +193,7 @@ FVCS 的 CGO 构建依赖 MSYS2 MinGW-w64 的 gcc。确保 `C:\msys64\mingw64\bi
 ### fnOS 部署
 
 - FVCC 的 `fnpack` 需要 `app/fvcc`（Linux ELF）和 `app/ui/` 目录同时存在。
-- 当前版本 `1.4.6`，在 manifest、package.json、server/internal/version/VERSION 中均已同步（升级版本必须三处同步，见上表）。
+- 当前版本 `1.5.3`，在 manifest、package.json、server/internal/version/VERSION 中均已同步（升级版本必须三处同步，见上表）。
 - fnpack 工具：`D:\Fnos.VideoConversion\fnpack-1.2.3-windows-amd64.exe`（1.2.3 可无缝替换 1.2.1，用法一致；旧版已归档至 `archive\tools\fnpack-1.2.1.exe` 仅留存）。
 - 版本一致性校验：发布前运行 `.\scripts\check-versions.ps1`（P0-1 新增），校验 manifest / package.json / server/VERSION 三方对齐及 go.mod 工具链声明。
 - 打包必须在干净 stage 目录 `FVCC\temp\fpk_stage` 内执行（build.ps1 自动完成），避免 fnpack 递归扫描真实目录导致耗时 ~14s。

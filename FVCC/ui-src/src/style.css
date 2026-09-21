@@ -348,3 +348,12 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* 功能3（预览位）：预览窗口最大化（preview.ts 控制排按钮切换 / Esc 还原） */
+.editor-preview-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(var(--c-surface));
+  padding: 12px;
+}

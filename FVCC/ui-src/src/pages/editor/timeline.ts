@@ -10,16 +10,18 @@ import { RENDER_PRESETS, type PresetOption } from './preset'
 import { buildRuler, type RulerMap } from './ruler'
 import { clipDurationMs, formatMs, EDL_LIMITS } from './format'
 import type { EditorStore } from './editorStore'
+import { EDITOR_SCALE_MIN, EDITOR_SCALE_MAX } from './editorStore'
 
 /** 片段块最小宽度（01 §4.4：宽度 ∝ 时长，无缩放级别时最小 40px） */
 const MIN_CLIP_PX = 40
+/** 功能2：滚轮缩放步进（Alt+滚轮每格 ±20%，与 FVCS 时序缩放口径一致） */
+const SCALE_STEP = 1.2
 /** 左/右边缘裁剪把手宽度（01 §4.4：6px） */
 const HANDLE_PX = 6
 /** 片段块高度 */
 const ROW_H = 56
-/** 修复④：filmstrip 单格最小宽度 / 最大格数（04 §2.4） */
+/** 修复⑧：首尾帧格宽（缩略图只生成片段入点/出点两帧，固定 56px；中间留空不生成，04 §2.4） */
 const FRAME_MIN_CELL_PX = 56
-const FRAME_MAX_CELLS = 8
 /** 轨道最小宽度（容器更窄时也保证可拖放） */
 const MIN_TRACK_PX = 320
 /** 素材面板拖拽载荷 MIME（assets.ts 写入） */
@@ -125,8 +127,16 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
   let dragClipId: string | null = null
   let lastLocalMs = 0
   let lastFile: string | null = null
-  let lastContainerW = 0
-
+  let lastContentW = 0
+  // ===== 功能1（时间线位）：播放指示条（clipId → 条 + 打点区间；drawClips 重绘时重建）=====
+  const playBarByClip = new Map<string, { bar: HTMLElement; inMs: number; outMs: number }>()
+  // ===== 功能2：缩放 / 双指状态 =====
+  /** 横向滚动容器（layout.timeline，overflow-x-auto）；缩放锚点换算依赖其 scrollLeft */
+  let scrollParent: HTMLElement | null = null
+  /** 双指触点（功能2：触屏两指距离比值驱动 scale） */
+  const pinchPointers = new Map<number, { x: number; y: number }>()
+  let pinchActive = false
+  let pinchDist = 0
   // ===== 工具条（01 §4.4）=====
   const addBtn = el('button', { class: 'btn btn-sm flex items-center gap-1', title: '添加当前素材（按打点区间，未打点则整段）' })
   addBtn.append(svgIcon('plus', 14) as unknown as Node, el('span', {}, ['添加当前素材']))
@@ -239,12 +249,98 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
     density.setAttribute('aria-label', `时间轴片段密度：${desc.join('，') || '无片段'}`)
   }
 
-  const root = el('div', { class: 'min-h-full flex flex-col' }, [ruler.root, density, track])
+  const root = el('div', { class: 'relative min-h-full flex flex-col touch-none' }, [ruler.root, density, track])
+
+  // ===== 功能2：缩放（ALT+滚轮 / 双指）=====
+  // 锚点口径：缩放前后保持「鼠标/双指中点所在时间 ms」在宿主滚动容器中的屏幕位置不变。
+  // 宿主在全屏态为 root 自身（overflow:auto），常规态为 layout.timeline（overflow-x-auto）。
+  const scaleChip = el('div', {
+    class: 'absolute top-1 right-2 z-30 hidden px-1.5 text-xs font-mono leading-5 text-ink-muted bg-surface-alt/80 rounded pointer-events-none select-none',
+  })
+  root.append(scaleChip)
+
+  function updateScaleChip(): void {
+    const sc = edlStore.getState().scale
+    scaleChip.textContent = Math.round(sc * 100) + '%'
+    scaleChip.classList.toggle('hidden', Math.abs(sc - 1) < 0.001)
+  }
+
+  function anchorMsAt(clientX: number): number {
+    if (!scrollParent) return 0
+    const r = scrollParent.getBoundingClientRect()
+    return map.msOf(scrollParent.scrollLeft + (clientX - r.left))
+  }
+
+  function restoreScroll(anchorClientX: number, anchorMs: number): void {
+    if (!scrollParent) return
+    const nx = map.xOf(anchorMs) - anchorClientX
+    const r = scrollParent.getBoundingClientRect()
+    scrollParent.scrollLeft = Math.min(Math.max(0, nx + r.left), Math.max(0, trackW - scrollParent.clientWidth))
+  }
+
+  /** 缩放核心：dispatch setScale → 订阅同步 render → 按锚点时间回正滚动位置 */
+  function applyScale(next: number, anchorClientX: number): void {
+    const cur = edlStore.getState().scale
+    const s = Math.min(EDITOR_SCALE_MAX, Math.max(EDITOR_SCALE_MIN, next))
+    if (s === cur) return
+    const anchorMs = anchorMsAt(anchorClientX)
+    edlStore.dispatch({ type: 'setScale', scale: s })
+    restoreScroll(anchorClientX, anchorMs)
+  }
+
+  function onWheel(e: WheelEvent): void {
+    if (!e.altKey || e.ctrlKey) return
+    e.preventDefault()
+    const cur = edlStore.getState().scale
+    const dir = e.deltaY < 0 ? 1 : -1
+    applyScale(dir > 0 ? cur * SCALE_STEP : cur / SCALE_STEP, e.clientX)
+  }
+  root.addEventListener('wheel', onWheel, { passive: false })
+
+  // 触屏双指：两指距离比值驱动 scale（中点锚定）；pan-x 保留单指横向滚动，浏览器不抢占捏合
+  root.style.touchAction = 'pan-x'
+  function onPinchDown(e: PointerEvent): void {
+    if (e.pointerType !== 'touch') return
+    pinchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pinchPointers.size === 2) {
+      const pts = [...pinchPointers.values()]
+      pinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
+      pinchActive = true
+    }
+  }
+  function onPinchMove(e: PointerEvent): void {
+    if (e.pointerType !== 'touch' || !pinchPointers.has(e.pointerId)) return
+    pinchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (!pinchActive || pinchPointers.size !== 2) return
+    const pts = [...pinchPointers.values()]
+    const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
+    if (pinchDist <= 0 || d <= 0) return
+    const midX = (pts[0].x + pts[1].x) / 2
+    applyScale(edlStore.getState().scale * (d / pinchDist), midX)
+    pinchDist = d
+  }
+  function onPinchEnd(e: PointerEvent): void {
+    if (e.pointerType !== 'touch') return
+    pinchPointers.delete(e.pointerId)
+    if (pinchPointers.size < 2) {
+      pinchActive = false
+      pinchDist = 0
+    }
+  }
+  root.addEventListener('pointerdown', onPinchDown, true)
+  root.addEventListener('pointermove', onPinchMove)
+  root.addEventListener('pointerup', onPinchEnd)
+  root.addEventListener('pointercancel', onPinchEnd)
 
   // ===== 几何：分段线性（含最小宽度兜底）=====
+  /** 宿主容器宽（layout.timeline） */
   function containerWidth(): number {
     const w = root.parentElement?.clientWidth || 0
     return Math.max(MIN_TRACK_PX, Math.floor(w) - 2)
+  }
+  /** 功能2：内容宽 = 宿主宽 × 当前缩放（computeSegs 的可用宽度） */
+  function contentWidth(): number {
+    return Math.max(MIN_TRACK_PX, Math.floor(containerWidth() * edlStore.getState().scale) - 2)
   }
 
   function computeSegs(avail: number): void {
@@ -303,19 +399,22 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
     if (destroyed) return
     const clips = edlStore.getState().clips
     for (const c of clips) if (!addedSeq.has(c.clipId)) addedSeq.set(c.clipId, ++seqCounter)
-    lastContainerW = containerWidth()
-    computeSegs(lastContainerW)
+    scrollParent = root.parentElement
+    lastContentW = contentWidth()
+    computeSegs(lastContentW)
     track.style.width = trackW + 'px'
     ruler.root.style.width = trackW + 'px'
     drawClips(edlStore.getState().selectedClipId)
     drawDensity()
     ruler.render(totalMs, trackW)
     updatePlayhead()
+    updateScaleChip()
   }
 
   function drawClips(selectedId: string | null): void {
     for (const n of clipEls) n.remove()
     clipEls = []
+    playBarByClip.clear()
     changedIds = new Set<string>()
     if (!segs.length) {
       empty.classList.remove('hidden')
@@ -332,11 +431,6 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
       const cid = node.getAttribute('data-clip') || ''
       node.className = clipBoxClass(cid === selectedId, changedIds.has(cid))
     }
-  }
-
-  /** 修复④：按可见宽度自适应分格数（1~8 格；窄片段至少 1 格，避免请求风暴） */
-  function frameCols(visibleW: number): number {
-    return Math.max(1, Math.min(FRAME_MAX_CELLS, Math.floor(visibleW / FRAME_MIN_CELL_PX)))
   }
 
   function buildClipEl(seg: Seg, index: number): HTMLElement {
@@ -360,15 +454,20 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
     box.style.width = Math.max(MIN_CLIP_PX, seg.w) + 'px'
     box.style.height = ROW_H + 'px'
 
-    // 修复④：缩略图按时间段分格（filmstrip）——原实现仅取入点单帧并被 object-cover 拉伸
-    // 04 §2.4：格数随片段像素宽度自适应，每格取该时间段中点帧，避免相邻格取到同一关键帧
-    const strip = el('div', { class: 'flex w-full overflow-hidden bg-neutral-soft' })
-    strip.style.height = '30px'
-    const cols = frameCols(Math.max(MIN_CLIP_PX, seg.w))
-    for (let k = 0; k < cols; k++) {
-      const cell = el('div', { class: 'flex-1 min-w-0 overflow-hidden' })
+    // 修复⑧：缩略图改为「首尾帧」——只请求片段入点/出点两帧，中间留空不生成（替代原逐格分帧最多 32 个小文件，
+    // 频繁读写太吃硬盘）；复用机制：后端 thumb 缓存键含 path+t（04 §2.4），与素材面板同一端点，
+    // 同 path+t 命中同一缓存文件不再重新抽帧；素材面板取 t=min(1000,dur/10)，与片段入点 inMs 不同时
+    // 不共享缓存，但每片段仅 2 帧，成本可控。
+    // 修复⑨：strip 高度 30px → 铺满片段框（ROW_H），缩略图不再只占框的一半
+    const strip = el('div', { class: 'relative flex w-full overflow-hidden bg-neutral-soft' })
+    strip.style.height = '100%'
+    const firstT = dur > 0 ? Math.round(c.inMs) : Math.round(c.inMs)
+    const lastT = dur > 0 ? Math.round(c.outMs) : Math.round(c.inMs)
+    const edgeTs: number[] = lastT > firstT ? [firstT, lastT] : [firstT]
+    for (const t of edgeTs) {
+      const cell = el('div', { class: 'shrink-0 overflow-hidden' })
+      cell.style.width = FRAME_MIN_CELL_PX + 'px'
       const im = el('img', { class: 'w-full h-full object-cover', alt: '', loading: 'lazy' }) as HTMLImageElement
-      const t = dur > 0 ? Math.round(c.inMs + ((k + 0.5) * dur) / cols) : Math.round(c.inMs)
       im.src = api.thumbUrl(c.file, Math.max(0, t), 'src')
       im.onerror = () => {
         im.removeAttribute('src')
@@ -376,12 +475,29 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
       }
       cell.append(im)
       strip.append(cell)
+      // 中间留空：不生成缩略图（首帧之后、尾帧之前）
+      if (t === firstT) strip.append(el('div', { class: 'flex-1' }))
     }
-
-    const label = el('div', { class: 'px-1 pt-0.5 text-xs leading-tight text-ink truncate' }, [
-      `#${index + 1} ${baseName(c.file).slice(0, 12)}`,
-    ])
-    const durEl = el('div', { class: 'px-1 text-xs text-ink-muted truncate font-mono' }, [formatMs(dur)])
+    // 功能1（时间线位）：标题半透明浮层 —— 缩略图下缘覆盖半透明标题条（替代原行内 label + 时长）
+    const titleBar = el(
+      'div',
+      {
+        class: 'absolute inset-x-0 bottom-0 bg-black/55 px-1.5 py-0.5 truncate text-xs leading-3 text-white pointer-events-none',
+        title: c.file,
+      },
+      [`#${index + 1} ${baseName(c.file).slice(0, 12)}`]
+    )
+    strip.append(titleBar)
+    // 功能1（时间线位）：随播放时间滚动的指示条（预览器 onTime → setTime → updatePlayhead 更新宽度）
+    // 修复⑩：原底部 2px 细线在 clip 蓝底上难辨识 → 改为缩略图上全高半透明覆盖层 + 底部亮线，
+    // 播放时从左到右按比例覆盖，清晰可感知
+    const playBar = el('div', {
+      class: 'absolute inset-y-0 left-0 w-0 bg-signal/25 hidden pointer-events-none overflow-hidden',
+    })
+    const playBarEdge = el('div', { class: 'absolute inset-x-0 bottom-0 h-0.5 bg-signal' })
+    playBar.append(playBarEdge)
+    strip.append(playBar)
+    playBarByClip.set(c.clipId, { bar: playBar, inMs: c.inMs, outMs: c.outMs })
 
     const hIn = el('div', { class: 'absolute left-0 top-0 bottom-0 cursor-ew-resize hover:bg-primary/40', title: '拖动调整入点（, / . 可逐帧微调）' })
     hIn.style.width = HANDLE_PX + 'px'
@@ -395,7 +511,7 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
       edlStore.dispatch({ type: 'removeClip', clipId: c.clipId })
     }
 
-    box.append(strip, label, durEl, hIn, hOut, del)
+    box.append(strip, hIn, hOut, del)
     // P1-5：左侧 3px 类型色条（数据色承载 clip 类型语义；选中/变更状态仍由 border 表达）
     const kindBar = el('span', {
       class: 'absolute left-0 top-0 bottom-0 w-[3px] pointer-events-none ' + CLIP_KIND_CLASS[kind],
@@ -449,6 +565,7 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
     handle.setPointerCapture(e.pointerId)
 
     const move = (ev: PointerEvent) => {
+      if (pinchActive) return
       const raw = pxPerMs > 0 ? (ev.clientX - startX) / pxPerMs : 0
       const dms =
         edge === 'in'
@@ -538,9 +655,10 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
     edlStore.dispatch({ type: 'moveClip', clipId, toIndex })
   })
 
-  // 轨道空白点击 → 定位
+  // 轨道空白点击 → 定位（功能2：双指捏合第二指按下时不再误触发定位）
   track.addEventListener('pointerdown', (e) => {
     if (e.target !== track) return
+    if (pinchActive) return
     const r = track.getBoundingClientRect()
     locateGlobal(map.msOf(e.clientX - r.left))
   })
@@ -563,19 +681,27 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
   }
 
   function updatePlayhead(): void {
-    if (!lastFile) {
-      playhead.classList.add('hidden')
-      return
+    // 功能1（时间线位）：播放指示条 —— 当前片段按播放 ms 比例显示宽度，其余隐藏
+    const curSeg = lastFile
+      ? segs.find(
+          (s) => s.clip.file === lastFile && lastLocalMs >= s.clip.inMs && lastLocalMs <= s.clip.outMs
+        )
+      : null
+    for (const [cid, rec] of playBarByClip) {
+      if (curSeg && curSeg.clip.clipId === cid && rec.outMs > rec.inMs) {
+        const pct = Math.min(1, Math.max(0, (lastLocalMs - rec.inMs) / (rec.outMs - rec.inMs))) * 100
+        rec.bar.style.width = pct.toFixed(2) + '%'
+        rec.bar.classList.remove('hidden')
+      } else {
+        rec.bar.classList.add('hidden')
+      }
     }
-    const seg = segs.find(
-      (s) => s.clip.file === lastFile && lastLocalMs >= s.clip.inMs && lastLocalMs <= s.clip.outMs
-    )
-    if (!seg) {
+    if (!curSeg) {
       playhead.classList.add('hidden')
       return
     }
     playhead.classList.remove('hidden')
-    playhead.style.left = map.xOf(seg.startMs + (lastLocalMs - seg.clip.inMs)) + 'px'
+    playhead.style.left = map.xOf(curSeg.startMs + (lastLocalMs - curSeg.clip.inMs)) + 'px'
   }
 
   // ===== 工具条动作 =====
@@ -613,7 +739,7 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
 
   // ===== 订阅与生命周期 =====
   const unsub = edlStore.subscribe((s, changed) => {
-    if (changed.includes('clips')) render()
+    if (changed.includes('clips') || changed.includes('scale')) render()
     else if (changed.includes('selection')) {
       for (const node of clipEls) {
         const cid = node.getAttribute('data-clip') || ''
@@ -624,13 +750,14 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
 
   const ro = new ResizeObserver(() => {
     if (destroyed) return
-    const w = containerWidth()
+    const cw = contentWidth()
     // 宽度未变则不重绘，避免与 track.style.width 互相触发
-    if (Math.abs(w - lastContainerW) < 2) return
+    if (Math.abs(cw - lastContentW) < 2) return
     render()
   })
   if (root.parentElement) ro.observe(root.parentElement)
-  else ro.observe(root)
+  // 全屏态下 root 自身尺寸变化（视口）同样触发重排
+  ro.observe(root)
 
   render()
 
@@ -646,6 +773,11 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
       destroyed = true
       ro.disconnect()
       unsub()
+      root.removeEventListener('wheel', onWheel)
+      root.removeEventListener('pointerdown', onPinchDown)
+      root.removeEventListener('pointermove', onPinchMove)
+      root.removeEventListener('pointerup', onPinchEnd)
+      root.removeEventListener('pointercancel', onPinchEnd)
       root.remove()
       toolbar.remove()
     },

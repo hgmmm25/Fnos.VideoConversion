@@ -476,6 +476,10 @@ export async function renderEditor(root: HTMLElement, projectId: string): Promis
   layout.toolbar.append(timeline.toolbar)
   layout.timeline.append(timeline.root)
 
+  // 功能1（时间线位）：预览器播放时间 → 时间线播放头/指示条（preview.onTime → timeline.setTime → updatePlayhead）
+  // 缺失该连接时 lastFile 恒为 null，updatePlayhead 找不到当前片段，竖线 playhead 与片段覆盖层 playBar 全部隐藏
+  const unsubTime = preview?.onTime((ms, file) => timeline.setTime(ms, file))
+
   // ===== C-09：任务中心抽屉（顶栏入口 → onOpenTasks；关闭不销毁列表）=====
   const drawer: TaskDrawer = buildTaskDrawer('任务中心')
   layout.root.append(drawer.root)
@@ -556,6 +560,7 @@ export async function renderEditor(root: HTMLElement, projectId: string): Promis
 
   return () => {
     unbindShortcuts()
+    unsubTime?.()
     unsub()
     unsubNode()
     unsubSettings()

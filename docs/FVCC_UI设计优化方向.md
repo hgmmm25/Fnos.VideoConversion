@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_5f8c3fbab4fb11f1a816525400cd780f
-    ReservedCode1: seEXEkFUYZCCloP+ibLqyOWq65R+PXHyybt3tYigNDtD5X1FvRqeDwAZbiLj6fFcDBteG/llX00qww6I7HiZbaW71/hm5LbZ12Yy9Nzov/L/0Vo0bZ+ZLGkuO2Snv6wD6NhVChzR3pdJdoKtH1ENVFdnH/B9do2dorq8qFiTgar6q8BdcM43HOzZ4gc=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_5f8c3fbab4fb11f1a816525400cd780f
-    ReservedCode2: seEXEkFUYZCCloP+ibLqyOWq65R+PXHyybt3tYigNDtD5X1FvRqeDwAZbiLj6fFcDBteG/llX00qww6I7HiZbaW71/hm5LbZ12Yy9Nzov/L/0Vo0bZ+ZLGkuO2Snv6wD6NhVChzR3pdJdoKtH1ENVFdnH/B9do2dorq8qFiTgar6q8BdcM43HOzZ4gc=
----
-
 # FVCC Web UI 设计优化方向
 
 > 方法：按 `frontend-design` skill 的设计准则（排版 / 色彩与对比 / 布局与空间 / 视觉细节 / 动效 / 打磨清单 / AI Slop 检验），以 `D:\Fnos.VideoConversion\freecut\` 为设计目标参照，对当前 NAS 上运行的版本 `D:\Fnos.VideoConversion\FVCC\ui-src\` 提出可执行的优化方向。
@@ -20,7 +9,7 @@ AIGC:
 >
 > 证据来源：`FVCC\ui-src\src\style.css`、`tailwind.config.js`、`theme.ts`、`ui.ts`、`main.ts`、`index.html`、`pages\{tasks,settings,scanner,history,servers,profiles}.ts`、`pages\editor\{layout,preset,dialog,taskDrawer}.ts`、`lib\useListPage.ts`、`scripts\check-design.mjs`、`docs\DESIGN.md`；`freecut\DESIGN.md`、`freecut\PRODUCT.md`、`freecut\src\index.css`。
 >
-> 状态（2026-09-20 复核）：P0 / P1-1~P1-5 / P2-2 无障碍 / P2-3 门禁 与 §7 美化图示化阶段 A-D 均已落地（版本 1.4.9）；剩余收尾见 §5.2 / §7.6。
+> 状态（2026-09-21 复核）：P0 / P1-1~P1-5 / P2-2 无障碍 / P2-3 门禁 与 §7 美化图示化阶段 A-D 均已落地（版本 1.5.3）；1.5.x 编辑器交互增强已实现（播放头随播放联动 / 时间轴缩放 / 预览最大化，见 §1.1）；剩余收尾见 §5.2 / §7.6。
 
 ---
 
@@ -40,13 +29,14 @@ AIGC:
 
 ### 1.1 技术底座与结构
 
-- 版本：ui-src `package.json` 与服务端 `VERSION` 均为 **1.4.9**。
+- 版本：ui-src `package.json` / 服务端 `VERSION` / `manifest` 三处均为 **1.5.3**（工作区未提交；1.5.0~1.5.3 为编辑器交互增强）。
 - Vite + TypeScript + Tailwind，**零框架**。依赖 `@fontsource/ibm-plex-sans` / `@fontsource/ibm-plex-mono`（^5.3.0）、`lightweight-charts`（^5.2.1，异步 chunk 仅 history 页签加载）与 vite（^8.3.0）/ typescript（^7.0.2）/ tailwindcss（^3.4.17）工具链；**无 React/Vue/Preact、无路由库、无状态库、无 UI 组件库**。DOM 由 `src/ui.ts` 的 `el(tag, attrs, children)` 手工构造，图标为内联 SVG 路径表（`ICON_PATHS`，统一 `stroke-width: 2`）。
 - 规模：`src/` 共 **33 个 .ts 文件、约 1 万行**（2026-09-20 实测）；7 个页签页 + editor 子模块 14 个文件（timeline 599 / assets 606 / preview 533 / index 556 行）；最大单文件 scanner.ts（1,332 行）、profiles.ts（1,168 行）。相对上一版复核：scanner/profiles 因分页与重构精简，tasks（523 行）因队列可视化增大；新增 `lib\` 公共层（`useListPage` 列表流程 / `formBuilder` / `crudActions` / `scrollPos`）与 editor 的 dialog / editorStore / preset / ruler / shortcuts / taskDrawer / taskView 等拆分文件。
 - 构建产物（`vite` `outDir: '../app/ui'`）：主 chunk `index-*.js` **192.6 KB（无代码分割）**、CSS 36.3 KB、字体 192.2 KB、lightweight-charts/standalone 异步 chunk 189.6 KB（仅 history 页签动态加载），约 13 个核心产物文件（2026-09-20 实测）。后端 Go(gin) 托管，网关前缀 `/app/fvcc`。
 - 路由：`main.ts` 中的 hash 路由，7 个平级页签——`剪辑(editor) / 任务清单(tasks) / 视频文件(scanner) / 转码服务器(servers) / 转码方案(profiles) / 历史任务(history) / 设置(settings)`；`editor` 支持 `#/editor/:projectId` 子路由与 `renderProjectPicker`。
 - 外壳：顶部导航已按 `NAV_GROUPS` 分组（编辑工作区 / 资源 / 运行 / 系统，main.ts:35），移动端（`md` 以下）折叠为下拉菜单；外壳底部已有**全局状态条**（节点 / 队列 / WS，main.ts:233-274）；**全局命令面板 Ctrl+K** 已接入（main.ts:98）。
 - 图示化（§7 已落地）：tasks 队列状态堆叠条、history 趋势图（lightweight-charts）、servers 负载圆环（SVG 自绘）、scanner 格式/大小占比条与分页、editor 进度复用。
+- 1.5.x 编辑器交互增强（2026-09-21 复核，工作区 1.5.3）：① 播放头随预览播放联动推进（index.ts:479 `preview.onTime → timeline.setTime`，时间线竖线 playhead + 片段覆盖指示条）；② 时间轴 ALT+滚轮 / 双指捏合缩放（editorStore `scale` 0.25~8，timeline.ts 锚点保持 + 缩放百分比 chip，`touch-action:pan-x`）；③ 预览最大化按钮（preview.ts maxBtn，Esc / 再次点击还原，全屏态 root 自滚动）。
 
 ### 1.2 设计令牌
 
@@ -175,7 +165,7 @@ P1-1 单一信号色 / P1-2 明度阶梯 / P1-3 字体与数据排版 / P1-4 信
 1. **P2-1 乐观更新**：tasks 选中/排序、servers 静音切换等低风险操作加乐观更新 + 失败回滚（唯一遗留的 P 级项）。
 2. **门禁脚本化扩展（可选）**：DESIGN.md 的 R6-R10 目前仅文档级约束，可将对话框 aria 属性、progressbar aria-valuenow、骨架屏等可机器判定的项并入 check-design.mjs。
 3. **复核类（§6 / §7.6 未勾项）**：Squint Test 人工复测；hint 对比度 ≥4.5:1 复核（`--c-ink-subtle` 用于非文本或升级 muted）；`tabular-nums` 在列表页全量核对；转码进度 1s 刷新无肉眼掉帧记录；图示化新增控件移动端 ≥44px 复核。
-4. **版本同步**：本报告随版本号迭代（当前 1.4.9）；后端 P2-1 分层（internal/edl、ws、node、scheduler、media、remote）已收尾，与 UI 方向无冲突。
+4. **版本同步**：本报告随版本号迭代（当前 1.5.3，工作区未提交）；后端 P2-1 分层（internal/edl、ws、node、scheduler、media、remote）已收尾，与 UI 方向无冲突。
 
 ---
 
@@ -254,4 +244,3 @@ P1-1 单一信号色 / P1-2 明度阶梯 / P1-3 字体与数据排版 / P1-4 信
 - [x] 图示化元素全部取自 token 色板（servers `miniGauge` 经 `tokenColor` 走 token，scanner 分布条同）
 - [ ] 移动端可点区域 ≥44×44px 在新增可视化控件上依然成立（待复核）
 - [x] 每个阶段有截图证据 + 构建通过证据 + 体积对比数据（实施时已按此验收）
-*（内容由AI生成，仅供参考）*

@@ -1,16 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_965a8716b4f811f1a816525400cd780f
-    ReservedCode1: 0KILMEVm3062Le9Y4rRmQXawhGQGWfAF1yt4FXRFKkO/n5Y/YAwLUjZ3r5lrPXsIIKI6+PONrLYBfry287M/j1qiKyTMPdF3AWzzi0FdF3zc3qvfBdUnnwilsVYNZsgey17iLpHV/yGmwHY+7npJYUJa/MGSXCsksEpYkGvbSYMWPvhIDbUtx37mYZg=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_965a8716b4f811f1a816525400cd780f
-    ReservedCode2: 0KILMEVm3062Le9Y4rRmQXawhGQGWfAF1yt4FXRFKkO/n5Y/YAwLUjZ3r5lrPXsIIKI6+PONrLYBfry287M/j1qiKyTMPdF3AWzzi0FdF3zc3qvfBdUnnwilsVYNZsgey17iLpHV/yGmwHY+7npJYUJa/MGSXCsksEpYkGvbSYMWPvhIDbUtx37mYZg=
----
-
-
-
 # FVCC 项目现状与开发步骤
 
 > 调查日期：2026-09-20
@@ -232,16 +219,16 @@ D:\Fnos.VideoConversion\FVCC\
 
 | 项 | 现状 | 动作 |
 |---|---|---|
-| ffprobe/ffmpeg | 本机构建机与 fnOS 运行时若未安装，探测走 stub | 部署/安装脚本补 ffmpeg 依赖；`check-versions.ps1` 或启动自检提示 |
-| Go 工具链 | go.mod 要求 go 1.27.1，本机 Go 分散，需 `GOTOOLCHAIN=auto` 从模块缓存/代理拉取 | 保持 auto；勿依赖固定路径（历史踩坑：台账路径 `D:\fntv-tools\go\bin\go.exe` 已失效、系统 Go std 不完整） |
+| ffprobe/ffmpeg | 本机构建机已装 ffprobe 9.0.1（2026-09-20 实测），fnOS 运行时待核验；未安装时探测走 stub | 部署/安装脚本补 ffmpeg 依赖；`check-versions.ps1` 或启动自检提示 |
+| Go 工具链 | go.mod 要求 go 1.27.1，本机 go 1.27.1 可用（2026-09-20 实测）；fnOS 运行时需 `GOTOOLCHAIN=auto` | 保持 auto；勿依赖固定路径（历史踩坑：台账路径 `D:\fntv-tools\go\bin\go.exe` 已失效、系统 Go std 不完整） |
 
 ### 6.3 文档缺口
 
 | 项 | 现状 | 动作 |
 |---|---|---|
 | `FVCC/docs/SECURITY.md` | **不存在**（2026-09-20 复核仍缺），但 `server/internal/security/gateway.go` 注释引用 `docs/SECURITY.md` | 按 07 号安全设计规格补写（网关鉴权/凭据加密/审计/限流/路径约束） |
-| `FVCC/README.md` 版本表 | 「版本号单一来源」表仍写 **1.4.4**（2026-09-20 复核），实际三处已同步 **1.4.9** | 更新 README 版本表 |
-| `FVCC/README.md` 目录树 | 未列出 `ui-src/src/lib/`（P2-2 新增）与 `FVCC/docs/` 下 P2-1/P2-2 文档 | 同步目录树 |
+| `FVCC/README.md` 版本表 | 已更新至 **1.5.3**（2026-09-21），与工作区三处版本一致 | 无需处理 |
+| `FVCC/README.md` 目录树 | 已同步（2026-09-20 复核：已列 `ui-src/src/lib/` 速查与 `FVCC/docs/` 下 P2-1/P2-2 文档） | 无需处理 |
 | 上层 `docs/IMPROVEMENT_LOG.md` 等 | 与代码现状需定期核对（如 P2 状态表） | 纳入版本发布 checklist |
 
 ### 6.4 清理项（低风险，不阻塞功能）
@@ -264,16 +251,16 @@ D:\Fnos.VideoConversion\FVCC\
 
 ---
 
-## 7. 剪辑页功能改进可行性方案（精简）
+## 7. 剪辑页功能改进可行性方案（实现状态：功能 1 已实现 3/4，功能 2 已完整实现，功能 3 已删除；工作区 1.5.3 未提交）
 
-> 适用范围：`ui-src/src/pages/editor/`（剪辑编辑器，14 个 TS 模块）；三个功能均为前端层改动，无架构性风险。
-> 排期建议：**功能 3 → 功能 2 → 功能 1**（功能 1 涉及数据结构变更，需先确认后端/渲染端是否依赖单轨结构）。
+> 适用范围：`ui-src/src/pages/editor/`（剪辑编辑器，14 个 TS 模块）；功能 1/2 均为前端层改动，无架构性风险。
+> 现状标注（2026-09-21 代码核查）：功能 1「视频栏改造」**已实现 3/4**——标题半透明浮层（timeline.ts `buildClipEl` 内 titleBar `bg-black/55` 覆盖缩略图下缘）、删除时长信息（行内 label + 时长已移除，移入片段 tooltip）、随时间滚动指示条（`playBarByClip` + `updatePlayhead` 按播放比例覆盖 + 底部亮线）；**未实现**：视频/音频双栏（仍为单轨 v1，无 `{videoTracks,audioTracks}` 数据模型）。功能 2「ALT+滚轮 / 双指缩放时间轴」**已完整实现**——ALT+滚轮（timeline.ts `onWheel` 校验 `e.altKey`、±20%/格、锚点 ms 回正滚动）、双指捏合（`onPinchDown/Move/End` 两指距离比值驱动、中点锚定、`touch-action:pan-x`）、scale 状态入 editorStore（0.25~8、`setScale`、缩放百分比 chip）。
+> 排期建议：剩余工作仅功能 1 的**双栏子项**（涉及数据模型 `{videoTracks,audioTracks}` 变更，需先确认后端/渲染端是否依赖单轨结构）；功能 2 已实现，无需排期。
 
-| 功能 | 难度 | 关键点 |
-|---|---|---|
-| 1. 视频栏改造 | 低~中 | 标题半透明浮层（纯 CSS）；删除时长信息（注意联动引用）；随时间滚动指示条（监听播放进度 + rAF/节流绘制）；改"视频/音频"双栏（唯一涉及数据模型 `{videoTracks,audioTracks}`，后端/渲染端需兼容） |
-| 2. ALT+滚轮 / 双指缩放时间轴 | 高 | wheel 监听 `e.altKey` 以鼠标为锚点缩放；触屏 pointer 双触点距离比值驱动；共用 scale 状态（建议放 editorStore），`touch-action:none` |
-| 3. 双击大区块顶部 5% 全窗口化 | 高 | 统一挂 dblclick 判断 `offsetY/offsetHeight<0.05`；class 切换 fixed 全屏；抽公共函数 `isDoubleClickOnHeader(e)`；Esc 退出 |
+| 功能 | 难度 | 关键点 | 状态 |
+|---|---|---|---|
+| 1. 视频栏改造 | 低~中 | 标题半透明浮层（纯 CSS）；删除时长信息（注意联动引用）；随时间滚动指示条（监听播放进度 + rAF/节流绘制）；改"视频/音频"双栏（唯一涉及数据模型 `{videoTracks,audioTracks}`，后端/渲染端需兼容） | ⚠️ 已实现 3/4（仅双栏未实现） |
+| 2. ALT+滚轮 / 双指缩放时间轴 | 高 | wheel 监听 `e.altKey` 以鼠标为锚点缩放；触屏 pointer 双触点距离比值驱动；共用 scale 状态（建议放 editorStore），`touch-action:none` | ✅ 已完整实现 |
 
 **踩坑预警（基于 v1.2.3 白屏经验）**：指示条回调订阅注意变量声明顺序避免 TDZ 白屏；组件销毁时移除监听防泄漏（复用 P2-2 dispose 模式）。
 
@@ -281,9 +268,11 @@ D:\Fnos.VideoConversion\FVCC\
 
 ## 8. 下一步开发步骤
 
+> 完成状态总览（2026-09-20 实测）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 / 5 部分完成**；**步骤 3 / 4 / 6 / 7 / 8 未动**。各步骤标题后〔〕内为实测状态标注。
+
 按"环境就绪 → 数据安全 → 代码清理 → 文档同步 → 质量门禁 → 端到端验收"顺序执行，每步含验收标准。
 
-### 步骤 1：运行时环境就绪核验（约 0.5 天）
+### 步骤 1：运行时环境就绪核验（约 0.5 天）〔✅ 本机已就绪（部署机待核验）〕
 
 1. 在 fnOS 部署机安装 ffmpeg/ffprobe，确认 `which ffprobe` 有输出；本机构建机同验。
 2. 验证 Go 工具链：在 `D:\Fnos.VideoConversion\FVCC\server` 执行：
@@ -294,20 +283,20 @@ D:\Fnos.VideoConversion\FVCC\
 3. 前端依赖：`cd D:\Fnos.VideoConversion\FVCC\ui-src && npm ci`。
 4. **验收**：`go build ./...`、`go test ./...`、`npm run build` 均通过；`ffprobe -version` 正常。
 
-### 步骤 2：验证 ffprobe 探测真实性（约 0.5 天）
+### 步骤 2：验证 ffprobe 探测真实性（约 0.5 天）〔⚠️ 部分完成：启动自检已存在（main.go:215 `ffprobe=%v`），stub 降级保留，未做运行时实测〕
 
 1. 启动 dev server（`cd server && go run .`），调用 `POST /app/fvcc/api/video/probe` 传入真实视频路径。
 2. 对比返回 `VideoInfo`（分辨率/时长/编码）与 `ffprobe` 直接输出是否一致；若返回 stub 数据（如默认 1080p），说明运行时缺 ffprobe。
 3. **验收**：探测结果与 ffprobe 一致；缺 ffprobe 时启动日志有明确告警（若无，需在 main.go 装配阶段加启动自检提示）。
 
-### 步骤 3：清理调度器占位与过时注释（约 0.5 天）
+### 步骤 3：清理调度器占位与过时注释（约 0.5 天）〔❌ 未动〕
 
 1. `server/internal/scheduler/scheduler.go:828`：确认 `main.go` 已注入 RenderDispatcher 后，删除 TODO(B-06) 注释与 `s.dispatcher == nil` 防注入分支（或改为启动时断言）。
 2. `server/internal/scheduler/scheduler.go:487/667`：核对 remote 进度推送协议是否含上传/下载阶段内进度；若含则实现 checkUploadProgress/checkDownloadProgress 消费；若不含则删除空函数并注释说明进度来源。
 3. `ui-src/src/pages/editor/index.ts:24`：把 placeholder 注释由"接入前占位"改为"空态兜底"。
 4. **验收**：`go vet ./...` + `go test ./...` 全绿；编辑器空态显示正常。
 
-### 步骤 4：实现 store 备份/配置迁移/快照回滚（P1 TODO，约 2~3 天，🔴 涉及数据写入，需先评审）
+### 步骤 4：实现 store 备份/配置迁移/快照回滚（P1 TODO，约 2~3 天，🔴 涉及数据写入，需先评审）〔❌ 未动：store 无 backup.go，P1 TODO 仍在〕
 
 1. 在 `server/internal/store/` 新增 `backup.go`：
    - 定时备份：每日/每周将 `settings.json`、`servers.json`、`profiles.json`、`tasks.json`、`projects.json` 等原子打包到授权根下 `_backup/`（时间戳后缀，保留最近 N 份）。
@@ -316,7 +305,7 @@ D:\Fnos.VideoConversion\FVCC\
 2. 路由挂载到 `server/internal/api/router.go`；破坏性恢复操作接入 `security_audit.go` 的 `auditDestructive`（新增 `destructive.restore` 类型）。
 3. **验收**：模拟损坏 settings.json → 回滚快照恢复；连续 3 次备份仅保留最新 N 份；`go test ./...` 含备份/迁移/回滚单测。
 
-### 步骤 5：文档同步（约 0.5 天）
+### 步骤 5：文档同步（约 0.5 天）〔⚠️ 部分完成：README 目录树/治理状态表已补，SECURITY.md 与 README 版本表未同步〕
 
 1. 按 `WebVideoEditor_Design/07-安全校验与凭据管理细则.md` 补写 `FVCC/docs/SECURITY.md`（网关鉴权、requireAdmin、DPAPI 凭据、限流、审计、路径约束），消除 gateway.go 注释悬空引用。
 2. 更新 `FVCC/README.md`：
@@ -325,7 +314,7 @@ D:\Fnos.VideoConversion\FVCC\
    - 治理状态表追加本次变更记录。
 3. **验收**：README 三处版本与 `manifest` / `package.json` / `VERSION` 一致；`npm run check:design` 不回归。
 
-### 步骤 6：清理低风险残留（约 0.5 天，🟡 删除类操作逐项确认）
+### 步骤 6：清理低风险残留（约 0.5 天，🟡 删除类操作逐项确认）〔❌ 未动：temp 残留全在〕
 
 1. `server/temp/` 调试重定向残留（build*/commit*/fmt_out.txt 等）→ 移入回收站。
 2. `temp/chrome-profile-9223/9224` CDP 缓存 → 确认无调试需求后移入回收站。
@@ -334,7 +323,7 @@ D:\Fnos.VideoConversion\FVCC\
 5. 历史 fpk 包（v1.4.0~v1.4.9，10 个）：确认 fnOS 应用市场/安装脚本是否需要保留，不需要则归档到独立目录或删除。
 6. **验收**：删除走回收站；`npm run build` 后重新核对 assets 无多余 hash 残留。
 
-### 步骤 7：质量门禁与 CI 上调（约 1 天）
+### 步骤 7：质量门禁与 CI 上调（约 1 天）〔❌ 未动：覆盖率 56.1%/57.0% 未达 60%，门槛保持 55%〕
 
 1. 后端全量：`cd server && go build ./... && go vet ./... && go test ./...`（单测约 90s+，全绿为准）。
 2. 前端门禁：`cd ui-src && npm run check:design && npm run build`。
@@ -342,7 +331,7 @@ D:\Fnos.VideoConversion\FVCC\
 4. 全量打包回归：`D:\Fnos.VideoConversion\build.ps1 -Target FVCC` 产出新 fpk。
 5. **验收**：三项全绿；CI 流水线跑通；fpk 产出成功。
 
-### 步骤 8：端到端验收（约 1 天）
+### 步骤 8：端到端验收（约 1 天）〔❌ 未执行：IMPROVEMENT_LOG 无 v1.4.8/1.4.9 走查记录〕
 
 按以下闭环走查，每项需 WS 实时进度可观察：
 1. **素材→转码**：扫描目录 → probe 真实数据 → 创建转码任务 → 调度下发 FVCS → RUNNING → 完成 → 历史记录落库。

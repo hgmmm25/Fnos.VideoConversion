@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_7d1150aab4fa11f1a816525400cd780f
-    ReservedCode1: aEIZ1b6Yrj0KWvOr0hWdqKVQ0QP7dURAVmChOx9oUsPuRFZRpS5GetCBDOWU19JO5i/clTr6ctiwUqA5YZnZm+mW+eG+bUhV2kCeCMzvwAJ4qfcNF6PO6ZgU7Qv1jyMtvuzvc+XGrFbHlaglEhgFazXlAK5SAKx4UzJkNxEIhRwV5Y8zcJ8Oic1wVd0=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_7d1150aab4fa11f1a816525400cd780f
-    ReservedCode2: aEIZ1b6Yrj0KWvOr0hWdqKVQ0QP7dURAVmChOx9oUsPuRFZRpS5GetCBDOWU19JO5i/clTr6ctiwUqA5YZnZm+mW+eG+bUhV2kCeCMzvwAJ4qfcNF6PO6ZgU7Qv1jyMtvuzvc+XGrFbHlaglEhgFazXlAK5SAKx4UzJkNxEIhRwV5Y8zcJ8Oic1wVd0=
----
-
 # FVCC 项目混乱度评价报告（细化版）
 
 > 项目：FVCC（飞牛视频转换 NAS 调度端 Web UI）@ D:\Fnos.VideoConversion\FVCC
@@ -225,5 +214,4 @@ FVCC 从首版评价（2026-09-18，1.4.0）到第五版复核（2026-09-20 晚�
 
 **当前定位**：项目处于"功能已闭环、工程质量高、局部待打磨"阶段，架构级阻塞项为零；后续工作重心应从"治理整改"转为"**保持清理纪律 + 文档实时同步 + 提交纪律**"三件事，防止 Vibe Coding 增量修补再次积累物理与文档债务。
 
-> 维护记录：首版 2026-09-18 上午（1.4.0，6.5/10）→ 第二版 2026-09-18（1.4.2，4.3/10）→ 第三版 2026-09-19（1.4.4，2.8/10）→ 第四版 2026-09-20（1.4.7，2.4/10）→ 第五版 2026-09-20 晚（1.4.9，2.8/10）。第四版曾声明"docs/ 全库 AIGC 0 命中"，第五版实测被新文档打破，已在 §2.6/§4 P3-4 登记。
-*（内容由AI生成，仅供参考）*
+> 维护记录：首版 2026-09-18 上午（1.4.0，6.5/10）→ 第二版 2026-09-18（1.4.2，4.3/10）→ 第三版 2026-09-19（1.4.4，2.8/10）→ 第四版 2026-09-20（1.4.7，2.4/10）→ 第五版 2026-09-20 晚（1.4.9，2.8/10）。第四版曾声明"docs/ 全库 AIGC 0 命中"，第五版实测被新文档打破，已在 §2.6/§4 P3-4 登记。；2026-09-21：P3-4 文档同步已执行（README/BUILD 版本表 → 1.5.3、docs 三份 AIGC frontmatter 清理、UI 文档随 1.5.3 更新、项目现状 §7 三项功能标注已实现），代码已推进至 1.5.3（工作区未提交，P3-1 提交待办仍有效）。
