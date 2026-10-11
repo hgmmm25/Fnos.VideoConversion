@@ -38,6 +38,10 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		api.GET("/video-cache", h.getVideoCacheInfo)
 		api.DELETE("/video-cache", security.RequireAdmin(), h.clearVideoCache)
 
+		// P3-5 阶段 A：store 备份（仅后端 API，评审点 4）——手动备份 + 备份列表。
+		api.POST("/store/backup", security.RequireAdmin(), h.createStoreBackup)
+		api.GET("/store/backups", security.RequireAdmin(), h.listStoreBackups)
+
 		// 视频管理
 		api.POST("/video/scan", h.scanDirectory)
 		api.GET("/video/scan-stream", h.scanDirectoryStream)

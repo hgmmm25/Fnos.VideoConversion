@@ -55,6 +55,8 @@ type Store struct {
 	// 在 scheduler 派发路径成本过高（每任务 4~5 次全量重写），改为 Flush 批量落盘；
 	// 崩溃丢失锁仅导致重新调度，无数据损坏语义。
 	dirtyLocks atomic.Bool
+	// P3-5 阶段 A：关键写前备份去抖时戳（prewriteMinInterval 窗口内共享同一份快照）。
+	lastPrewriteBackup time.Time
 	// P0-2 提交 3：SQLite 主载体门闩。Load 成功走 SQLite 读回后置 true，
 	// persist 才写 SQLite；JSON 回退模式（SQLite 不可用/导入失败）下 persist 写 JSON，
 	// 杜绝「SQLite 有新数据 + JSON 有旧数据」的两源分裂。
@@ -508,6 +510,8 @@ func (s *Store) GetServer(id string) (model.Server, bool) {
 }
 
 func (s *Store) UpsertServer(sv model.Server) {
+	// P3-5 阶段 A：节点/凭据属关键写，改动内存态前先做一次写前备份（去抖，失败不阻断）。
+	s.preCriticalBackup()
 	s.mu.Lock()
 	for i, ex := range s.servers {
 		if ex.ID == sv.ID {
@@ -577,6 +581,8 @@ func (s *Store) GetProfile(id string) (model.Profile, bool) {
 }
 
 func (s *Store) UpsertProfile(p model.Profile) {
+	// P3-5 阶段 A：方案配置变更属关键写，改动内存态前先做一次写前备份（去抖，失败不阻断）。
+	s.preCriticalBackup()
 	s.mu.Lock()
 	for i, ex := range s.profiles {
 		if ex.ID == p.ID {
@@ -865,6 +871,8 @@ func (s *Store) GetSettings() model.Settings {
 }
 
 func (s *Store) SaveSettings(v model.Settings) {
+	// P3-5 阶段 A：全局设置/凭据变更属关键写，改动内存态前先做一次写前备份（去抖，失败不阻断）。
+	s.preCriticalBackup()
 	s.mu.Lock()
 	s.settings = v
 	s.mu.Unlock()

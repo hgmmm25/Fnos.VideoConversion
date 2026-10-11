@@ -46,6 +46,9 @@ type Scheduler struct {
 	done            chan struct{}            // 事件循环退出信号（Start defer close，Stop 等待 Flush 完成）
 	eventCh         chan string              // 任务变更事件队列（taskID），256 缓冲，满时丢弃并告警
 	flushEvery      time.Duration            // 定时落盘周期（默认 5s）
+	// P3-5 阶段 A：定时备份周期（默认 30min，见 STORE_PERSISTENCE_ROADMAP §2.1）。
+	// 复用调度事件循环的独立 ticker，与 5s Flush 协程同生命周期，stopCh 触发即停。
+	backupEvery   time.Duration
 	cooldownMu      sync.Mutex
 	cooldownTimers  map[string]*time.Timer   // taskID → 冷却到期唤醒 timer（COOLDOWN → QUEUE 无需等 tick）
 }
@@ -68,6 +71,8 @@ func NewScheduler(store *store.Store, remote *remote.RemoteClient, hub *ws.Hub, 
 		done:      make(chan struct{}),
 		eventCh:   make(chan string, 256),
 		flushEvery: 5 * time.Second, // P1-1 定时落盘周期：脏任务数据每 5s 落盘一次
+		// P3-5 阶段 A：定时备份周期 30min（评审点 1，与方案稿 §2.1 一致）。
+		backupEvery: 30 * time.Minute,
 		cooldownTimers: make(map[string]*time.Timer),
 	}
 	// P1-1：注册 store 任务变更钩子 → 事件循环即时推进调度（替代 1s tick 全量扫描）。
@@ -105,10 +110,13 @@ func (s *Scheduler) Start() {
 	defer ticker.Stop()
 	flushTicker := time.NewTicker(s.flushEvery)
 	defer flushTicker.Stop()
+	// P3-5 阶段 A：定时备份（默认 30min）。备份失败仅告警，绝不影响调度主循环。
+	backupTicker := time.NewTicker(s.backupEvery)
+	defer backupTicker.Stop()
 	defer close(s.done) // P1-1：事件循环退出信号（Stop 等待 Flush 完成）
 
-	logger.Info("scheduler", "started: event-driven (eventCh=%d), tick=1s (fallback), flush=%s",
-		cap(s.eventCh), s.flushEvery)
+	logger.Info("scheduler", "started: event-driven (eventCh=%d), tick=1s (fallback), flush=%s, backup=%s",
+		cap(s.eventCh), s.flushEvery, s.backupEvery)
 
 	for {
 		select {
@@ -122,6 +130,11 @@ func (s *Scheduler) Start() {
 			s.tick()
 		case <-flushTicker.C:
 			s.store.Flush()
+		case <-backupTicker.C:
+			s.store.Flush() // 先落盘脏数据，再备份内存态快照（与 Flush 同源语义）
+			if _, err := s.store.Backup(store.BackupKindAuto); err != nil {
+				logger.Warn("scheduler", "定时备份失败: %v", err)
+			}
 		}
 	}
 }
