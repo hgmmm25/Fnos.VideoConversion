@@ -350,27 +350,34 @@ func executeRenderEDL(task *Task) {
 	cleanupTaskFiles(task)
 }
 
-// makeSrcResolver 构造“素材相对路径 → UNC”解析器，内置目录穿越防护
+// makeSrcResolver 构造"素材相对路径 → 落地绝对路径"解析器，内置目录穿越防护。
+// srcBase 为挂载点 mountPath：UNC 形态（`\\host\share`）可能带尾分隔符、盘符根（`X:\`）亦可能。
+// 与 GEN_PROXY 同机制——用 smb.BuildSMBPath 拼接，仅当根为空才判非法；尾分隔符是合法根写法，
+// 绝不因"带尾分隔符"误报为空（旧实现据 HasSuffix 判定，会把 drive-root/UNC 根当空根拒绝）。
 func makeSrcResolver(srcBase string) (func(string) (string, error), error) {
-	base := filepath.Clean(srcBase)
-	if !strings.HasSuffix(base, string(os.PathSeparator)) {
-		baseClean := base + string(os.PathSeparator)
-		return func(rel string) (string, error) {
-			if !isSafeRelPath(rel) {
-				return "", errCode(protocol.ErrCodeAssetNotInRoot, "素材路径非法: "+rel)
-			}
-			full := filepath.Join(base, filepath.FromSlash(strings.TrimSpace(rel)))
-			if !strings.HasPrefix(strings.ToLower(full), strings.ToLower(baseClean)) &&
-				!strings.EqualFold(full, base) {
-				return "", errCode(protocol.ErrCodeAssetNotInRoot, "素材越出 sourceRoot: "+rel)
-			}
-			if _, err := os.Stat(full); err != nil {
-				return "", errCode(protocol.ErrCodeAssetMissing, "素材不存在: "+rel)
-			}
-			return full, nil
-		}, nil
+	if strings.TrimSpace(srcBase) == "" {
+		return nil, errCode(protocol.ErrCodePayloadInvalid, "素材根为空")
 	}
-	return nil, errCode(protocol.ErrCodePayloadInvalid, "sourceRoot 为空")
+	// 越权判定的根前缀：Clean 归一（去多余分隔符，UNC 保留 `\\host\share`），并补一个尾分隔符做前缀比对。
+	root := filepath.Clean(srcBase)
+	rootPrefix := root
+	if !strings.HasSuffix(rootPrefix, string(os.PathSeparator)) {
+		rootPrefix += string(os.PathSeparator)
+	}
+	return func(rel string) (string, error) {
+		if !isSafeRelPath(rel) {
+			return "", errCode(protocol.ErrCodeAssetNotInRoot, "素材路径非法: "+rel)
+		}
+		full := smb.BuildSMBPath(srcBase, filepath.FromSlash(strings.TrimSpace(rel)))
+		if !strings.HasPrefix(strings.ToLower(full), strings.ToLower(rootPrefix)) &&
+			!strings.EqualFold(full, root) {
+			return "", errCode(protocol.ErrCodeAssetNotInRoot, "素材越出 sourceRoot: "+rel)
+		}
+		if _, err := os.Stat(full); err != nil {
+			return "", errCode(protocol.ErrCodeAssetMissing, "素材不存在: "+rel)
+		}
+		return full, nil
+	}, nil
 }
 
 // resolveOutputUNC 计算成品 UNC（03 §3.1：优先 SMBOutputPath）
