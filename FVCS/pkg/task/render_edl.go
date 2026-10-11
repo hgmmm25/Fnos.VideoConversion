@@ -268,7 +268,11 @@ func executeRenderEDL(task *Task) {
 		cleanupTaskFiles(task)
 		return
 	}
-	srcBase := filepath.Join(mountPath, filepath.FromSlash(strings.TrimSpace(payload.SourceRoot)))
+	// 素材共享根 SMBPath 由下发侧 BuildSMBURL 解析，已「下沉」到实际素材根
+	// （如 \\NAS\share\videos），挂载点 mountPath 即素材根本身。片段 file 相对素材根，
+	// 故 srcBase=mountPath 直接解析——与 GEN_PROXY（proxy.go: srcBase=mountPath + SrcFile）同机制。
+	// payload.sourceRoot 仅供调度侧算 SMBPath，不参与落地拼接（否则会与挂载点重复拼接）。
+	srcBase := mountPath
 	srcUNC, err := makeSrcResolver(srcBase)
 	if err != nil {
 		logger.Error("task", "RenderEDL: sourceRoot 非法 taskID=%v: %v", taskID, err)

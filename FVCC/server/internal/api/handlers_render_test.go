@@ -52,9 +52,6 @@ func newRenderTestEnv(t *testing.T) (r *gin.Engine, s *Store, srcDir, destDir st
 	cfg := s.GetSettings()
 	cfg.VideoRoot = srcDir
 	cfg.ExportRoot = destDir
-	// 步骤8 e2e #8：渲染要求根映射为共享相对根（FVCS 以 mountPath+SourceRoot 拼接，
-	// 绝对 sourceRoot 必被拒）。配置共享根=临时根目录，videos/exports 均为其子目录。
-	cfg.SMBSharePath = root
 	s.SaveSettings(cfg)
 	return r, s, srcDir, destDir
 }
@@ -110,26 +107,33 @@ func mustSubmitRender(t *testing.T, r *gin.Engine, projectID, body string) rende
 
 // ===== 1. 提交契约与计算字段 =====
 
-// TestB04RenderRootUnmappedAbsoluteFailsEarly 步骤8 e2e #8：未配置共享根（smbSharePath）时
-// 渲染根为本地绝对写法，必然被 FVCS 拒（禁止绝对路径）。改为提交侧闸门 4b 早失败 400，
-// 给出可操作配置指引，不再入队 doomed 任务、不把错误甩到跨端。
-func TestB04RenderRootUnmappedAbsoluteFailsEarly(t *testing.T) {
+// TestB04RenderRootUnmappedDispatchesLikeProxy 步骤8 e2e #8 返工（跨端对齐）：
+// 未配置 smbSharePath（rootMapped=false）时 sourceRoot 为本地绝对写法。此前误加闸门 4b
+// 直接 400——但那与代理/转码矛盾：调度侧 toSMBUNC→BuildSMBURL 依 smbUser 把绝对根映射为
+// 实际共享 UNC，FVCS 渲染落地不消费 sourceRoot（srcBase=挂载点）。故渲染应与代理一样照常入队，
+// 不得在提交侧早失败。
+func TestB04RenderRootUnmappedDispatchesLikeProxy(t *testing.T) {
 	r, s, _, _ := newRenderTestEnv(t)
 	cfg := s.GetSettings()
-	cfg.SMBSharePath = "" // 取消共享根 → rootMapped=false，sourceRoot 回落本地绝对路径
+	cfg.SMBSharePath = "" // 无共享根 → rootMapped=false，sourceRoot 回落本地绝对路径
 	s.SaveSettings(cfg)
 
 	p := mustCreateRenderProject(t, s, "unmapped_root", renderTestTimeline(), renderTestClips())
-	w := doEDLRequest(t, r, http.MethodPost, "/api/edl/projects/"+p.ID+"/render",
-		`{"presetKey":"copy_same_source","outputName":"unmapped_root"}`)
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), errCodeEDLInvalid) {
-		t.Fatalf("未映射绝对根应 400 E_EDL_INVALID，实际 %d %s", w.Code, w.Body.String())
+	resp := mustSubmitRender(t, r, p.ID, `{"presetKey":"copy_same_source","outputName":"unmapped_root"}`)
+
+	if resp.TaskID == "" || resp.Status != "QUEUE" {
+		t.Fatalf("未映射绝对根应与代理一致照常入队，实际 taskId=%q status=%q", resp.TaskID, resp.Status)
 	}
-	if !strings.Contains(w.Body.String(), "smbSharePath") {
-		t.Errorf("错误信息应含 smbSharePath 配置指引，实际 %s", w.Body.String())
+	if len(s.GetTasks()) != 1 {
+		t.Fatalf("应入队 1 个任务，实际 %d", len(s.GetTasks()))
 	}
-	if len(s.GetTasks()) != 0 {
-		t.Errorf("早失败不得入队 doomed 任务，实际任务数 %d", len(s.GetTasks()))
+	var payload RenderTaskPayload
+	if err := json.Unmarshal([]byte(s.GetTasks()[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("载荷应可解析: %v", err)
+	}
+	// 载荷保留本地绝对根写法（供调度侧 BuildSMBURL 解析实际共享），不再被提交侧拒绝。
+	if payload.SourceRoot == "" {
+		t.Errorf("sourceRoot 应保留本地素材根写法供映射，实际为空")
 	}
 }
 

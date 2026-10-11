@@ -387,11 +387,13 @@ func ValidateRenderEDLPayload(p *RenderTaskPayload) *PayloadError {
 	if p.Type != PayloadTypeRenderEDL {
 		return newPayloadErr(ErrCodePayloadInvalid, "type", "type 必须为 RenderEDL", -1)
 	}
-	// 三根相对路径白名单（07 §3.2）：空值表示沿用服务端默认根
-	if e := ValidateRootRelPath(p.SourceRoot, "sourceRoot"); e != nil {
+	// 渲染根 sourceRoot/destRoot 为「下发专用」写法：落地不依赖它（素材根由 SMBPath 挂载点、
+	// 成品根由 SMBOutputPath 下发，与 GEN_PROXY 同机制）。为纵深防御仅拒绝 .. 穿越段；
+	// 允许共享相对写法与 FVCC 未映射时的本地绝对写法（后者供调度侧 BuildSMBURL 解析共享）。
+	if e := ValidateRootPath(p.SourceRoot, "sourceRoot"); e != nil {
 		return e
 	}
-	if e := ValidateRootRelPath(p.DestRoot, "destRoot"); e != nil {
+	if e := ValidateRootPath(p.DestRoot, "destRoot"); e != nil {
 		return e
 	}
 	if err := validateTimeline(&p.Timeline); err != nil {

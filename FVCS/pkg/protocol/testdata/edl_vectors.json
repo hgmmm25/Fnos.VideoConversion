@@ -335,8 +335,8 @@
     },
     {
       "id": "PL-ROOT-ABS",
-      "wantCode": "E_EDL_INVALID",
-      "note": "destRoot 绝对路径",
+      "wantCode": "OK",
+      "note": "destRoot 绝对路径——渲染根为下发专用写法，落地由 SMBOutputPath 决定，允许绝对写法交调度侧解析（跨端对齐 #8）",
       "raw": {
         "type": "RenderEDL",
         "projectId": "p-1",

@@ -221,6 +221,23 @@ func ValidateRootRelPath(root, field string) *PayloadError {
 	return nil
 }
 
+// ValidateRootPath 校验渲染根（sourceRoot/destRoot）——下发专用写法。
+// 渲染落地不依赖该字段（素材根由挂载点、成品根由 SMBOutputPath 决定，与 GEN_PROXY 同机制），
+// 故此处仅做纵深防御：允许空、允许共享相对写法、允许 FVCC 未映射时的本地绝对写法
+// （供调度侧 BuildSMBURL 解析实际共享），只拒绝含 .. 的穿越段。
+func ValidateRootPath(root, field string) *PayloadError {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil
+	}
+	for _, seg := range strings.Split(strings.ReplaceAll(root, "\\", "/"), "/") {
+		if seg == ".." {
+			return newPayloadErr(ErrCodeAssetNotInRoot, field, "渲染根不得包含 .. 穿越段", -1)
+		}
+	}
+	return nil
+}
+
 // ============================================================
 // JSON 体积 / 深度 / 字符串长度约束（07 §3.6）
 // ============================================================

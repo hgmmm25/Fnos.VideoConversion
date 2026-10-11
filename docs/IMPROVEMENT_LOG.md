@@ -374,7 +374,7 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 | 5 | 代理提交不带素材根 → 非默认根文件报"素材不存在"（前端 `createProxy` 未发 root） | 前端为主 | A | ✅ 本轮修复 |
 | 6 | 代理 ready 态无法从服务端回填（仅瞬时 WS `proxy_ready`）；`VerifyProxyMeta` 帧率严格串相等易误判 invalid | 前端+后端 | A | ✅ 本轮修复 |
 | 7 | `judgeVisibility` 未纳入分辨率 → 4K 素材代理判定"很迷" | 前端 | B | 待产品决策（阈值） |
-| 8 | 渲染 `sourceRoot` 未映射时下发绝对路径被 FVCS 拒；自检 `rootMapped=false` 时跳过根错误掩盖 doomed 派发 | 后端+运维(配 smbSharePath) | A | ✅ 本轮修复 |
+| 8 | 渲染根与代理取根不一致（`mountPath+sourceRoot` 双拼 + 拒绝对根）；旧闸门 4b 误挡未配 smbSharePath 的渲染 | 跨端(FVCS 落地取根 + FVCC 回退闸门) | A | ⚠️ 复验判原修法错误 → 返工跨端对齐（见 §14.4 #8），待真机复验 |
 | 9 | 渲染/EDL 单根载荷模型（`WireClip` 无 per-clip root） | 跨端(FVCC+FVCS) | B | 待立项 |
 | 10 | 视频删除入口仅右键，无行内/批量按钮 | 前端 | A | ✅ 本轮修复 |
 | 11 | FVCS 重连后节点状态需手点"测试连接"才广播 online | 后端/调度 | A | ✅ 本轮修复 |
@@ -394,12 +394,15 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 - `VerifyProxyMeta`（`media/proxy.go`）帧率校验由严格串相等改为**数值近似（相对容差 1%）**，无法解析时回退严格比较——修复重编码/VFR 下分数串不同（如 `"25"` vs `"25/1"`）误判 valid 代理为 invalid 的问题；单测补 `"帧率同值异串(30 vs 30000/1001)"` 通过、`"25/1"` 仍拒。
 - 验证：`go build/vet/test` 全绿（含新增 `TestM4ProxyListHydration`）、`npm run build` 通过。
 
-**#8 渲染未映射绝对根早失败（本轮提交）**：
+**#8 渲染根跨端对齐（返工，v1.5.9 复验后）**：
 
-- 根因：`resolveEDLRoots` 在未配置 `smbSharePath`（或根不在共享内）时 `rootMapped=false`，`sourceRoot` 回落本地绝对 POSIX（如 `/vol3/1000/T`）；载荷自检（闸门 8）在 `!rootMapped && isRootPathStyleErr` 时**仅告警放行并派发**，FVCS 侧 `ValidateRootRelPath` 立即拒 `E_EDL_INVALID 禁止绝对路径（sourceRoot）`——报错跨端、对用户不可行动。FVCS 以 `mountPath + SourceRoot` 拼接，绝对 sourceRoot 永不可用。
-- 修复：新增**闸门 4b**（`handlers_render.go`）：`!rootMapped && isAbsoluteEDLRoot(sourceRoot)` → 提交侧 400 `E_EDL_INVALID`，信息给出"在设置配置 smbSharePath 且 videoRoot/exportRoot 须位于共享根下"的可操作指引；不再入队 doomed 任务。闸门 8 的 warn-skip 分支保留（仅覆盖非绝对的历史过渡态）。
-- 测试：`newRenderTestEnv`/`newD02RenderEnv` 补配 `SMBSharePath=root`（映射为相对根，符合真实部署），新增 `TestB04RenderRootUnmappedAbsoluteFailsEarly` 断言 400 + 含 smbSharePath + 不入队。全套 `go build/vet/test` 绿。
-- 运维侧：NAS 启用 EDL 渲染须配置 `smbSharePath` 指向包含素材/成品根的共享根（本修复使未配置时给出明确报错而非静默跨端失败）。
+- 原判（闸门 4b）经真机复验证伪：闸门 4b 以 `rootMapped`（仅当配置 `smbSharePath` 才为 true）作早失败，但**代理/转码恰恰不依赖 `smbSharePath`**——它们靠 `SMBUser`（NAS 管理员账号）经 `BuildSMBURL→FindShareForPath` 把本地绝对根映射为可挂载 UNC。用户配的是 `SMBUser`，闸门 4b 遂把一个"本应像代理一样成功"的渲染挡成了 400。
+- 真因（FVCS 渲染落地取根错误）：`BuildSMBURL` 返回的 UNC **已下沉到素材根**（如 `\\NAS\share\videos`），挂载点 `mountPath` 即素材根本身；`GEN_PROXY` 正是 `srcBase=mountPath + SrcFile` 解析（proxy.go:144），故代理正常。而 `RENDER_EDL` 旧实现 `srcBase = mountPath + payload.SourceRoot`（render_edl.go:271）把素材根**重复拼接**，且 `ValidateRenderEDLPayload→ValidateRootRelPath` 直接拒绝对 `sourceRoot`（"禁止绝对路径"）——两条都让渲染从未真正跑通。
+- 修复（跨端对齐，用户选定）：
+  - **FVCS** `render_edl.go`：`srcBase := mountPath`（与代理同机制；素材根由挂载点给出，片段相对根）。`pkg/protocol/edl.go`：渲染根 `sourceRoot/destRoot` 改为"下发专用"——新增 `ValidateRootPath`（仅拒 `..` 穿越，允许绝对/相对写法），不再阻断 FVCC 未映射时的本地绝对根（该字段仅供调度侧 `toSMBUNC→BuildSMBURL` 解析共享，不参与落地）；共享测试向量 `PL-ROOT-ABS`（destRoot 绝对）期望由 `E_EDL_INVALID` 改为 `OK`。
+  - **FVCC** `handlers_render.go`：移除误加的**闸门 4b** 与 `isAbsoluteEDLRoot`；未映射绝对根照常入队，交调度器按与代理一致的 `SMBUser` 映射下发（闸门 8 的 warn-skip 过渡分支保留）。测试 `TestB04RenderRootUnmappedAbsoluteFailsEarly` 改写为 `TestB04RenderRootUnmappedDispatchesLikeProxy`（断言入队成功）；回退 `newRenderTestEnv`/`newD02RenderEnv` 为通过闸门 4b 而临时加的 `SMBSharePath=root`。
+- 验证：FVCS `go build ./...` + `pkg/protocol`、`pkg/task` 测试绿、`cmd/service` 编译通过；FVCC 全套 `go build/vet/test` 绿。**待真机复验**：默认根与非默认根渲染均应像代理一样跑通（需**重建并重新部署渲染机 `fvcs-service.exe`** 与 FVCC fpk）。
+- 关联：本返工使渲染取根与 `GEN_PROXY` 对齐，非默认根渲染随之可下发；根写法/多根路径的完整契约仍归 #9。
 
 **#10 视频删除入口可发现性（本轮提交）**：
 
@@ -415,7 +418,7 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 
 ### 14.5 待办延续
 
-- **A 档：全部完成**（#6 代理回填 → #5 代理带根 → #8 渲染早失败 → #10 删除按钮 → #11 节点自动恢复，逐项独立提交 + 全绿 + 随批回写）。待用户在真实 NAS+Windows 复验（代理重启不丢、非默认根可生成代理、渲染未配共享根给出明确 400、工具栏删除、FVCS 重连自动 online）。
+- **A 档**：#6 代理回填、#5 代理带根、#10 删除按钮、#11 节点自动恢复复验通过（真机）。**#8 复验判原闸门 4b 为误修 → 已返工为跨端对齐**（FVCS 渲染 `srcBase=mountPath` 与代理一致 + FVCC 回退闸门 4b），两侧代码全绿，待真机复验：默认根与非默认根渲染均应像代理跑通——**需重建并重新部署渲染机 `fvcs-service.exe`（.104）+ FVCC fpk**。
 - **版本收口**：应用版本三方对齐 bump 至 **1.5.9**（`server/internal/version/VERSION` + `manifest` + `ui-src/package.json`），文档版本线（本台账头部 / `FVCC_项目现状与开发步骤.md` §步骤8 与"当前版本"）同步对齐，`check-versions.ps1` 应通过。构建部署后即可供真机复验。
 - **B 档（延后）**：#7 分辨率阈值（待用户定阈值）、#9 渲染多根（跨端立项，与 §十三 多轨/EDL 契约立项合并评估）。
 - **P3-6**：e2e 实测 `ffprobe:true`，运行时依赖评估可据此关闭。
