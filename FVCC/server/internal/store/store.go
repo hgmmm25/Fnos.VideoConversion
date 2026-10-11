@@ -74,8 +74,17 @@ func NewStore(dataDir string) *Store {
 	return &Store{dataDir: dataDir}
 }
 
-// Load 从磁盘加载全部配置到内存。
+// Load 从磁盘加载全部配置到内存，随后执行版本化数据迁移链（P3-5 阶段 B）。
+// 迁移链必须在 loadAll 的写锁释放后执行（Backup / AppendAudit 内部自行取锁）。
 func (s *Store) Load() error {
+	if err := s.loadAll(); err != nil {
+		return err
+	}
+	return s.applyDataMigrations()
+}
+
+// loadAll 纯加载：读盘 → 内存态填充 → postLoadLocked 收尾（全程持写锁）。
+func (s *Store) loadAll() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -141,12 +150,11 @@ func (s *Store) Load() error {
 
 // postLoadLocked 加载完成后的公共收尾：project 派生字段重算、崩溃恢复（运行中任务重置
 // QUEUE）、内存索引重建与加载统计。JSON 回退路径与 SQLite 主路径共用（需持 s.mu）。
+// P3-5 阶段 B：schema_ver 0→1 补齐已收口到 dataMigrations 迁移链（migrate.go），
+// 此处只做派生字段重算。
 func (s *Store) postLoadLocked() {
-	// 派生字段不落盘（03 §2.2）：加载后统一重算，并补齐 schema_ver 缺省（03 §7）。
+	// 派生字段不落盘（03 §2.2）：加载后统一重算。
 	for i := range s.projects {
-		if s.projects[i].SchemaVer == 0 {
-			s.projects[i].SchemaVer = 1
-		}
 		normalizeProject(&s.projects[i])
 	}
 	// 启动崩溃恢复：非终态的中断任务重置为 QUEUE

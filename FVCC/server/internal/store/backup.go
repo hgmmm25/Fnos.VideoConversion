@@ -33,9 +33,10 @@ import (
 
 // 备份种类（写入文件名后缀，参与轮转判定）。
 const (
-	BackupKindAuto     = "auto"     // 定时备份（调度器 30min tick）
-	BackupKindManual   = "manual"   // 手动备份（POST /api/store/backup）
-	BackupKindPrewrite = "prewrite" // 关键写前备份（节点/凭据/设置/方案变更前）
+	BackupKindAuto         = "auto"         // 定时备份（调度器 30min tick）
+	BackupKindManual       = "manual"       // 手动备份（POST /api/store/backup）
+	BackupKindPrewrite     = "prewrite"     // 关键写前备份（节点/凭据/设置/方案变更前）
+	BackupKindPreMigration = "premigration" // 数据迁移链执行前备份（阶段 B，随系统池轮转）
 )
 
 const (

@@ -76,7 +76,9 @@ func TestLoadImportLegacyJSON(t *testing.T) {
 	cases := map[string]int{
 		"tasks": 2, "history_tasks": 0, "servers": 1, "profiles": 0,
 		"locks": 0, "settings": 1, "video_cache": 0, "projects": 1,
-		"node_caps": 0, "asset_proxies": 0, "node_health_samples": 0, "audit_log": 2,
+		"node_caps": 0, "asset_proxies": 0, "node_health_samples": 0,
+		// 遗留 2 条 + 阶段 B 迁移链追加 1 条 schema.migrate 审计
+		"audit_log": 3,
 	}
 	for table, want := range cases {
 		if got := countTableRows(t, sq, table); got != want {
@@ -140,13 +142,14 @@ func TestLoadImportLegacyJSON_EmptyDir(t *testing.T) {
 	if dirs := backupDirs(t, dir); len(dirs) != 0 {
 		t.Fatalf("空目录不应生成备份: %v", dirs)
 	}
-	// 无导入标记：后续手动放入旧 JSON 仍可导入
+	// 无导入标记：后续手动放入旧 JSON 仍可导入。
+	// （阶段 B 后 import_meta 允许存在 data_version 锚点行，此处只校验 json_imported 标记）
 	var n int
-	if err := sq.db.QueryRow(`SELECT count(*) FROM import_meta`).Scan(&n); err != nil {
+	if err := sq.db.QueryRow(`SELECT count(*) FROM import_meta WHERE key=?`, importMetaKey).Scan(&n); err != nil {
 		t.Fatalf("import_meta 查询失败: %v", err)
 	}
 	if n != 0 {
-		t.Fatalf("空目录不应写导入标记, import_meta 行数 = %d", n)
+		t.Fatalf("空目录不应写导入标记, import_meta(json_imported) 行数 = %d", n)
 	}
 }
 
