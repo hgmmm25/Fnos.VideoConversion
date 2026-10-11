@@ -1,6 +1,6 @@
 # Fnos.VideoConversion 视频转码系统
 
-一套面向个人与工作室的远程视频转码方案，核心支持 fnNAS 远程调用 Windows 主机 FVCS 算力转码。服务端依托 FFmpeg，自动适配显卡加速、多任务并发与断点传输；Web 客户端 FVCC 可直连 NAS 与多台 Windows 转码机，自定义转码模板远程下发任务，适合家庭 NAS 远程批量处理视频素材。当前版本：FVCC v1.4.9 / FVCS v1.2.6。
+一套面向个人与工作室的远程视频转码方案，核心支持 fnNAS 远程调用 Windows 主机 FVCS 算力转码。服务端依托 FFmpeg，自动适配显卡加速、多任务并发与断点传输；Web 客户端 FVCC 可直连 NAS 与多台 Windows 转码机，自定义转码模板远程下发任务，适合家庭 NAS 远程批量处理视频素材。当前版本：FVCC v1.5.12 / FVCS v1.2.6。
 
 ## 项目组成
 
@@ -103,6 +103,14 @@
 - 可视化时间线编辑：多片段拖拽、拼接、裁剪、排序
 - 生成结构化 EDL 载荷，下发 FVCS RenderEDL 渲染任务（SMB 直读模式）
 - EDL 载荷校验与 FVCS 双端实现，保证契约一致
+- 时间线预览代理：为素材生成低码率代理并回水就绪状态（`GET /api/proxy`），非默认授权根素材同样可用
+- 渲染进度实时推送与终态收口：进度平滑展示，渲染完成后自动落定「完成」并移入历史
+
+### 数据备份与迁移
+- SQLite 任务/配置数据定时备份、写前备份与手动备份，支持保留轮转与 manifest 校验
+- 版本化数据迁移链，升级时自动执行迁移并在迁移前生成备份
+- 支持整包快照回滚（manifest 验签 + 双重把关审计）
+- 提供备份/恢复 API（前端入口后续接入）
 
 ### 转码方案管理
 - 创建并保存多套转码方案（编码、码率、分辨率、音频参数等）
@@ -137,7 +145,7 @@
 ## 构建与部署
 
 - **构建**：见 [BUILD.md](./BUILD.md)（一键脚本 `.\build.ps1`，含 FVCC fpk 打包与 FVCS 构建全流程、版本同步清单、故障排查）。
-- **版本单一来源**：FVCC 版本三处同步（`manifest` / `ui-src/package.json` / `server/internal/version/VERSION`，当前 v1.4.9），由 `scripts/check-versions.ps1` 自动校验；FVCS 版本见 `FVCS/pkg/version/VERSION`（当前 v1.2.6）。
+- **版本单一来源**：FVCC 版本三处同步（`manifest` / `ui-src/package.json` / `server/internal/version/VERSION`，当前 v1.5.12），由 `scripts/check-versions.ps1` 自动校验；FVCS 版本见 `FVCS/pkg/version/VERSION`（当前 v1.2.6）。
 - **部署**：
   - FVCC：fnOS 应用，构建产物 `FVCC\fvcc.fpk` 上传 NAS 安装；历史版本见 `archive/fpk/`。
   - FVCS：Windows 常驻程序，`FVCS\fvcs-service.exe` 托盘运行，局域网被 FVCC 调度。
