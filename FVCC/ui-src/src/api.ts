@@ -19,6 +19,7 @@ import type {
   StreamTicketRequest,
   ProxyRequest,
   ProxyRequestResult,
+  ProxyListItem,
   MediaRoot,
 } from './types'
 
@@ -250,4 +251,6 @@ export const api = {
   /** 下发代理生成任务（taskType=GEN_PROXY），完成后由 WS proxy_ready 通知 */
   createProxy: (body: ProxyRequest) =>
     request<ProxyRequestResult>('/proxy', { method: 'POST', body: JSON.stringify(body) }),
+  /** 闭环② 回填：拉取已就绪代理（state=ready），供剪辑页挂载时恢复 ready 态 */
+  listProxies: () => request<{ items: ProxyListItem[] }>('/proxy'),
 }

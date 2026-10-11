@@ -110,6 +110,8 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 
 		// 代理工作流（M4 / 04 §3.2）：写操作，与 EDL 删除类一致挂 requireAdmin（07 §4.2）
 		api.POST("/proxy", security.RequireAdmin(), h.handleProxyRequest)
+		// 闭环② 回填：只读列出已就绪代理，供剪辑页挂载时恢复 ready 态（不依赖瞬时 WS）
+		api.GET("/proxy", h.handleProxyList)
 	}
 
 	// WebSocket：向前端推送任务状态

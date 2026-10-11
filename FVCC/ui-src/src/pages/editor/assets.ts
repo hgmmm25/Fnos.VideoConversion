@@ -613,6 +613,36 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
     return p.proxyFile ? fileFromProxyRel(p.proxyFile) : ''
   }
 
+  /** 闭环② 回填：挂载时从服务端拉取已就绪代理，恢复 proxyByFile 与列表角标。
+   *  不依赖瞬时 WS proxy_ready——页面重启/切回后 ready 态不再丢失。 */
+  async function hydrateProxies(): Promise<void> {
+    if (destroyed) return
+    try {
+      const r = await api.listProxies()
+      if (destroyed) return
+      let changed = false
+      for (const item of r.items) {
+        const existing = proxyByFile.get(item.file)
+        if (existing && existing.state === 'ready' && existing.proxyFile === item.proxyFile) continue
+        proxyByFile.set(item.file, {
+          state: 'ready',
+          proxyFile: item.proxyFile,
+          durationMs: item.durationMs,
+        })
+        const a = assets.find((x) => x.file === item.file)
+        if (a) {
+          a.proxyState = 'ready'
+          a.proxyFile = item.proxyFile
+          a.proxyDurationMs = item.durationMs
+        }
+        changed = true
+      }
+      if (changed) renderList()
+    } catch {
+      // 回填失败静默：不影响扫描/预览，WS proxy_ready 仍可落地新就绪的代理
+    }
+  }
+
   // 素材数超上限时提前提示（EDL_LIMITS 与后端 handlers_edl.go 同源）
   const unsubClips = edlStore.subscribe((s, changed) => {
     if (!changed.includes('clips')) return
@@ -620,6 +650,9 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
   })
   // 修复⑥：WS 订阅取消（原实现未取消，销毁后闭包泄漏）
   const unsubProxyReady = store.onProxyReady(handleProxyReady)
+
+  // 闭环②：挂载即回填已就绪代理（proxyByFile 跨扫描保留，后续 toRef 自动标注 ready）
+  hydrateProxies()
 
   if (currentDir) startScan(currentDir)
   else {

@@ -498,6 +498,14 @@ export interface ProxyRequestResult {
   deduplicated?: boolean
 }
 
+/** GET /proxy 列表项（闭环② 回填）：已就绪代理，供剪辑页挂载时恢复 ready 态 */
+export interface ProxyListItem {
+  /** 相对素材根的 POSIX 路径（AssetRef.file） */
+  file: string
+  proxyFile: string
+  durationMs: number
+}
+
 /** 编辑器保存状态（01 §5.1 / 02 §5.3） */
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error'
 
