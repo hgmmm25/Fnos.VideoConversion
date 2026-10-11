@@ -191,9 +191,17 @@ if ($Target -eq 'FVCC' -or $Target -eq 'ALL') {
     $backendDuration = ((Get-Date) - $fvccBackendStart).TotalSeconds
     Write-Ok "FVCC backend built in $([math]::Round($backendDuration, 1))s"
 
-    # Collect the parallel frontend job result
+    # Collect the parallel frontend job result.
+    # NOTE: PS 5.1 Receive-Job turns the job's stderr lines (e.g. vite's
+    # [PLUGIN_TIMINGS] notice) into error records, which under
+    # $ErrorActionPreference='Stop' abort the whole build even though npm
+    # succeeded. Temporarily relax EAP while draining the job; failure is
+    # still detected via the job State below.
     Wait-Job $frontendJob | Out-Null
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     Receive-Job $frontendJob | Out-String | Write-Host
+    $ErrorActionPreference = $prevEAP
     $npmStatus = if ($frontendJob.State -eq 'Failed') { 1 } else { 0 }
     Remove-Job $frontendJob -Force
     if ($npmStatus -ne 0) {
