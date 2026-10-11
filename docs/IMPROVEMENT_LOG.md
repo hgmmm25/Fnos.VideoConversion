@@ -203,7 +203,7 @@ P0-2（SQLite 迁移）、P1-1 完整版（事件驱动）、P1-2（freecut 收�
 
 ---
 
-*维护记录：2026-09-17 起稿（第一轮）→ 2026-09-18（第二~七轮）→ 2026-09-19（第十三轮，1.4.4）→ 2026-09-20（第十四轮，1.4.7）→ 2026-09-20 复核更新（v1.4.9，压缩历史轮次为 §五 摘要，新增 §七 第十五轮）→ 2026-09-21（第十六轮，1.5.3，新增 §八 本轮落实日志）→ 2026-09-21（第十七轮，1.5.3，新增 §九 步骤4方案稿/步骤5文档同步/步骤7门禁修复/P3-1提交收尾）→ 2026-09-21（第十八轮，1.5.3，新增 §十 docs 校准：P0-2 SQLite 迁移 / P1-1 事件驱动补登为已落地，7 份台账全面对齐代码现状）→ 2026-09-22（第十九轮，1.5.7，新增 §十一：1.5.4 编辑器变速播放 J/K/L + 按钮图标化（已提交 080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复 + 剪辑页多根兜底 + roots 回落 + 素材递归扫描 + 配套单测（工作区未提交），全套台账对齐 1.5.7）。*
+*维护记录：2026-09-17 起稿（第一轮）→ 2026-09-18（第二~七轮）→ 2026-09-19（第十三轮，1.4.4）→ 2026-09-20（第十四轮，1.4.7）→ 2026-09-20 复核更新（v1.4.9，压缩历史轮次为 §五 摘要，新增 §七 第十五轮）→ 2026-09-21（第十六轮，1.5.3，新增 §八 本轮落实日志）→ 2026-09-21（第十七轮，1.5.3，新增 §九 步骤4方案稿/步骤5文档同步/步骤7门禁修复/P3-1提交收尾）→ 2026-09-21（第十八轮，1.5.3，新增 §十 docs 校准：P0-2 SQLite 迁移 / P1-1 事件驱动补登为已落地，7 份台账全面对齐代码现状）→ 2026-09-22（第十九轮，1.5.7，新增 §十一：1.5.4 编辑器变速播放 J/K/L + 按钮图标化（已提交 080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复 + 剪辑页多根兜底 + roots 回落 + 素材递归扫描 + 配套单测（工作区未提交），全套台账对齐 1.5.7）。* → 2026-10-11（第二十轮 P3-5 v1.5.8 §十二 / 第二十一轮 P1-2 定案 §十三 / 第二十二轮 步骤8 e2e 缺陷批量修复 + #8 跨端返工 v1.5.10 §十四）→ 2026-10-12（第二十三轮，1.5.11，新增 §十五：#8 再复验——渲染取根「有界单根」提交侧修复，片段所属授权根透传 + `resolveRenderRoots`，不动 checksum；含旧项目回落边界；同轮追加 §15.6 第三层——FVCS `makeSrcResolver` 对齐代理（`BuildSMBPath`，修 `sourceRoot 为空` 误报）+ 重建部署 `fvcs-service.exe`）→ 2026-10-12（第二十四轮，1.5.12，新增 §十六：渲染出片后 FVCC 卡在「收尾·100%」——补 RENDER_EDL 终态轮询收口 `pollRenderTerminal`/`completeRenderTask`（FVCC-only，镜像 `proxyWf.Poll`；Success→COMPLETED+归档 / Failed→ERROR / Cancelled→CANCELLED））。*
 
 
 ## 十、第十八轮（2026-09-21）：docs 与代码现状对齐校准
@@ -423,3 +423,94 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 - **B 档（延后）**：#7 分辨率阈值（待用户定阈值）、#9 渲染多根（跨端立项，与 §十三 多轨/EDL 契约立项合并评估）。
 - **P3-6**：e2e 实测 `ffprobe:true`，运行时依赖评估可据此关闭。
 - **收尾**：A 档复验通过后走版本收口（v1.5.10）+ 文档对齐，随后 STOP-for-review——**未经确认不 push/不打 tag**。
+
+## 十五、第二十三轮（2026-10-12）：#8 再复验——渲染取根「有界单根」提交侧修复（v1.5.11）
+
+### 15.1 背景（v1.5.10 复验结果）
+
+用户部署 v1.5.10（含 §14.4 跨端返工）到真实 NAS（.106）+ 渲染机（.104）复验：
+- **代理侧**（默认根 / 非默认根 / 重建）全部正常。
+- **渲染侧仍报 `提交失败：素材不存在（E_ASSET_MISSING）`**——但报错发生在**提交阶段**（`precheckAssets` 本地预检），并非节点落地阶段。说明 §14.4 的 FVCS 跨端返工方向正确、已生效，残留缺陷在 FVCC 提交侧取根口径。
+
+### 15.2 真因：渲染提交一律回落 `videoRoot`，丢弃片段所属根
+
+- **代理**逐片段以「素材自身根」解析：`handlers_proxy.go` 用 `h.ResolveRoot(in.Root)`，前端提交带 `root`（§14.4 #5）。
+- **渲染**提交 `precheckAssets(localSource, clips)` 的 `localSource` 来自 `resolveEDLRoots`，一律取 `Settings.videoRoot`（缺省 `/media/videos`）。而 `videoRoot/exportRoot` **并非设置表单字段**（`handlers.go` 保留默认值），用户实际素材在 `/vol*/1000/*` 等非默认授权根下 → `filepath.Join(videoRoot, clip.file)` 本地不存在 → 提交侧 404 `E_ASSET_MISSING`。
+- 数据模型缺口：项目持久化的 `EDLClip` 只有相对 `file`，**未携带片段所属授权根**；代理根来自 `AssetRef.sourceRoot`，渲染路径未透传，故提交时无根可依。
+
+### 15.3 修复（有界单根，FVCC-only，不动 checksum/FVCS）
+
+- **前端**：`EDLClip` 增可选 `sourceRoot`（`types.ts`）；`buildClip` 从素材 `ClipSource.sourceRoot` 复制该根（`clipOps.ts`）；预览打点入片路径（`editor/index.ts onAddClip`）按 `assetId` 回填素材根。
+- **后端**：`model.EDLClip` 增 `SourceRoot`（`sourceRoot,omitempty`，仅项目落盘 + 提交消费；**渲染线协议 `WireClip` 不变** → 幂等 `checksum`（clips+profile）与 FVCS 载荷零影响）。
+- **取根逻辑**（`handlers_render.go` 闸门 4）：新增 `resolveRenderRoots(clips)`——
+  - 片段全部同根 → `matchAuthorizedSrcRoot` 校验其为授权根，命中则**以该根为素材根、其下 `_exports` 为成品根**（与代理「素材/产物同根」同机制），彻底修复非默认根误报；未授权 → `E_ROOT_UNKNOWN`(400)。
+  - 片段跨多根 → 明确 `E_EDL_INVALID`(400)「暂不支持跨多个授权目录混合素材」（真正多根混合归 #9 跨端立项）。
+  - 片段均无根（旧项目）→ 回落 `resolveEDLRoots` 既有 `videoRoot/exportRoot` 口径（向后兼容）。
+  - 抽公共 `mapEDLRoots`（本地根↔协议根/共享相对根/本地可见性），默认口径与片段根口径共用。
+
+### 15.4 已知边界（须告知用户）
+
+- **旧项目**（本次修复前保存、片段无 `sourceRoot`）仍回落 `videoRoot`，非默认根素材**需重新添加片段**（重建时带上所属根）方能渲染；新建/重加项目不受影响。
+- 真正「跨多个授权目录混合素材」的渲染仍未支持（`E_EDL_INVALID` 明确拒绝），归 #9。
+
+### 15.5 验证与收口
+
+- 新增后端单测（`handlers_render_test.go` §5）：`TestB04RenderResolvesClipSourceRoot`（非默认根片段按所属根取根、`payload.sourceRoot/destRoot` 校验）、`TestB04RenderLegacyNoClipRootFallsBackToVideoRoot`（旧无根片段回落 videoRoot）、`TestB04RenderMixedClipRootsRejected`（跨根 400）、`TestB04RenderUnknownClipRootRejected`（未授权根 400 `E_ROOT_UNKNOWN`）。
+- 全套 `go build/vet/test ./...` 绿、`npm run build` 通过（design check 通过）。
+- **版本收口**：三方对齐 **1.5.10 → 1.5.11**（`VERSION` + `manifest` + `ui-src/package.json`；fnOS 需更高版本覆盖安装）。
+- **待真机复验**（用户自测，未 push/未 tag）：默认根与非默认根渲染提交均应通过预检并像代理跑通；FVCC fpk 需重装至 .106。**注**：复验又暴露渲染落地第三层（见 §15.6），需一并重新部署加固后的 `fvcs-service.exe`。
+
+### 15.6 第三层（同轮追加）：渲染落地 `makeSrcResolver` 与陈旧 exe
+
+v1.5.11 部署后真机复验：FVCC 提交侧不再 `E_ASSET_MISSING`，任务成功入队、SMB 共享挂载成功（`\\192.168.1.106\Test` / `\\...\RP-1`），但 **FVCS 渲染落地报 `E_PAYLOAD_INVALID: sourceRoot 为空`**（前端卡在「准备 · 0%」）。定位：
+
+- 报错点 `render_edl.go` `makeSrcResolver` 的 `!HasSuffix(base, sep) → else 返回"sourceRoot 为空"` 守卫：把「带尾分隔符的合法挂载根」误判为空。`MountSMBShare` 返回 `smbPath + "\"`（smb.go:47），故 `mountPath = \\host\share\`；盘符根 `X:\` 经 `filepath.Clean` 亦保留尾分隔符——两者都会落入该错误分支。§14.4 返工把 `srcBase` 由 `mountPath+payload.SourceRoot` 改为 `srcBase=mountPath`（对齐代理），却**未同步加固 `makeSrcResolver`**，代理因直接 `BuildSMBPath(mountPath, file)` 而免疫，渲染因此仍跑不通。
+- **同时判定运行节点为陈旧构建**：对纯 UNC，当前源码 `filepath.Clean(\\…\Test\)` 实测会去掉尾分隔符 → 走解析器分支、并不报此错（已用一次性 Go 程序在 Windows 复核）。既然真机报出该错，说明 `.104` 上执行的 `fvcs-service.exe` 并非 §14.4 之后的构建。
+- 修复（FVCS-only，对齐 GEN_PROXY）：`makeSrcResolver` 重写为——仅当根 trim 后为空才判 `E_PAYLOAD_INVALID "素材根为空"`；相对素材用 **`smb.BuildSMBPath(srcBase, rel)`** 拼接（与代理同一函数），越权判定用 `filepath.Clean` 归一根前缀 + `isSafeRelPath`（已拦 `..`/绝对/盘符）。彻底移除"带尾分隔符即空"的错误守卫。
+- 测试：新增 `pkg/task/render_src_resolver_test.go`——①UNC 带/不带尾分隔符、POSIX 根、本地目录根均构造成功，仅空/纯空白报 `E_PAYLOAD_INVALID`；②真实临时文件命中返回落地路径，缺失 `E_ASSET_MISSING`，穿越/绝对 `E_ASSET_NOT_IN_ROOT`。`go vet ./pkg/task` + `pkg/task` 测试绿；`build.ps1 -Target FVCS` 重建 `fvcs-service.exe`（CGO，00:42，FVCS_DIR + FVCC_DIR 各一份）。
+- **收口修正**：本轮 §15.3 所述「不动 FVCS」仅对提交侧成立；渲染落地取根经此第三层仍需一处 FVCS 加固 + **重新部署渲染机 exe**。故 #8 全链路 = ①FVCS 落地 `srcBase=mountPath`（§14.4）②FVCC 提交侧有界单根（§15.3）③FVCS `makeSrcResolver` 对齐代理（本节）——三层齐备方等价代理。
+
+## 十六、第二十四轮（2026-10-12）：渲染出片后 FVCC 卡在「收尾 · 100%」——RENDER_EDL 终态收口缺失（v1.5.12）
+
+### 16.1 现象（v1.5.11 三层落地后再复验）
+
+§15.6 加固的 `fvcs-service.exe` 部署后真机复验：FVCS 侧渲染**已跑通**——finalize ffmpeg 完成，产物落 `\\192.168.1.106\RP-1\_exports\1_20261012_2.mp4`（可直接打开播放），节点日志 `Task completed` / `渲染完成`。但 **FVCC 任务面板永远停在「转码中 / 收尾 · 100%，已用时 01:38」**，进度不再变化、也不移入历史。
+
+### 16.2 真因：渲染只有进度回路，没有终态回路（FVCC 调度侧缺口）
+
+与代理链路对比即可定位——三类任务的"完成落地"路径不对称：
+
+- **转码**：`checkTranscodeProgress`（scheduler.go）按窗口 `QueryTaskDetail`，`Success → UpdateTaskStatus(COMPLETED,100)` + 广播 + `MoveToHistory`（scheduler.go:662-670）。
+- **GEN_PROXY**：`proxyWf.Poll`（media/proxy.go:117）按窗口 `QueryTaskDetail` 拿终态，`SUCCESS → Finish` / `FAILED → FailPermanent`。
+- **RENDER_EDL**：两处都不沾。`processTask` 的 `case StatusTranscoding: if isRenderTask(t)` 分支仅对 GEN_PROXY 调 `proxyWf.Poll`，RENDER_EDL **直接 return**（无终态轮询）；而 WS 进度入口 `HandleRemoteProgress → store.ApplyRenderProgress`（store_edl.go:135）对渲染任务**只更新 stage/percent，永不改 Status**——即便收到 `finalize·100%` 帧，任务仍是 `Transcoding`。
+
+根因确认：FVCS 的 WS 只回推 `Progress` 帧（protocol.go `buildProgressFrame`），**不发完成/失败终态事件**（`remote.readPump` 仅路由 `Progress`/`Hello`）；终态 `Success/Failed/Cancelled` 只在 FVCS 任务存储里（task.go:1179），只能经 `QueryTaskDetail` 轮询获取。RENDER_EDL 缺这条轮询 → 节点已出片而本端永不落地。
+
+### 16.3 修复（FVCC-only，镜像 proxyWf.Poll）
+
+- `scheduler.go`：新增窗口字段 `renderPollAt sync.Map` + 常量 `renderPollInterval=5s`；`processTask` 的渲染分支改为 `switch TaskType{ GenProxy→proxyWf.Poll；RenderEDL→pollRenderTerminal }`。
+- 新增 `pollRenderTerminal(t)`：按窗口 `QueryTaskDetail`，二次读取防覆盖已收口/暂停任务后——`Success→completeRenderTask` / `Failed→failRenderTaskPermanent`（沿用节点 `E_*` 码与 `RemoteFailureMessage` 明细）/ `Cancelled→置 CANCELLED`；查询失败保持 RUNNING 等下个窗口（抖动不误杀，与代理同口径）。
+- 新增 `completeRenderTask(t)`：渲染产物已由节点写入共享导出目录，**无需像代理那样本地 ffprobe 校验/登记**——置 `COMPLETED·100` → `BroadcastTaskUpdate(...string(StatusCompleted)...)`（口径对齐 SMB 转码完成，前端 `store.applyTaskUpdate` 识别 `COMPLETED` 终态并移入历史）→ 5s 后 `MoveToHistory`。
+- **注（WireName vs Go 串）**：渲染进度全量帧用 `Status.WireName()`（`RUNNING/SUCCESS/FAILED`），而转码/本次完成收口用 `string(TaskStatus)`（`TRANSCODING/COMPLETED/ERROR`）；前端终态判定按后者（`store.ts:163`）。故完成广播刻意采用 `string(model.StatusCompleted)="COMPLETED"`，命中前端终态分支。
+
+### 16.4 测试
+
+- 新增 `internal/scheduler/render_poll_test.go`（4 例，均不依赖真实节点）：`completeRenderTask` 成功落 `COMPLETED·100` 且清窗口；缺 `RemoteTaskID` 空转保持 RUNNING；节点记录消失 → `E_NODE_NOT_FOUND` 不可重试失败；窗口内二次轮询被节流（不清计时，保窗口语义）。
+- `Success/Failed/Cancelled` 的 `QueryTaskDetail` 结果分支需真实 WS/httptest 端，与既有 `checkTranscodeProgress`/`proxyWf.Poll` 一致交由真机复验收口。
+- **真机复验结论（2026-10-12，v1.5.12）**：Success 收口通过——渲染出片后任务由「收尾·100%」正常翻 `COMPLETED` 并进历史；且本轮观察到进度推进明显平滑（此前长期是 1%→99% 的跳变，因 WS 阶段帧与轮询窗口共同落地）。
+- **失败/取消分支说明（暂无复现场景，遇到再收）**：`pollRenderTerminal` 的 `Failed→failRenderTaskPermanent`（带节点 `E_*` 码/阶段/明细）与 `Cancelled→CANCELLED` 两条分支代码已就位并有单测兜底（节点记录消失/窗口节流等不依赖真实结果的分支已覆盖），但真机上**尚未遇到自然的渲染失败/取消场景**去触发这两条 `QueryTaskDetail` 终态返回；按用户决定，**待实际出现失败任务时顺带核验落 ERROR/带码 + 取消落 CANCELLED 即可，无需专门构造**。
+- 全套 `go build ./...` + `go vet ./internal/scheduler/` + `go test ./internal/scheduler/` 绿。
+
+### 16.5 收口
+
+- **版本收口**：三方对齐 **1.5.11 → 1.5.12**（`VERSION` + `manifest` + `ui-src/package.json`；fnOS 需更高版本覆盖安装）。
+- **待真机复验**（用户自测，未 push/未 tag）：渲染出片后 FVCC 任务应在轮询窗口内（≤5s）由「收尾·100%」翻为 `COMPLETED` 并移入历史；渲染失败应落 `ERROR` 并带节点错误码；主动取消应落 `CANCELLED`。**仅需重装 FVCC fpk 至 .106**（本轮无 FVCS 改动，`.104` 的 `fvcs-service.exe` 沿用 §15.6 加固版）。
+  - **复验进度（2026-10-12）**：Success 收口 ✅ 通过（含进度平滑显示改善）；Failed→ERROR / Cancelled→CANCELLED ⏸ **暂无自然场景，按用户决定遇到失败任务时顺带核验，不专门构造**。
+- **#8 全链路最终态**：①②③（取根三层，§14.4/§15.3/§15.6）+ ④完成收口（本轮）= 渲染端到端等价代理。遗留仍为 B 档 #7（分辨率阈值，产品决策）、#9（真·多根混合渲染，跨端）。
+
+### 16.6 附带修复：FVCC 渲染根校验器与 FVCS 对齐（共用向量 `PL-ROOT-ABS` 长期红）
+
+全量 `go test ./...` 复核时暴露一处早于本轮即存在的红测试：`internal/edl.TestD02EDLVectorsPayload`。共用向量 `FVCS/pkg/protocol/testdata/edl_vectors.json` 的 `PL-ROOT-ABS`（destRoot=`/media/videos/_exports`）期望 `OK`，注记「渲染根为下发专用写法…跨端对齐 #8」——该向量由 §14.4（71403e1）随 FVCS `ValidateRootPath`（允许空/相对/绝对、仅拒 `..`）一并引入，但 **FVCC 侧 `validateRootRelPath` 从未同步**，仍走严格的 `validateRelPath`（L1 直接拒绝对 `/` 开头），导致两端对同一载荷裁决不一致、FVCC 测试长期红（`build.ps1` 的 FVCC 目标不跑 `go test`，故未被 CI 拦截）。
+
+- 修复（FVCC-only）：`edl_validate.go` `validateRootRelPath` 重写为与 FVCS `ValidateRootPath` 同规则——`TrimSpace` 后空放行，`ReplaceAll(\→/)` 分段仅拒 `..` 穿越段（错误码 `E_ASSET_NOT_IN_ROOT`，对齐 `PL-ROOT-TRAVERSAL`）。渲染根的**授权边界不在此字符级校验**，而由提交侧 `resolveRenderRoots`→`matchAuthorizedSrcRoot`（精确匹配授权根）与落地侧 §15.6 `makeSrcResolver`（`BuildSMBPath`+根前缀+`os.Stat`）双重把关，故放宽绝对/反斜杠写法是安全的跨端对齐，不削弱安全。
+- 验证：`internal/edl` + `internal/api` + 全量 `go test ./...` 复绿；`go vet` 干净。本轮 fpk 因此改动一并重打。

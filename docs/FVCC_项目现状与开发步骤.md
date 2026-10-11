@@ -10,7 +10,7 @@
 
 FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 Web 客户端：浏览本地素材、把转码/代理/渲染任务下发给 FVCS 渲染端、通过 WebSocket 实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript 零框架原生 DOM，产物以 fpk 形式打包供 fnOS 安装。
 
-当前版本 **v1.5.10**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-10-11 实测；1.5.3 已打 tag，SQLite 迁移三个提交已入库；1.5.4 已提交 080754c；1.5.5~1.5.7 Windows 路径边界修复 + 剪辑页素材递归扫描**已提交 68ebdec 并打 tag v1.5.7**（校正 2026-09-22 台账"工作区未提交"的过时记载，后续 9468ad5 .gitignore / 6b2f399 pathutil 收口）；1.5.8 为 P3-5 store 备份/迁移/回滚落地，**已推送 fork/baseline-snapshot 并打 tag v1.5.8**——见 §8 步骤 4 与 IMPROVEMENT_LOG §十二；**1.5.9 为步骤 8 e2e A 档缺陷修复起点（代理回填 #6 / 代理带根 #5 / 渲染未映射根早失败 #8 / scanner 删除按钮 #10 / FVCS 重连自动 online #11）；1.5.10 为复验后返工——#6/#5/#10/#11 真机通过，#8 原闸门4b 判为误修，改为渲染取根跨端对齐代理（FVCS `srcBase=mountPath` + FVCC 回退闸门4b，需重部署渲染机），并因 fnOS 仅接受更高版本覆盖安装而递增版本；均本地提交、未 push/未打 tag，待真机复验收口，见 IMPROVEMENT_LOG §十四**）。
+当前版本 **v1.5.12**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-10-12 实测；1.5.3 已打 tag，SQLite 迁移三个提交已入库；1.5.4 已提交 080754c；1.5.5~1.5.7 Windows 路径边界修复 + 剪辑页素材递归扫描**已提交 68ebdec 并打 tag v1.5.7**（校正 2026-09-22 台账"工作区未提交"的过时记载，后续 9468ad5 .gitignore / 6b2f399 pathutil 收口）；1.5.8 为 P3-5 store 备份/迁移/回滚落地，**已推送 fork/baseline-snapshot 并打 tag v1.5.8**——见 §8 步骤 4 与 IMPROVEMENT_LOG §十二；**1.5.9 为步骤 8 e2e A 档缺陷修复起点（代理回填 #6 / 代理带根 #5 / 渲染未映射根早失败 #8 / scanner 删除按钮 #10 / FVCS 重连自动 online #11）；1.5.10 为复验后返工——#6/#5/#10/#11 真机通过，#8 原闸门4b 判为误修，改为渲染取根跨端对齐代理（FVCS `srcBase=mountPath` + FVCC 回退闸门4b，需重部署渲染机），并因 fnOS 仅接受更高版本覆盖安装而递增版本；1.5.11 为 #8 再复验后的提交侧收口——渲染仍报 `E_ASSET_MISSING` 定位到 `precheckAssets` 一律回落 `videoRoot`、丢弃片段所属授权根，改为「有界单根」：EDLClip 透传 `sourceRoot`，`resolveRenderRoots` 按片段所属授权根取根（同代理机制），跨根明确拒绝、旧无根片段回落 videoRoot，不动 checksum/WireClip；同轮追加第三层 FVCS `makeSrcResolver` 对齐代理 `BuildSMBPath`，修渲染落地 `sourceRoot 为空` 误报并重建 `fvcs-service.exe`（见 IMPROVEMENT_LOG §十五）；**1.5.12 为 #8 出片后再复验——FVCS 渲染已成功出片（`_exports` 内 MP4 可播放），但 FVCC 任务永远卡在「转码中 / 收尾·100%」。定位：RENDER_EDL 无终态收口（WS 只回推进度、不发终态事件，`ApplyRenderProgress` 不改 Status；调度分支仅 GEN_PROXY 有 `proxyWf.Poll`，RENDER_EDL 直接 return）。修复：FVCC-only 新增 `pollRenderTerminal` 按窗口 `QueryTaskDetail` 轮询终态（镜像 `proxyWf.Poll`）+ `completeRenderTask`（Success→COMPLETED+延迟归档 / Failed→ERROR 带节点码 / Cancelled→CANCELLED），渲染产物已落共享导出目录故无需代理式本地校验（见 IMPROVEMENT_LOG §十六）；至此 #8 全链路 = 取根三层 + 完成收口，端到端等价代理。均本地改动、未 push/未打 tag，待真机复验收口**）。
 
 治理进展：P0-2 SQLite 迁移已落地（2026-09-21，提交 a72b8ff / 9e122d5 / 5dd373e）；P1 组（P1-1 ~ P1-5）全部落地或部分落地（P1-1 事件驱动调度已落地，提交 eab7688）；P2 组（P2-1 ~ P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。
 
@@ -275,7 +275,7 @@ D:\Fnos.VideoConversion\FVCC\
 
 ## 8. 下一步开发步骤
 
-> 完成状态总览（2026-09-21 实测，2026-10-11 更新）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 部分完成**；**步骤 3 / 5 / 6 已完成（2026-09-21）**；**步骤 4 已完成（2026-10-11，v1.5.8，P3-5 阶段 A~D 落地）**；**步骤 7 门禁修复已完成（覆盖率上调未达 60%，延续 P3-7）**；**步骤 8 已执行（2026-10-11，真实 NAS+Windows 走查，①④⑤ pass / ②③ 缺陷），A 档五项缺陷已修复并本地提交（#6/#5/#10/#11 复验通过；#8 返工为渲染根跨端对齐 v1.5.10），待复验收口；B 档 #7/#9 延后——见 IMPROVEMENT_LOG §十四**。各步骤标题后〔〕内为实测状态标注。
+> 完成状态总览（2026-09-21 实测，2026-10-11 更新）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 部分完成**；**步骤 3 / 5 / 6 已完成（2026-09-21）**；**步骤 4 已完成（2026-10-11，v1.5.8，P3-5 阶段 A~D 落地）**；**步骤 7 门禁修复已完成（覆盖率上调未达 60%，延续 P3-7）**；**步骤 8 已执行（2026-10-11，真实 NAS+Windows 走查，①④⑤ pass / ②③ 缺陷），A 档五项缺陷已修复并本地提交（#6/#5/#10/#11 复验通过；#8 返工为渲染根跨端对齐 v1.5.10 → 再复验仍报 `E_ASSET_MISSING`，v1.5.11 提交侧「有界单根」按片段所属授权根取根，同轮追加 FVCS `makeSrcResolver` 落地加固 v1.5.11→出片；1.5.12 补 RENDER_EDL 终态收口 `pollRenderTerminal`（出片后由「收尾·100%」翻 COMPLETED），#8 端到端等价代理），待复验收口；B 档 #7/#9 延后——见 IMPROVEMENT_LOG §十四~§十六**。各步骤标题后〔〕内为实测状态标注。
 
 按"环境就绪 → 数据安全 → 代码清理 → 文档同步 → 质量门禁 → 端到端验收"顺序执行，每步含验收标准。
 
@@ -335,7 +335,7 @@ D:\Fnos.VideoConversion\FVCC\
 4. 全量打包回归：`D:\Fnos.VideoConversion\build.ps1 -Target FVCC` 产出新 fpk。
 5. **验收**：三项全绿；CI 流水线跑通；fpk 产出成功。
 
-### 步骤 8：端到端验收（约 1 天）〔🟡 已执行（2026-10-11，真实 NAS+Windows）：①转码/④回收站/⑤断联 pass；②代理/③EDL 渲染暴露缺陷；A 档 #5/#6/#10/#11 已修复（复验通过）；#8 渲染未映射根返工为跨端对齐（v1.5.10，本地提交待复验收口）；B 档 #7 分辨率阈值 / #9 渲染多根延后。走查记录与缺陷台账见 IMPROVEMENT_LOG §十四〕
+### 步骤 8：端到端验收（约 1 天）〔🟡 已执行（2026-10-11，真实 NAS+Windows）：①转码/④回收站/⑤断联 pass；②代理/③EDL 渲染暴露缺陷；A 档 #5/#6/#10/#11 已修复（复验通过）；#8 渲染全链路收口——取根三层：①FVCS 落地 `srcBase=mountPath`（v1.5.10）②FVCC 提交侧「有界单根」按片段所属授权根取根（v1.5.11，`resolveRenderRoots`）③FVCS `makeSrcResolver` 对齐代理 `BuildSMBPath`（修 `sourceRoot 为空` 误报，重建 `fvcs-service.exe`）；完成收口第四层：④FVCC 补 RENDER_EDL 终态轮询 `pollRenderTerminal`/`completeRenderTask`（v1.5.12，出片后由「收尾·100%」翻 COMPLETED，见 IMPROVEMENT_LOG §十六）；均本地改动、待真机复验收口（仅需重装 FVCC fpk 至 .106）；B 档 #7 分辨率阈值 / #9 渲染多根延后。走查记录与缺陷台账见 IMPROVEMENT_LOG §十四~§十六〕
 
 按以下闭环走查，每项需 WS 实时进度可观察：
 1. **素材→转码**：扫描目录 → probe 真实数据 → 创建转码任务 → 调度下发 FVCS → RUNNING → 完成 → 历史记录落库。
