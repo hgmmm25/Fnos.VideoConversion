@@ -16,8 +16,8 @@ import (
 )
 
 // Store 内存缓存 + 原子持久化的配置存储。
-// MVP 实现：读多写少场景，内存缓存优先，变更时异步落地。
-// TODO(P1): 定时备份、配置迁移、快照回滚。
+// 读多写少场景，内存缓存优先，变更时批量落地；P3-5 已补齐
+// 定时/写前/迁移前备份、版本化数据迁移链与快照整包回滚（backup/migrate/restore.go）。
 type Store struct {
 	mu         sync.RWMutex
 	dataDir    string

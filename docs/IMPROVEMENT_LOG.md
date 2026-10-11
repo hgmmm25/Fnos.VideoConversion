@@ -1,6 +1,8 @@
-# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-09-22 更新至 v1.5.7）
+# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-11 更新至 v1.5.8）
 
-> **现状快照（2026-09-22 第十九轮，本次文档校准）**：当前版本 **v1.5.7**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，工作区实测）。自第十八轮（v1.5.3 基线）以来推进 **1.5.4~1.5.7** 四个小版本：**1.5.4 已提交（080754c）**——editor 预览变速播放（PR 惯例 J/K/L，同向 2x→3x→4x、最大 4x、反向重置）+ 播放控制按钮图标化（preview.ts +100 / shortcuts.ts +16 / ui.ts / layout.ts）；**1.5.5~1.5.7 工作区未提交**——一批 Windows 盘符根路径边界修复（`D:\` Clean 后再拼分隔符产生 `D:\\` 双分隔符，导致子路径前缀永不命中、报"无权限/不存在"，统一修 handlers.go 目录浏览 / edl_validate.go / trash.go / smbshare.go 四处）+ 剪辑页多根错位兜底（stream.go resolveMediaFile 指定根失败时对全部授权素材根重试，越权 403 立即拒绝）+ roots.go 素材根本机不可见时回落授权目录首个 + 剪辑页素材递归扫描（assets.ts recursive=true，修复 v1.5.6 子文件夹视频不显示）+ 配套单测（edl_validate/stream/trash/roots 各 *_test.go）。store.go:19 `TODO(P1)`（定时备份/快照回滚）延续，方案评审稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 已出、代码未落地；其余未落实项见 §十/§十一。前序结构债（第十八轮基线）：**P0-2 SQLite 迁移已落地**（三个提交 a72b8ff / 9e122d5 / 5dd373e，modernc.org/sqlite v1.14.0 纯 Go 驱动 + 12 张实体表 + schema v1 迁移链 + 存量 JSON 导入 + SQLite 读回主路径与 persist 载体切换，store 内存索引 + 脏标记 Flush 批量落盘）；**P1-1 事件驱动调度已落地**（提交 eab7688：事件循环 + 内存索引 + 定时落盘 + WS 广播全覆盖）。
+> **现状快照（2026-10-11 第二十轮，本次落地）**：当前版本 **v1.5.8**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，check-versions.ps1 实测通过）。本轮完成 **P3-5 store 持久化健壮性（备份/迁移/快照回滚）**，按阶段 A~D 依次本地提交：**A 备份**（efef4bd：backup.go 定时 30min×12 轮转池 + 写前备份 + manual 永久）、**B 迁移框架**（16f1043：migrate.go data_version 锚点与 schema_version 正交，SQLite 走 import_meta、JSON 走 data_version.json，1→2→3 迁移链 + 全新安装打锚 + 高版本拒启）、**C 快照回滚**（59e4004：restore.go 整包验签换入 + API POST /store/restore 仅后端，zip 白名单防 zip-slip + 64MB 单条上限 + 回滚前自动 prerestore 备份 + 失败零副作用）、**D 收口**（store.go 头部 TODO(P1) 移除 + 版本 1.5.8 + 文档台账回写）。评审口径已锁：secret.key 不入备份、恢复沿用现密钥；恢复后运行中任务重置 QUEUE（同崩溃恢复语义）；本轮不做前端入口。上一轮（1.5.5~1.5.7 Windows 路径边界批次）**已提交 68ebdec 并打 tag v1.5.7**（校正第十九轮"工作区未提交"的过时记载，P3-1 对该批次关闭）。验证：`go build` / `go vet` / `go test -count=1 ./...`（12 包）全绿，coverage 56.7%→**59.0%**（门禁 55%）；-race 需 cgo，留 Linux CI。详见 §十二。
+
+> **现状快照（2026-09-22 第十九轮，历史文档校准）**：当前版本 **v1.5.7**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，工作区实测）。自第十八轮（v1.5.3 基线）以来推进 **1.5.4~1.5.7** 四个小版本：**1.5.4 已提交（080754c）**——editor 预览变速播放（PR 惯例 J/K/L，同向 2x→3x→4x、最大 4x、反向重置）+ 播放控制按钮图标化（preview.ts +100 / shortcuts.ts +16 / ui.ts / layout.ts）；**1.5.5~1.5.7 工作区未提交**——一批 Windows 盘符根路径边界修复（`D:\` Clean 后再拼分隔符产生 `D:\\` 双分隔符，导致子路径前缀永不命中、报"无权限/不存在"，统一修 handlers.go 目录浏览 / edl_validate.go / trash.go / smbshare.go 四处）+ 剪辑页多根错位兜底（stream.go resolveMediaFile 指定根失败时对全部授权素材根重试，越权 403 立即拒绝）+ roots.go 素材根本机不可见时回落授权目录首个 + 剪辑页素材递归扫描（assets.ts recursive=true，修复 v1.5.6 子文件夹视频不显示）+ 配套单测（edl_validate/stream/trash/roots 各 *_test.go）。store.go:19 `TODO(P1)`（定时备份/快照回滚）延续，方案评审稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 已出、代码未落地；其余未落实项见 §十/§十一。前序结构债（第十八轮基线）：**P0-2 SQLite 迁移已落地**（三个提交 a72b8ff / 9e122d5 / 5dd373e，modernc.org/sqlite v1.14.0 纯 Go 驱动 + 12 张实体表 + schema v1 迁移链 + 存量 JSON 导入 + SQLite 读回主路径与 persist 载体切换，store 内存索引 + 脏标记 Flush 批量落盘）；**P1-1 事件驱动调度已落地**（提交 eab7688：事件循环 + 内存索引 + 定时落盘 + WS 广播全覆盖）。
 
 > 依据《项目分析与改进方向.md》逐项落实。原则：低风险直接改码并验证；结构性大改（SQLite 迁移、事件驱动调度、freecut 收敛）如实说明未落实原因，不强行破坏既有稳定链路。
 > 验证基线：`go build ./...` / `go vet ./...` / `go test -short ./...` 全部通过；`tsc --noEmit` 通过；`scripts/check-versions.ps1` 退出码 0。
@@ -80,7 +82,7 @@
 | P0-2 | JSON 文件存储 → SQLite | P0 | 消除手写持久化 | M1/M2/M3 | ✅ 已落地（2026-09-21，详见 §十） |
 | P1-1 | ticker → 事件驱动调度 | P1 | 纯事件驱动 + 超时兜底 | M1/M2/M3 | ✅ 已落地（2026-09-21，详见 §十） |
 | P1-2 | 前端收敛 freecut | P1 | 单前端单入口 | M1/M2/M3 | 🔲 待启动（需产品决策） |
-| P3-5 | store 持久化健壮性（定时备份/配置迁移/快照回滚） | P3 | 原子写 + 备份轮转 | 下一迭代 | 🟡 方案稿已出（STORE_PERSISTENCE_ROADMAP.md），代码待评审后落地 |
+| P3-5 | store 持久化健壮性（定时备份/配置迁移/快照回滚） | P3 | 原子写 + 备份轮转 | 下一迭代 | ✅ 已落地（2026-10-11 v1.5.8，阶段 A~D：efef4bd 备份 / 16f1043 迁移框架 / 59e4004 快照回滚 / 本轮收口，详见 §十二） |
 | P3-6 | ffprobe 运行时环境依赖评估 | P3 | 生产缺探测能力兜底 | 下一迭代 | 🔲 待启动（源自现状文档） |
 | P3-7 | 覆盖率门槛 55% → 60% | P3 | CI 稳定后上调 | 后续 | 🟡 口径已修复（实测 56.7%），上调延续 |
 
@@ -204,7 +206,7 @@ P0-2（SQLite 迁移）、P1-1 完整版（事件驱动）、P1-2（freecut 收�
 *维护记录：2026-09-17 起稿（第一轮）→ 2026-09-18（第二~七轮）→ 2026-09-19（第十三轮，1.4.4）→ 2026-09-20（第十四轮，1.4.7）→ 2026-09-20 复核更新（v1.4.9，压缩历史轮次为 §五 摘要，新增 §七 第十五轮）→ 2026-09-21（第十六轮，1.5.3，新增 §八 本轮落实日志）→ 2026-09-21（第十七轮，1.5.3，新增 §九 步骤4方案稿/步骤5文档同步/步骤7门禁修复/P3-1提交收尾）→ 2026-09-21（第十八轮，1.5.3，新增 §十 docs 校准：P0-2 SQLite 迁移 / P1-1 事件驱动补登为已落地，7 份台账全面对齐代码现状）→ 2026-09-22（第十九轮，1.5.7，新增 §十一：1.5.4 编辑器变速播放 J/K/L + 按钮图标化（已提交 080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复 + 剪辑页多根兜底 + roots 回落 + 素材递归扫描 + 配套单测（工作区未提交），全套台账对齐 1.5.7）。*
 
 
-## 十、第十八轮（2026-09-21）：docs 与代码现状对齐校准（本次）
+## 十、第十八轮（2026-09-21）：docs 与代码现状对齐校准
 
 ### 10.1 背景
 
@@ -245,7 +247,7 @@ P0-2（SQLite 迁移）、P1-1 完整版（事件驱动）、P1-2（freecut 收�
 
 ---
 
-## 十一、第十九轮（2026-09-22）：1.5.4~1.5.7 迭代——编辑器变速播放 + Windows 路径边界修复（本次）
+## 十一、第十九轮（2026-09-22）：1.5.4~1.5.7 迭代——编辑器变速播放 + Windows 路径边界修复
 
 ### 11.1 背景
 
@@ -257,7 +259,7 @@ P0-2（SQLite 迁移）、P1-1 完整版（事件驱动）、P1-2（freecut 收�
 - **播放控制按钮图标化**：`ui.ts`（ICON_PATHS +10 行，新增 rewind/play/ff 等内联 SVG）+ `preview.ts`/`layout.ts`（+8 行）——预览控制条文字按钮替换为图标按钮。
 - **验证**：三处版本一致（version_test.go 自动校验）；`go build` / `go vet` / `go test` 全绿；`npm run build`（check:design:diff + tsc -b + vite build）通过。
 
-### 11.3 1.5.5~1.5.7（工作区未提交）：Windows 端路径边界与素材定位修复
+### 11.3 1.5.5~1.5.7（工作区未提交；2026-10-11 校正：后已提交 68ebdec 并打 tag v1.5.7）：Windows 端路径边界与素材定位修复
 
 | # | 修复 | 位置 | 说明 |
 |---|---|---|---|
@@ -271,5 +273,45 @@ P0-2（SQLite 迁移）、P1-1 完整版（事件驱动）、P1-2（freecut 收�
 
 ### 11.4 待办延续
 
-- **P3-1**：1.5.5~1.5.7 工作区改动（含版本号三处 + 后端 6 文件 + 前端 assets.ts + 单测 + docs 校准）未提交，1.5.4 已提交但 1.5.5~1.5.7 未打 tag，提交纪律延续；
-- **P3-5 / P3-6 / P3-7 / P3-9 / 步骤 8**：状态同第十八轮 §十，未变化。
+- **P3-1**：1.5.5~1.5.7 工作区改动（含版本号三处 + 后端 6 文件 + 前端 assets.ts + 单测 + docs 校准）未提交，1.5.4 已提交但 1.5.5~1.5.7 未打 tag，提交纪律延续；（2026-10-11 校正：该批次已提交 68ebdec 并打 tag v1.5.7，P3-1 对该批次关闭）
+- **P3-5 / P3-6 / P3-7 / P3-9 / 步骤 8**：状态同第十八轮 §十，未变化。（2026-10-11 校正：P3-5 已于第二十轮落地关闭，见 §十二；其余延续）
+
+## 十二、第二十轮（2026-10-11）：P3-5 store 备份/迁移/快照回滚落地（v1.5.8，本次）
+
+### 12.1 背景
+
+承接第十九轮（v1.5.7 已提交 68ebdec + tag），按 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 评审稿分四阶段落地 **P3-5**，每阶段独立本地提交：A 备份（efef4bd）→ B 迁移框架（16f1043）→ C 快照回滚（59e4004）→ D 收口（本轮）。评审口径（2026-10-11 确认）：备份默认 **30min 定时 × 12 份保留**（auto/prewrite/premigration/prerestore 共用轮转池），manual 永久；**secret.key 不入备份**、回滚沿用现密钥；恢复后**运行中任务重置 QUEUE**（同崩溃恢复语义）；本轮**仅后端 API**，不做前端入口。
+
+### 12.2 阶段 A（efef4bd）：备份
+
+- `store/backup.go`：`Backup(kind)` 对内存快照整体打包 zip（12 个实体 JSON + manifest.json），manifest 携带 **SHA-256 + size 逐文件校验**与 SQLite `schema_version`；servers/settings 沿用 `enc:v1:` 密文入包。kind 常量 auto/manual/prewrite（本轮加 premigration/prerestore），非 manual 全部进 **12 份轮转池**，manual 永久保留。
+- **定时备份**：30min ticker（store 内 goroutine）；**关键写前备份**（preCriticalBackup）在破坏性批量写前触发。
+- API：`GET /api/store/backups`（列表）、`POST /api/store/backup`（手动，RequireAdmin）。
+
+### 12.3 阶段 B（16f1043）：版本化数据迁移框架
+
+- `store/migrate.go`：新增与 SQLite DDL `schema_version` **正交**的数据面锚点 **`data_version`**（目标 3）。锚点双载体：SQLite 复用 `import_meta` 表（零 DDL 变更）+ JSON 镜像 `data_version.json`。
+- 迁移链 `dataMigrations`：1→2 `task-columns-default`（复用 migrateTaskColumns）、2→3 `project-schema-ver`（SchemaVer 0→1）；每步幂等（只补零值）+ **锚点渐进打戳**（崩溃重放安全）。
+- Bootstrap 语义：无锚点且业务集合全空 = 全新安装，直接打目标锚不跑链不备份；无锚点有数据 = 视为 1 跑全链；**锚点高于目标 = 拒绝启动**（提示升级）。
+- `Load()` 拆分为 `loadAll()`（持锁）+ `applyDataMigrations()`（解锁后跑，因 Backup/AppendAudit 内部自锁）；原 store.go / store_edl.go / sqlite_load.go 三处就地补丁式迁移收口进链，`postLoadLocked` 的 SchemaVer 兜底移除。迁移前自动 `Backup(premigration)`（失败仅告警不阻断），审计 `schema.migrate`。
+
+### 12.4 阶段 C（59e4004）：快照整包回滚
+
+- `store/restore.go`：`Restore(backupID)`——**先验签解析、后换入**（失败零副作用）。zip 条目名必须**精确匹配白名单**（12 实体 JSON + manifest）= zip-slip 防御（不落地解包，只在内存解析）；单条 64MB 上限；manifest 逐文件 size + SHA-256 验证；`manifest.SchemaVersion` 高于本机拒绝。备份 ID 合法性：`filepath.Base` + `pathutil.WithinRoot` + `parseBackupName` 三重校验。
+- 换入流程：Flush → **prerestore 备份（失败即中止回滚**，破坏性操作必须先有回滚点）→ 持锁整包换入 12 集合 + `postLoadLocked()`（运行中任务重置 QUEUE）→ 全量 persist 回载体 → 幂等重跑迁移链（兜住阶段 B 之前的旧备份）→ 审计 `snapshot.restore`(ok)。
+- API：`POST /api/store/restore`（RequireAdmin，`{backupId}`），`security.AuditDestructive` 以真实操作者身份并记（成功双写：数据侧 + 身份侧）；失败审计 `security.alert`(error)。
+- 与 §4 评审稿的有意偏差：JSON 时代"Rename 换入 + 重新 Load"改为 **SQLite 主载体下的内存验签换入**，理由已写入 restore.go 头注释。
+
+### 12.5 阶段 D（本轮）：收口 + 验证
+
+- `store.go` 头部 `TODO(P1)`（原 :19，定时备份/快照回滚）移除，注释标注 P3-5 已补齐。
+- 版本 **1.5.7 → 1.5.8**：manifest / ui-src/package.json / server/internal/version/VERSION 三处同步，check-versions.ps1 通过。
+- 单测：`migrate_test.go`（遗留数据跑全链 / 全新安装只打锚 / 锚点 2 只跑后半链 / 未来版本拒启）、`restore_test.go`（往返 + QUEUE 重置 + 重启存活 / 篡改 zip 拒绝且内存不动 / zip-slip 拒绝 / 未来 schema 拒绝 / 非法 ID 拒绝）；`sqlite_import_test.go` 两处断言按阶段 B 副作用校准（audit_log +1 schema.migrate；import_meta 允许 data_version 行）。
+- 验证：`go build ./...` / `go vet ./...` / `go test -count=1 ./...`（12 包）全绿；覆盖率 **56.7% → 59.0%**（门禁 55% 通过）；`-race` 需 cgo（本机无 gcc），留 Linux CI 跑。观察项：`scheduler.TestSchedulerTickConcurrentSafe` 在全量并行首轮因主机负载偶发收敛超时（10s deadline 内 100 任务未派发完），单跑与全量复跑均通过（10.5s，贴线），非本单元改动引入的功能回归，登记待观察（如需上调 deadline 另行处理）。
+- 文档回写：本台账 §十二 + §6.1 P3-5 行；`docs/FVCC_项目现状与开发步骤.md`（步骤 4 关闭 / §4 store 模块 / 版本线）；`docs/FVCC_混乱度评价报告_细化版.md` P3-5 行；`FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 变更记录与评审要点收口。
+
+### 12.6 待办延续
+
+- **P3-5**：✅ 本单元关闭（阶段 A~D 四提交均在本地 baseline-snapshot，未 push 未打 tag，待评审）。
+- **P3-6**（ffprobe 运行时依赖评估）/ **P3-7**（覆盖率 55%→60% 上调，现实测 59.0% 已接近阈值）/ **P3-9** / **步骤 8**（真实 NAS+Windows e2e）：延续，未变化。
+- **前端回滚入口**：本轮明确不做，待单元评审通过后另行排期。

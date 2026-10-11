@@ -2,13 +2,14 @@
 
 > 项目：FVCC（飞牛视频转换 NAS 调度端 Web UI）@ D:\Fnos.VideoConversion\FVCC
 > 基线评价日期：2026-09-18（首版）
-> **复查更新日期：2026-09-22（第八版，反映 1.5.7 + 编辑器变速播放 + Windows 路径边界修复落地后的最新现状）**
+> **复查更新日期：2026-10-11（第九版，反映 1.5.8 + P3-5 store 备份/迁移/快照回滚落地后的最新现状）**
 > 评价视角：Vibe Coding（AI 辅助编码）模式下的工程卫生与可维护性
 > 评价方式：目录树扫描 + 关键源码阅读（后端 internal 11 包 + store/model 子包共 97 个 .go 文件；前端 TS 33 文件 10,315 行）+ 配置与文档核查 + git log/status 交叉核对 + 与根目录 README.md / BUILD.md / docs（项目现状与开发步骤 / IMPROVEMENT_LOG / TASK_REFERENCE / 项目分析与改进方向 / UI设计优化方向 / SECURITY）交叉核对
 > 更新说明：第五版基于 2026-09-20 晚实测，版本迭代至 **1.4.9**（manifest / package.json / VERSION 三处一致）；后端在 1.4.8/1.4.9 继续细化拆分（stream_media / roots / aliases / config / trash_handlers / edl 扩展）；docs 布局收口（PRODUCT.md / DESIGN.md 已入 FVCC/docs/）。同时登记清理回潮：temp/ 膨胀至 549.7MB（node_modules 全量 + chrome-profile + secret.key 敏感残留）、新文档 `docs/FVCC_项目现状与开发步骤.md` 带 AIGC frontmatter、git 工作区 1.4.7~1.4.9 改动未提交、README（1.4.4）/ BUILD（1.4.6）版本表继续滞后。§4 中 P0/P1/P2 已全部落地，压缩为状态汇总表；删除 §4.1 / §4.2 落地前快照（实施记录见 FVCC/docs/ 对应文档）。
 > 第六版基于 2026-09-21 实测：版本推进至 **1.5.3**；步骤 3 代码清理（scheduler 防注入死分支 / checkUploadProgress / checkDownloadProgress 空占位 / TestB05SideGuards 过时用例 / editor placeholder 注释）与步骤 6 仓库治理（temp 18 项清理释放约 560.3MB、6 个 fpk 归档 archive/fpk/ 完整 v1.1.0~v1.5.3、实测修正多项不存在项）已落地；P3 组物理清理与文档同步债务清零，详见 §2.7 / §3 / §4。
 > 第七版基于 2026-09-21 晚实测（文档校准）：**P0-2 SQLite 迁移已落地**（2026-09-21 三个提交 a72b8ff / 9e122d5 / 5dd373e，modernc.org/sqlite 纯 Go 驱动 + 12 张实体表 + 存量 JSON 导入 + 读回主路径/persist 切换），最大结构债消除；**P1-1 事件驱动调度亦已落地**（提交 eab7688，事件循环 + 内存索引 + 定时落盘 + WS 广播全覆盖，早于第六版登记遗漏，本次补登）；代码规模实测 96 个 .go（53 实现 + 43 测试）/ 21,071 行；FVCC/docs 技术文档 5 份 → 7 份（+SECURITY.md 已补写 + STORE_PERSISTENCE_ROADMAP.md 方案稿）；代码级 TODO 收敛为 store 定时备份/快照回滚（P1 TODO，方案稿已出）、ffprobe 运行时依赖、覆盖率上调三项。
-> 第八版基于 2026-09-22 工作区实测：版本推进至 **1.5.7**（manifest / package.json / VERSION 三处一致，工作区）。**1.5.4 已提交（080754c）**——editor 预览变速播放（J/K/L，PR 惯例同向 2x→3x→4x、最大 4x、反向重置）+ 播放控制按钮图标化；**1.5.5~1.5.7 工作区未提交**——Windows 盘符根（`D:\`）双分隔符边界 bug 统一修复（handlers.go 目录浏览 / edl_validate.go / trash.go / smbshare.go 四处前缀判定，根以分隔符结尾时直接以其为前缀）、stream.go 剪辑页多根错位兜底（指定根失败时对全部授权素材根重试，越权 403 立即拒绝）、roots.go 素材根本机不可见时回落授权目录首个、assets.ts 素材递归子文件夹扫描（修复 v1.5.6 子文件夹视频不显示）；配套新增/扩充 stream/edl_validate/trash/roots 各 *_test.go，server .go 96→**97**（53 实现 + 44 测试，新增 media/roots_test.go）；TS 仍 33 文件。落实细节见 `docs/IMPROVEMENT_LOG.md` §十一。
+> 第八版基于 2026-09-22 工作区实测：版本推进至 **1.5.7**（manifest / package.json / VERSION 三处一致，工作区）。**1.5.4 已提交（080754c）**——editor 预览变速播放（J/K/L，PR 惯例同向 2x→3x→4x、最大 4x、反向重置）+ 播放控制按钮图标化；**1.5.5~1.5.7 工作区未提交**——Windows 盘符根（`D:\`）双分隔符边界 bug 统一修复（handlers.go 目录浏览 / edl_validate.go / trash.go / smbshare.go 四处前缀判定，根以分隔符结尾时直接以其为前缀）、stream.go 剪辑页多根错位兜底（指定根失败时对全部授权素材根重试，越权 403 立即拒绝）、roots.go 素材根本机不可见时回落授权目录首个、assets.ts 素材递归子文件夹扫描（修复 v1.5.6 子文件夹视频不显示）；配套新增/扩充 stream/edl_validate/trash/roots 各 *_test.go，server .go 96→**97**（53 实现 + 44 测试，新增 media/roots_test.go）；TS 仍 33 文件。落实细节见 `docs/IMPROVEMENT_LOG.md` §十一。（2026-10-11 第九版校正：该批次后已提交 68ebdec 并打 tag v1.5.7）
+> 第九版基于 2026-10-11 实测：版本推进至 **1.5.8**。**P3-5 落地关闭**（IMPROVEMENT_LOG §十二）：阶段 A 定时 30min×12 备份 + 写前备份（efef4bd）、阶段 B data_version 版本化迁移链（16f1043，与 SQLite schema_version 正交，锚点载体 import_meta + data_version.json）、阶段 C 快照整包回滚 + POST /api/store/restore（59e4004，验签后内存换入、zip 白名单防 zip-slip、prerestore 兜底、QUEUE 重置）、阶段 D 收口（store.go 头部 TODO(P1) 移除、文档回写）。代码级 TODO 收敛为 ffprobe 运行时依赖（P3-6）、覆盖率上调（P3-7）两项；coverage 实测 56.7%→**59.0%**（门禁 55%）。
 
 ---
 
@@ -157,7 +158,7 @@ FVCC/
 | 安全与健壮性 | 5 | 2 | 2 | 2 | 2 | **2** | **2** | 五硬伤清零保持；temp/secret.key 观察项已关闭（实测不存在） |
 | **综合** | **6.5** | **4.3** | **2.8** | **2.4** | **2.8** | **2.4** | **2.4（轻度混乱）** | SQLite 迁移与事件驱动落地、提交完成；遗留收敛为 store 备份方案/文档校准与 ffprobe 依赖 |
 
-等级判定：**B / 轻度混乱**。工程卫生基本面保持（P0/P1/P2 全部落地、1.5.3 三处版本一致、docs 布局收口）；第五版登记的**物理清理回潮**与**文档同步滞后**已在前两轮（2026-09-21）全部处置。**第七版新增落地**：P0-2 SQLite 迁移（三个提交 a72b8ff / 9e122d5 / 5dd373e，modernc.org/sqlite v1.14.0 + 12 张实体表 + 存量 JSON 导入 + 读回主路径）、P1-1 事件驱动调度（eab7688，第十六轮漏登补记）、P3-1 提交收尾（tag v1.5.3）；store.go:19 TODO(P1) 定时备份/快照回滚延续（方案稿 STORE_PERSISTENCE_ROADMAP.md 已出）。当前剩余债务收敛为工程项（P3-5 store 备份/回滚代码落地 / P3-6 ffprobe 依赖 / P3-7 覆盖率上调）与文档校准（第十八轮进行中，工作区 5 文件未提交，P3-1 收尾待办有效）。
+等级判定：**B / 轻度混乱**。工程卫生基本面保持（P0/P1/P2 全部落地、1.5.3 三处版本一致、docs 布局收口）；第五版登记的**物理清理回潮**与**文档同步滞后**已在前两轮（2026-09-21）全部处置。**第七版新增落地**：P0-2 SQLite 迁移（三个提交 a72b8ff / 9e122d5 / 5dd373e，modernc.org/sqlite v1.14.0 + 12 张实体表 + 存量 JSON 导入 + 读回主路径）、P1-1 事件驱动调度（eab7688，第十六轮漏登补记）、P3-1 提交收尾（tag v1.5.3）；store.go:19 TODO(P1) 定时备份/快照回滚延续（方案稿 STORE_PERSISTENCE_ROADMAP.md 已出）。当前剩余债务收敛为工程项（P3-5 store 备份/回滚代码落地 / P3-6 ffprobe 依赖 / P3-7 覆盖率上调）与文档校准（第十八轮进行中，工作区 5 文件未提交，P3-1 收尾待办有效）。（2026-10-11 第九版校正：P3-5 已随 v1.5.8 落地关闭，store.go TODO(P1) 已移除；1.5.5~1.5.7 已提交 68ebdec + tag v1.5.7）
 
 ---
 
@@ -196,7 +197,7 @@ FVCC/
 | P3-2 | **temp/ 清理回潮（549.7MB）** | 🔴 高 | ✅ 已处置（2026-09-21）：temp 下 15 个打包 stage + fvcc-win-debug.exe 等 18 项移入回收站释放约 560.3MB；实测不存在 node_modules 全量拷贝、chrome-profile-9223/9224、repro-data、cdp-*-test.mjs、temp/secret.key、temp/locks.json；temp/ 仅剩 logs/（9KB） |
 | P3-3 | **根目录产物物理清理** | 🟡 中 | ✅ 已处置（2026-09-21）：6 个 fpk（v1.4.9~v1.5.3 + fvcc.fpk 副本）归档 archive/fpk/（完整 v1.1.0~v1.5.3）；误构建嵌套目录 FVCC/FVCC/（22.16MB）已清；task.db 实测不存在（仅 archive/ 下 12KB 备份，为 FVCS 侧产物）；credentials.db / master.key / secret.key / locks.json 按禁删原则保留原位 |
 | P3-4 | **文档同步 1.5.3** | 🟡 中 | ✅ 已执行（2026-09-21）：FVCC/README.md 版本表 → 1.5.3；docs 三份 AIGC frontmatter 已清理（P2-6 恢复清零）；项目现状与治理台账定位已明确（现状指引 vs 治理台账）；根 BUILD.md 版本同步表已更新 1.5.3（2026-09-21 实测）；根 README.md 仍 v1.4.9（docs/ 外，剩余 1 处） |
-| P3-5 | **store 持久化健壮性** | 🟡 中 | 2026-09-21 推进：SQLite 载体已落地（P0-2），方案评审稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 已出（对齐 store.go:19 TODO(P1)）；定时备份 / 配置迁移 / 快照回滚代码待评审后落地（项目现状 §8 步骤 4） |
+| P3-5 | **store 持久化健壮性** | 🟡 中 | ✅ 已关闭（2026-10-11，v1.5.8）：阶段 A~D 落地——定时 30min×12 备份 + 写前备份（efef4bd）、data_version 版本化迁移链（16f1043，与 SQLite schema_version 正交）、快照整包回滚 + POST /api/store/restore（59e4004，验签后换入/zip-slip 白名单/prerestore 兜底）、收口移除 store.go 头部 TODO(P1)；仅后端 API，前端入口待排期。详见 IMPROVEMENT_LOG §十二 |
 | P3-6 | **ffprobe 运行时环境依赖评估** | 🟡 中 | 来自项目现状文档：确认 ffprobe 在 fnOS 目标环境的安装/路径依赖，避免生产缺探测能力 |
 | P3-7 | **覆盖率门槛上调** | 🟢 低 | P2-3 注释自述"当前基线 56.7%，后续上调至 60%"，待 CI 稳定后执行 |
 | P3-8 | **远期决策门** | 🟢 低 | P2-2 组合器方案去留 / Svelte 5 试点；VideoInfo 逐字段复制 2 处（§2.3）随下次模型重构合并 |
@@ -219,6 +220,6 @@ FVCC 从首版评价（2026-09-18，1.4.0）到第七版复核（2026-09-21，1.
 2. P3-4（文档同步）✅：README 1.5.3、AIGC frontmatter 清零、docs 7 份台账状态一致（根 README.md v1.4.9 仍属 docs/ 外，剩余 1 处）；
 3. P3-1（git 提交）✅：1.5.3 全部提交并打 tag（含 SQLite 迁移三提交与文档同步）；当前工作区为 1.5.3 基线 + 第十八轮文档校准改动（5 文件）未提交，提交纪律延续。
 
-**当前剩余债务**收敛为工程项（P3-5 store 备份/回滚代码落地 / P3-6 ffprobe 依赖 / P3-7 覆盖率上调 / P3-8 远期决策门 / P3-9 build_err.txt 待清）与提交纪律（P3-1 收尾）。后续工作重心保持"清理纪律 + 文档实时同步 + 提交纪律"三件事。
+**当前剩余债务**收敛为工程项（P3-6 ffprobe 依赖 / P3-7 覆盖率上调 / P3-8 远期决策门 / P3-9 build_err.txt 待清）与提交纪律（P3-1 收尾）。P3-5 已于 2026-10-11 v1.5.8 关闭（见上表与 IMPROVEMENT_LOG §十二）。后续工作重心保持"清理纪律 + 文档实时同步 + 提交纪律"三件事。
 
-> 维护记录：首版 2026-09-18 上午（1.4.0，6.5/10）→ 第二版 2026-09-18（1.4.2，4.3/10）→ 第三版 2026-09-19（1.4.4，2.8/10）→ 第四版 2026-09-20（1.4.7，2.4/10）→ 第五版 2026-09-20 晚（1.4.9，2.8/10）→ 第六版 2026-09-21（1.5.3，2.4/10）→ 第七版 2026-09-21（1.5.3，2.4/10）→ 第八版 2026-09-22（1.5.7，2.4/10）。第八版依据第十九轮：1.5.4 编辑器变速播放 J/K/L + 按钮图标化（080754c 已提交）、1.5.5~1.5.7 Windows 盘符根路径边界修复 + 剪辑页多根兜底 + roots 回落 + 素材递归扫描 + 单测（工作区未提交）；server .go 96→97（+media/roots_test.go）；三处版本一致 1.5.7。
+> 维护记录：首版 2026-09-18 上午（1.4.0，6.5/10）→ 第二版 2026-09-18（1.4.2，4.3/10）→ 第三版 2026-09-19（1.4.4，2.8/10）→ 第四版 2026-09-20（1.4.7，2.4/10）→ 第五版 2026-09-20 晚（1.4.9，2.8/10）→ 第六版 2026-09-21（1.5.3，2.4/10）→ 第七版 2026-09-21（1.5.3，2.4/10）→ 第八版 2026-09-22（1.5.7，2.4/10）。第八版依据第十九轮：1.5.4 编辑器变速播放 J/K/L + 按钮图标化（080754c 已提交）、1.5.5~1.5.7 Windows 盘符根路径边界修复 + 剪辑页多根兜底 + roots 回落 + 素材递归扫描 + 单测（工作区未提交）；server .go 96→97（+media/roots_test.go）；三处版本一致 1.5.7。**第九版（2026-10-11）**：P3-5 store 备份/迁移/快照回滚落地（v1.5.8，阶段 A~D：efef4bd / 16f1043 / 59e4004 / 收口提交），store.go TODO(P1) 移除；剩余债务收敛为 P3-6 / P3-7 / P3-8 / P3-9 与 P3-1；coverage 56.7%→59.0%（门禁 55%）。

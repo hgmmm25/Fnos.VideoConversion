@@ -1,20 +1,11 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_c06a2440b59411f1a816525400cd780f
-    ReservedCode1: oEkUmjrYEGuJydCtfyuk6gwLj9nyOdvlXMaX6tDS6FovoQR8HI13eO4tHJKR3xNZiQ9SuTGGIMVREB6IGlGY9pq26ya4oHsnVl9NPfjUgOlaL97MIuEgBkvBC+Y+qvA8JQ9YjmwvucVoqmbyCEPlV583T8X44CcOqdDh7BTx32I+Cr/PuxYwd61Gw3g=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_c06a2440b59411f1a816525400cd780f
-    ReservedCode2: oEkUmjrYEGuJydCtfyuk6gwLj9nyOdvlXMaX6tDS6FovoQR8HI13eO4tHJKR3xNZiQ9SuTGGIMVREB6IGlGY9pq26ya4oHsnVl9NPfjUgOlaL97MIuEgBkvBC+Y+qvA8JQ9YjmwvucVoqmbyCEPlV583T8X44CcOqdDh7BTx32I+Cr/PuxYwd61Gw3g=
----
-
 # FVCC Store 持久化健壮性方案（备份 / 迁移 / 快照回滚）
 
-> 依据《FVCC_项目现状与开发步骤.md》§8 步骤 4 编制（2026-09-21）。本轮为**方案评审稿**，未动高优先级代码；评审通过后按实施阶段拆分落地。
-> 目标：补齐 `internal/store/store.go:20 TODO(P1): 定时备份、配置迁移、快照回滚`，在既有原子写基础上构建可恢复、可回滚、可升级的持久化体系。
+> 依据《FVCC_项目现状与开发步骤.md》§8 步骤 4 编制（2026-09-21 方案评审稿）。**2026-10-11 已按阶段 A~D 全部落地（v1.5.8）**，落地记录见文末变更记录与 `docs/IMPROVEMENT_LOG.md` §十二。
+> 目标：补齐 `internal/store/store.go` 头部 `TODO(P1): 定时备份、配置迁移、快照回滚`（已随落地移除），在既有原子写基础上构建可恢复、可回滚、可升级的持久化体系。
 
 ## 1. 现状盘点
+
+> 本节为 2026-09-21 方案稿快照，⚠️/❌ 项已于 v1.5.8 收口（见变更记录），仅作设计依据保留。
 
 | 能力 | 现状 | 位置 |
 |---|---|---|
@@ -96,12 +87,14 @@ AIGC:
 | C | 回滚：restore 接口 + 整包恢复 + 审计 + 崩溃回退 | 单测：损坏 zip 拒绝、恢复后 Load 正常、审计落库 |
 | D | 收口：TODO 移除、文档同步、覆盖率补充 | 全量 go test -race + coverage 门禁 |
 
-## 6. 评审要点（待确认）
+## 6. 评审要点（2026-10-11 确认，随阶段 A~D 落地关闭）
 
-1. 备份周期 30min / 保留 12 份是否满足预期（可调参）；
-2. `secret.key` 不随备份走、回滚沿用现密钥：若密钥同时轮换需先解密再加密（M1~M4 迁移）；
-3. 恢复后调度任务重置 QUEUE 是否接受（与崩溃恢复语义一致）；
-4. 手动备份接口是否需前端入口（当前仅 API）。
+1. ✅ 备份周期 30min / 保留 12 份——按此落地（auto/prewrite/premigration/prerestore 共用 12 份轮转池，manual 永久）；
+2. ✅ `secret.key` 不随备份走、回滚沿用现密钥——按此落地（备份内 servers/settings 保持 `enc:v1:` 密文）；
+3. ✅ 恢复后调度任务重置 QUEUE——接受（restore 换入后经 `postLoadLocked` 执行，与崩溃恢复语义一致）；
+4. ✅ 手动备份/回滚本轮**仅后端 API**（GET backups / POST backup / POST restore，均 RequireAdmin），前端入口待评审后另行排期。
 
-变更记录：2026-09-21 方案评审稿（未落地代码）。
-*（内容由AI生成，仅供参考）*
+变更记录：
+- 2026-09-21 方案评审稿（未落地代码）。
+- 2026-10-11 **已落地（v1.5.8）**，阶段 A~D 四次本地提交：A 备份 `efef4bd`（backup.go，定时 30min×12 + 写前备份 + 手动 API + manifest SHA-256 验签）；B 迁移框架 `16f1043`（migrate.go）；C 快照回滚 `59e4004`（restore.go + `POST /api/store/restore` + `snapshot.restore` 审计）；D 收口（TODO 移除 + 版本 1.5.8 + 文档回写）。
+- **落地时对 SQLite 主载体的两处有意偏差**：① §3.1 的文件级 `Version` 锚点改为独立 **`data_version`** 数据面锚点（与 SQLite DDL `schema_version` 正交；载体 = `import_meta` 表 + `data_version.json` 镜像；目标值 3，链 1→2 task-columns-default、2→3 project-schema-ver；全新安装直接打锚不跑链，锚点高于目标拒绝启动）；② §4.2 的"Rename 换入 + 重新 Load"改为**先验签解析、后内存换入**（zip 条目不落地解包，条目名精确匹配白名单防 zip-slip，单条 64MB 上限；回滚前强制 prerestore 备份，失败中止=零副作用；换入后全量 persist 回载体并幂等重跑迁移链）。备份内容源同为内存快照（§2.3 语义保持）。
