@@ -41,6 +41,7 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		// P3-5 阶段 A：store 备份（仅后端 API，评审点 4）——手动备份 + 备份列表。
 		api.POST("/store/backup", security.RequireAdmin(), h.createStoreBackup)
 		api.GET("/store/backups", security.RequireAdmin(), h.listStoreBackups)
+		api.POST("/store/restore", security.RequireAdmin(), h.restoreStoreBackup)
 
 		// 视频管理
 		api.POST("/video/scan", h.scanDirectory)

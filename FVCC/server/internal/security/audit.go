@@ -28,6 +28,10 @@ const (
 	AuditActionDestructiveClear  = "destructive.clear"       // 清空日志 / 清空视频缓存
 	AuditActionDestructiveEmpty  = "destructive.empty_trash" // 清空回收站
 
+	// P3-5 阶段 C：快照回滚（STORE_PERSISTENCE_ROADMAP §4：回滚成功记 snapshot.restore，
+	// 失败记 security.alert）
+	AuditActionSnapshotRestore = "snapshot.restore"
+
 	// 07 §7 告警阈值（5 分钟滑动窗口，按来源 IP 聚合）
 	AlertAssetScanThreshold    = 3  // E_ASSET_NOT_IN_ROOT ≥ 3 → 越权扫描
 	AlertPayloadProbeThreshold = 50 // E_EDL_INVALID / E_PAYLOAD_INVALID 突增 → 协议探测
