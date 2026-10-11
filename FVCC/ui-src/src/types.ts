@@ -375,6 +375,8 @@ export interface EDLClip {
   clipId: string // 'c_<8hex>'
   assetId: string // 关联素材
   file: string // 冗余存源相对路径（渲染期免二次查表，改名后仍可报错定位）
+  /** 素材所属授权根的本地绝对路径（有界单根：渲染提交据此取根，与代理同机制；旧项目省略则回落 videoRoot） */
+  sourceRoot?: string
   inMs: number // 入点（源素材时间轴，整数毫秒）
   outMs: number // 出点（源素材时间轴，整数毫秒，开区间：不含 outMs 帧）
   speed: number // P0 恒为 1.0

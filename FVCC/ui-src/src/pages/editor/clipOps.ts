@@ -10,6 +10,8 @@ export interface ClipSource {
   assetId: string
   file: string
   durationMs: number
+  /** 素材所属授权根（AssetRef 携带；有界单根渲染取根用） */
+  sourceRoot?: string
 }
 
 /** 由素材 + 入出点构造片段；入出点向 0 取整，始终写整数毫秒（03 §2.1） */
@@ -18,6 +20,7 @@ export function buildClip(asset: ClipSource, inMs: number, outMs: number): EDLCl
     clipId: newClipId(),
     assetId: asset.assetId,
     file: asset.file,
+    sourceRoot: asset.sourceRoot,
     inMs: Math.max(0, Math.round(inMs)),
     outMs: Math.max(0, Math.round(outMs)),
     speed: 1.0,
