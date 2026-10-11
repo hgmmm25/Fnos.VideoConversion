@@ -40,6 +40,10 @@ type Scheduler struct {
 	// proxyWf：M4 代理工作流收尾（04 §3.4；P2-1 B轮迁入 internal/media，实现见 internal/media/proxy.go）。
 	proxyWf *media.ProxyWorkflow
 
+	// renderPollAt：RENDER_EDL 远端终态轮询窗口（taskID → 上次轮询时刻）。
+	// 渲染 WS 只推进进度，终态靠轮询 QueryTaskDetail 收口（见 pollRenderTerminal）。
+	renderPollAt sync.Map
+
 	// ===== P1-1：调度器事件驱动优化（2026-09-21）=====
 	stopCh          chan struct{}            // 停止信号（Stop 关闭，事件循环退出前落盘）
 	stopOnce        sync.Once
@@ -286,8 +290,14 @@ func (s *Scheduler) processTask(t model.Task) {
 			// 不得走既有 HTTP 转码探测（checkTranscodeProgress），避免被误判为失败。
 			// M4：GEN_PROXY 额外按窗口轮询 FVCS 终态，成功后做校验/登记/proxy_ready
 			// （04 §3.4，实现见 proxy_flow.go）。
-			if t.TaskType == model.TaskTypeGenProxy {
+			// RENDER_EDL：WS 只推进度不报终态，按窗口轮询 QueryTaskDetail 收口
+			// （Success→完成归档 / Failed→不可重试失败 / Cancelled→取消），
+			// 否则节点已出片而本端永远停在「收尾·100%」。
+			switch t.TaskType {
+			case model.TaskTypeGenProxy:
 				s.proxyWf.Poll(t)
+			case model.TaskTypeRenderEDL:
+				s.pollRenderTerminal(t)
 			}
 			return
 		}
@@ -842,6 +852,12 @@ func (s *Scheduler) failTaskWithCooldown(t model.Task, msg string, retryType mod
 // 渲染路径固定采用 06 §4.3 口径，保证退避序列 30/60/120/240/480s 可完整验证。
 const renderMaxRetryDefault = 5
 
+// renderPollInterval RENDER_EDL 远端终态轮询间隔（06 §4.2）：
+// 渲染 RUNNING 进度由 WS 事件推进，但 FVCS 只在 WS 回推 Progress（stage/percent），
+// 不发终态事件；终态（Success/Failed/Cancelled）仅可经 QueryTaskDetail 获取。
+// 与 GEN_PROXY 的 ProxyPollInterval 同口径，避免每 tick 打 HTTP。
+const renderPollInterval = 5 * time.Second
+
 // defaultDispatchLockSec 派发锁缺省有效期（秒），节点未配置 lockExpireSec 时使用。
 const defaultDispatchLockSec = 300
 
@@ -1159,6 +1175,69 @@ func (s *Scheduler) failRenderTaskPermanent(t model.Task, code, msg string) {
 	s.store.UpsertTask(t)
 	s.hub.BroadcastTaskUpdate(t.ID, model.StatusError.WireName(), t.Progress, t.ErrorMsg)
 	logger.ErrorT("task", t.TraceID, "%s FAILED(%s): %s", t.ID, code, msg)
+}
+
+// pollRenderTerminal RENDER_EDL 远端终态轮询（06 §4.2）：
+// FVCS 的 WS 只回推进度（stage/percent），不发完成/失败终态事件；终态仅可经
+// QueryTaskDetail 获取。渲染进度虽由 B-07 事件推进到「收尾·100%」，但若无此轮询收口，
+// 任务会永远停在 Transcoding（节点已出片、本端不落地）。与 GEN_PROXY 的 proxyWf.Poll 同构：
+//   - Success → 置完成并延迟归档（产物已由节点写入共享导出目录，无需本地校验/登记）；
+//   - Failed  → 走不可重试失败收口（沿用节点上报的 E_* 码/阶段/明细）；
+//   - Cancelled → 置取消；
+//   - 非终态或查询失败 → 保持 RUNNING，等下个窗口（网络抖动不误杀渲染任务）。
+func (s *Scheduler) pollRenderTerminal(t model.Task) {
+	if s.remote == nil || strings.TrimSpace(t.RemoteTaskID) == "" || strings.TrimSpace(t.ServerID) == "" {
+		return
+	}
+	now := time.Now()
+	if v, ok := s.renderPollAt.Load(t.ID); ok {
+		if last, ok2 := v.(time.Time); ok2 && now.Sub(last) < renderPollInterval {
+			return
+		}
+	}
+	s.renderPollAt.Store(t.ID, now)
+
+	server, ok := s.store.GetServer(t.ServerID)
+	if !ok {
+		s.renderPollAt.Delete(t.ID)
+		s.failRenderTaskPermanent(t, errCodeNodeNotFound, "渲染任务的节点已不存在")
+		return
+	}
+	rs, err := s.remote.QueryTaskDetail(server, t.RemoteTaskID)
+	if err != nil {
+		logger.Warn("scheduler", "渲染终态轮询失败 task=%s remote=%s: %v", t.ID, t.RemoteTaskID, err)
+		return
+	}
+	// 二次读取：查询窗口内任务可能已被取消/暂停/收口，避免把终态覆盖回中间态。
+	cur, ok := s.store.GetTask(t.ID)
+	if !ok || cur.Status.IsTerminal() || cur.Status == model.StatusPaused {
+		s.renderPollAt.Delete(t.ID)
+		return
+	}
+
+	switch strings.ToUpper(strings.TrimSpace(rs.Status)) {
+	case "SUCCESS", "COMPLETED":
+		s.completeRenderTask(cur)
+	case "FAILED", "ERROR":
+		s.renderPollAt.Delete(t.ID)
+		s.failRenderTaskPermanent(cur, media.RemoteFailureCode(rs), media.RemoteFailureMessage("渲染失败", rs))
+	case "CANCELED", "CANCELLED", "STOPPED":
+		s.renderPollAt.Delete(t.ID)
+		s.store.UpdateTaskStatus(cur.ID, model.StatusCancelled, cur.Progress, "服务器已终止任务")
+		s.hub.BroadcastTaskUpdate(cur.ID, string(model.StatusCancelled), cur.Progress, "服务器已终止任务")
+	}
+}
+
+// completeRenderTask RENDER_EDL 成功收口：置完成 → 广播 → 延迟归档，
+// 口径对齐 SMB 模式转码完成（scheduler.go checkTranscodeProgress 的 Success 分支）。
+func (s *Scheduler) completeRenderTask(t model.Task) {
+	s.store.UpdateTaskStatus(t.ID, model.StatusCompleted, 100, "")
+	s.hub.BroadcastTaskUpdate(t.ID, string(model.StatusCompleted), 100, "渲染完成")
+	s.renderPollAt.Delete(t.ID)
+	time.AfterFunc(5*time.Second, func() {
+		s.store.MoveToHistory(t.ID)
+	})
+	logger.InfoT("task", t.TraceID, "%s RENDERED: 产物就绪，任务完成", t.ID)
 }
 
 // failRenderTaskWithCooldown 渲染类任务派发失败 → COOLDOWN（06 §4.3）：

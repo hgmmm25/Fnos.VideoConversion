@@ -240,14 +240,19 @@ func validateOutputNameStrict(name string) *edlValidationError {
 }
 
 // validateRootRelPath 根路径（sourceRoot / destRoot / proxyRoot）校验（07 §3.2）：
-// 空值放行（表示沿用服务端默认根），非空按同一套 L1~L3 规则校验、不做扩展名要求。
+// 渲染根为「下发专用写法」——素材根由挂载点、成品根由 SMBOutputPath 决定落地（与 GEN_PROXY 同机制），
+// 故此校验仅做纵深防御：允许空（沿用服务端默认根）、允许相对写法、允许 FVCC 未映射时的本地绝对写法
+// （交调度侧 BuildSMBPath 解析实际共享），只拒绝含 .. 的穿越段。与 FVCS protocol.ValidateRootPath
+// 严格同规则（#8 跨端对齐：共用 edl_vectors.json，两端裁决必须一致）。
 func validateRootRelPath(root, field string) *edlValidationError {
+	root = strings.TrimSpace(root)
 	if root == "" {
 		return nil
 	}
-	if e := validateRelPath(root, nil); e != nil {
-		e.Field = field
-		return e
+	for _, seg := range strings.Split(strings.ReplaceAll(root, "\\", "/"), "/") {
+		if seg == ".." {
+			return newEDLValidationErr(errCodeAssetNotInRoot, field, "渲染根不得包含 .. 穿越段", -1)
+		}
 	}
 	return nil
 }
