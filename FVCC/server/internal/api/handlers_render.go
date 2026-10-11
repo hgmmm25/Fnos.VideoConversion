@@ -34,6 +34,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fvcc/internal/pathutil"
 	"fvcc/internal/security"
 	"fvcc/logger"
 )
@@ -530,13 +531,7 @@ func pathWithin(root, target string) bool {
 	if err != nil {
 		return false
 	}
-	if r == t {
-		return true
-	}
-	if !strings.HasSuffix(r, string(filepath.Separator)) {
-		r += string(filepath.Separator)
-	}
-	return strings.HasPrefix(t, r)
+	return pathutil.WithinRoot(r, t)
 }
 
 // fileExists 判定路径存在且为普通文件。

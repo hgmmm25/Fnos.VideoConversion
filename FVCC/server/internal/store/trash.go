@@ -17,31 +17,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"fvcc/internal/pathutil"
 )
 
 // TrashDirName 回收站目录名（`_` 前缀受 isReservedMediaName 保护）。
 const TrashDirName = "_trash"
-
-// withinRoot 判断 abs 是否位于 root 之下（含自身），带分隔符边界。
-// 边界特判：Windows 盘符根（D:\）Clean 后仍以分隔符结尾，直接拼接会产生
-// 双分隔符（D:\\）导致子路径永不命中，此时根本身即为边界。
-func withinRoot(root, abs string) bool {
-	r := filepath.Clean(root)
-	if abs == r {
-		return true
-	}
-	if strings.HasSuffix(r, string(filepath.Separator)) {
-		return strings.HasPrefix(abs, r)
-	}
-	return strings.HasPrefix(abs, r+string(filepath.Separator))
-}
 
 // TrashRootFor 返回 path 所在授权根下的回收站目录；未匹配授权根时返回错误。
 func TrashRootFor(roots []string, path string) (string, error) {
 	best := ""
 	for _, root := range roots {
 		root = filepath.Clean(root)
-		if !withinRoot(root, path) {
+		if !pathutil.WithinRoot(root, path) {
 			continue
 		}
 		if len(root) > len(best) {
@@ -64,7 +52,7 @@ func MoveToTrash(roots []string, path string) (string, error) {
 	root := ""
 	for _, r := range roots {
 		r = filepath.Clean(r)
-		if withinRoot(r, abs) && len(r) > len(root) {
+		if pathutil.WithinRoot(r, abs) && len(r) > len(root) {
 			root = r
 		}
 	}
