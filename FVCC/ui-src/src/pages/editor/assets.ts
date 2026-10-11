@@ -118,6 +118,7 @@ export function toAssetRef(v: VideoInfo, sourceRoot: string, assetId?: string): 
   return {
     assetId: assetId || newAssetId(),
     file: toRelative(v.path, sourceRoot),
+    sourceRoot,
     durationMs: Math.max(0, Math.round((v.duration || 0) * 1000)),
     width: v.width || 0,
     height: v.height || 0,
@@ -580,7 +581,7 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
     }
     setProxyState(a.file, { state: 'queued' })
     try {
-      const r = await api.createProxy({ assetId: a.assetId, file: a.file })
+      const r = await api.createProxy({ assetId: a.assetId, file: a.file, root: a.sourceRoot })
       if (r.deduplicated) {
         toast('该素材已有代理任务在处理，已复用既有任务', 'info')
       } else {

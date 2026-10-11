@@ -371,7 +371,7 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 
 | # | 缺陷 | 端 | 档 | 状态 |
 |---|---|---|---|---|
-| 5 | 代理提交不带素材根 → 非默认根文件报"素材不存在"（前端 `createProxy` 未发 root） | 前端为主 | A | 待修 |
+| 5 | 代理提交不带素材根 → 非默认根文件报"素材不存在"（前端 `createProxy` 未发 root） | 前端为主 | A | ✅ 本轮修复 |
 | 6 | 代理 ready 态无法从服务端回填（仅瞬时 WS `proxy_ready`）；`VerifyProxyMeta` 帧率严格串相等易误判 invalid | 前端+后端 | A | ✅ 本轮修复 |
 | 7 | `judgeVisibility` 未纳入分辨率 → 4K 素材代理判定"很迷" | 前端 | B | 待产品决策（阈值） |
 | 8 | 渲染 `sourceRoot` 未映射时下发绝对路径被 FVCS 拒；自检 `rootMapped=false` 时跳过根错误掩盖 doomed 派发 | 后端+运维(配 smbSharePath) | A | 待修 |
@@ -380,6 +380,12 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 | 11 | FVCS 重连后节点状态需手点"测试连接"才广播 online | 后端/调度 | A | 待修 |
 
 ### 14.4 A 档逐项修复（随批回写）
+
+**#5 代理提交带素材根（本轮提交）**：
+
+- 根因：`assets.ts:requestProxy` 调 `api.createProxy({assetId, file})` 未带 `root`，后端据此回退默认素材根解析 `file`，非默认根（如 `/vol3/1000/T` 之外）下的文件 `filepath.Join(srcLocal,file)` 不存在 → `E_ASSET_MISSING "素材不存在或不可访问"`。后端本已支持授权根绝对路径 + 同素材按根去重（`handlers_proxy.go` 修复①/`sameProxyTaskSrcRoot`），缺的只是前端把根传下去。
+- 修复：`AssetRef` 增 `sourceRoot`（`toAssetRef` 于扫描时写入所属根绝对路径）；`requestProxy` 提交带 `root: a.sourceRoot`。
+- 遗留（归 #9/多根收口）：`proxyByFile`/`GET /proxy` 仍以相对 `file` 为键，跨根同名相对路径存在态串扰——单视图扫描已限定单根，影响面小，待渲染多根立项一并处理键复合化。
 
 **#6 代理就绪态回填（本轮提交）**：
 
@@ -390,7 +396,7 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 
 ### 14.5 待办延续
 
-- **A 档余下**：#5 代理带根、#8 渲染早失败、#10 删除按钮、#11 节点自动恢复——按序本轮后续提交。
+- **A 档余下**：#8 渲染早失败、#10 删除按钮、#11 节点自动恢复——按序本轮后续提交。
 - **B 档**：#7 分辨率阈值（待用户定阈值）、#9 渲染多根（跨端立项，与 §十三 多轨/EDL 契约立项合并评估）。
 - **P3-6**：e2e 实测 `ffprobe:true`，运行时依赖评估可据此关闭。
 - **步骤 8 收尾**：全部 A 档修复 + 用户真机复验通过后，更新状态并 STOP-for-review（不 push/tag，待确认）。

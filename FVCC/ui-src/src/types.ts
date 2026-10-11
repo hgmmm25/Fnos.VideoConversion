@@ -336,6 +336,8 @@ export interface PreviewAsset {
 export interface AssetRef {
   assetId: string // 'a_<8hex>'
   file: string // 相对 sourceRoot 的 POSIX 路径，如 'demo/a_01.mp4'
+  /** 素材所属授权根的绝对本地路径（#5：代理提交据此带上 root，避免非默认根报"素材不存在"） */
+  sourceRoot?: string
   durationMs: number // ffprobe 时长（打点基准）
   width: number
   height: number
