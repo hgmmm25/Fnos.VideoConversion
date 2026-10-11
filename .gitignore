@@ -49,6 +49,15 @@ FVCC/tasks.json
 FVCC/history_tasks.json
 FVCC/locks.json
 
+# ---- FVCC SQLite 运行库与 server 侧密钥（2026-09-22 追加，P0-2 迁移产物，不得入库）----
+FVCC/fvcc.db
+FVCC/fvcc.db-shm
+FVCC/fvcc.db-wal
+FVCC/server/fvcc.db
+FVCC/server/fvcc.db-shm
+FVCC/server/fvcc.db-wal
+FVCC/server/secret.key
+
 # ---- FVCC 后端编译产物与调试残留（2026-09-18 追加）----
 FVCC/server/fvcc.exe
 FVCC/server/build_err.txt
