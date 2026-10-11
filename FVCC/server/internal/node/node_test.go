@@ -362,3 +362,23 @@ func TestB08ApplyNodeHello(t *testing.T) {
 		t.Fatalf("低版本能力仍应落库")
 	}
 }
+
+// TestB08ApplyNodeHelloSelfHealsOffline 步骤8 e2e #11：FVCS 断连后 store 状态遗留 offline，
+// 重连上报 Hello 时须自动收口为 online（落库 + 广播），免用户手点"测试连接"。
+func TestB08ApplyNodeHelloSelfHealsOffline(t *testing.T) {
+	sel, s, hub := newB08Env(t)
+	// 前置：srv_off 初始 offline（OnDisconnect 遗留态）。
+	if sv, _ := s.GetServer("srv_off"); sv.Status != "offline" {
+		t.Fatalf("环境未就绪：srv_off 应初始 offline，实际 %q", sv.Status)
+	}
+	hub.events = nil
+
+	sel.ApplyNodeHello(model.NodeCaps{ServerID: "srv_off", AgentVersion: "1.2.0", MaxConcurrent: 2}, time.Now())
+
+	if sv, _ := s.GetServer("srv_off"); sv.Status != "online" {
+		t.Fatalf("Hello 应把 store 状态收口为 online，实际 %q", sv.Status)
+	}
+	if len(hub.events) != 1 || hub.events[0]["status"] != "online" {
+		t.Fatalf("Hello 应广播 online，实际 %+v", hub.events)
+	}
+}

@@ -84,6 +84,7 @@ type Store interface {
 	GetTasks() []model.Task
 	GetNodeCaps(id string) (model.NodeCaps, bool)
 	UpsertNodeCaps(caps model.NodeCaps)
+	UpdateServerStatus(id, status string)
 }
 
 // Notifier 节点状态广播抽象（B轮接口重构：由根包 *ws.Hub 天然满足）。
@@ -487,10 +488,12 @@ func (s *Selector) ApplyNodeHello(caps model.NodeCaps, now time.Time) {
 	}
 	s.store.UpsertNodeCaps(caps)
 
+	// 步骤8 e2e #11：节点主动上报能力 = 其 WS 会话在线。此前 OnDisconnect 会把 store 状态
+	// 置 offline，而本函数沿用该 stale 状态广播，导致 FVCS 重连后节点长期显示 offline，
+	// 需用户手点"测试连接"（testServer 才写 online）。改为收到 Hello 即收口为 online 并落库，
+	// 自动恢复。低版本 Agent 仍算在线，仅不参与渲染选机（由 nodeVersionOK 单独把关）。
+	s.store.UpdateServerStatus(caps.ServerID, "online")
 	status := "online"
-	if sv, ok := s.store.GetServer(caps.ServerID); ok && sv.Status != "" {
-		status = sv.Status
-	}
 	reason := "能力上报"
 	if !agentVersionAtLeast(caps.AgentVersion, minAgentVersionForRender) {
 		reason = "能力上报（Agent 版本低于 " + minAgentVersionForRender + "，不参与渲染选机）"

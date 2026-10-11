@@ -377,7 +377,7 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 | 8 | 渲染 `sourceRoot` 未映射时下发绝对路径被 FVCS 拒；自检 `rootMapped=false` 时跳过根错误掩盖 doomed 派发 | 后端+运维(配 smbSharePath) | A | ✅ 本轮修复 |
 | 9 | 渲染/EDL 单根载荷模型（`WireClip` 无 per-clip root） | 跨端(FVCC+FVCS) | B | 待立项 |
 | 10 | 视频删除入口仅右键，无行内/批量按钮 | 前端 | A | ✅ 本轮修复 |
-| 11 | FVCS 重连后节点状态需手点"测试连接"才广播 online | 后端/调度 | A | 待修 |
+| 11 | FVCS 重连后节点状态需手点"测试连接"才广播 online | 后端/调度 | A | ✅ 本轮修复 |
 
 ### 14.4 A 档逐项修复（随批回写）
 
@@ -407,9 +407,15 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 - 修复：`scanner.ts` 工具栏补「删除」按钮（`btn-sm text-danger`，随选中态启用/禁用，与 `创建转码任务` 一致由 `updateStats` 驱动）。点击复用既有 `handleDelete`——`selectedVideos` 非空即按选中集批量删除（弹确认框、移入回收站），不新增删除逻辑。右键菜单保留。
 - 验证：`npm run build` 通过。
 
+**#11 FVCS 重连自动恢复 online（本轮提交）**：
+
+- 根因：`main.go` OnDisconnect 把 `store` 服务器状态置 `offline`；FVCS 重连并上报 Hello 时 `ApplyNodeHello`（`node.go`）却**沿用该 stale 的 store 状态**广播（`if sv.Status!="" { status = sv.Status }`），既不落库 online 也不广播 online → 节点长期显示 offline，直到用户手点"测试连接"（`testServer` 才写 online）。
+- 修复：收到 Hello = 该节点 WS 会话在线，`ApplyNodeHello` 改为 `store.UpdateServerStatus(id,"online")` 并恒广播 `online`（低版本 Agent 仍在线，仅经 `nodeVersionOK` 单独把关选机，不受影响）。`node.Store` 接口补 `UpdateServerStatus`。
+- 测试：新增 `TestB08ApplyNodeHelloSelfHealsOffline`（初始 offline → Hello 后 store online + 广播 online）；既有 `TestB08ApplyNodeHello` 不回归。全套 `go build/vet/test` 绿。
+
 ### 14.5 待办延续
 
-- **A 档余下**：#11 节点自动恢复——本轮最后一个提交。
-- **B 档**：#7 分辨率阈值（待用户定阈值）、#9 渲染多根（跨端立项，与 §十三 多轨/EDL 契约立项合并评估）。
+- **A 档：全部完成**（#6 代理回填 → #5 代理带根 → #8 渲染早失败 → #10 删除按钮 → #11 节点自动恢复，逐项独立提交 + 全绿 + 随批回写）。待用户在真实 NAS+Windows 复验（代理重启不丢、非默认根可生成代理、渲染未配共享根给出明确 400、工具栏删除、FVCS 重连自动 online）。
+- **B 档（延后）**：#7 分辨率阈值（待用户定阈值）、#9 渲染多根（跨端立项，与 §十三 多轨/EDL 契约立项合并评估）。
 - **P3-6**：e2e 实测 `ffprobe:true`，运行时依赖评估可据此关闭。
-- **步骤 8 收尾**：全部 A 档修复 + 用户真机复验通过后，更新状态并 STOP-for-review（不 push/tag，待确认）。
+- **收尾**：A 档复验通过后走版本收口（v1.5.9）+ 文档对齐，随后 STOP-for-review——**未经确认不 push/不打 tag**。
