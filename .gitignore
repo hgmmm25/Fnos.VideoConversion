@@ -76,3 +76,15 @@ fnpack-*.exe
 FVCC_official_unpack/
 freecut/
 test-media/
+
+# ---- FVCS 渲染节点凭据/密钥与运行时数据库（P0 加密配置 + TLS 密钥对 + SQLite 运行库，
+#      build.ps1 -Target FVCS / 测试会在仓库 FVCS/ 目录重新生成，绝不入库）----
+FVCS/config.enc.json
+FVCS/config.enc.json.bak
+FVCS/credentials.db
+FVCS/credentials.db-shm
+FVCS/credentials.db-wal
+FVCS/master.key
+FVCS/task.db
+FVCS/wss-cert.pem
+FVCS/wss-key.pem
