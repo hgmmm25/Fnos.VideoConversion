@@ -7,6 +7,7 @@ package media
 // 零改动；阶段 C 根包收口后删除转发。
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -52,6 +53,17 @@ func LocalPathOf(posixPath string) string {
 	return filepath.FromSlash(p)
 }
 
+// localRootVisible 判定配置根本机可见：为空或本机不可访问（路径不存在/非目录）返回 false。
+// 与根包 resolveEDLRoots 的 isDir 降级语义一致：本机不可见的远程素材根不强行校验存在性。
+func localRootVisible(p string) bool {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return false
+	}
+	fi, err := os.Stat(filepath.FromSlash(p))
+	return err == nil && fi.IsDir()
+}
+
 // ResolveMediaRoots 包级三根解析（04 §2.6）：与根包 (h *Handlers) resolveMediaRoots
 // 同规则，供无 Handlers 上下文的调用点（如调度器侧的代理路径推导）复用：
 //   - src/dest 复用既有缺省回落（授权目录首个 / <videoRoot>/_exports）；
@@ -62,9 +74,16 @@ func ResolveMediaRoots(store SettingsProvider, pv *security.PathValidator) Media
 		cfg = store.GetSettings()
 	}
 	src := strings.TrimSpace(cfg.VideoRoot)
-	if src == "" && pv != nil {
-		if paths := pv.AccessPaths(); len(paths) > 0 {
-			src = toPOSIXRoot(paths[0])
+	// 素材根本机不可见（dev 下默认 POSIX 根 /media/videos 在 Windows 上不存在、
+	// 或 SMB/UNC 暂未挂载）或未配置时：回落授权目录首个，与素材扫描/浏览
+	// （pv.AccessPaths）口径一致，避免"列表可见、票据申请 E_ASSET_MISSING"的
+	// 错位（对齐 resolveEDLRoots 的回落语义）。
+	if !localRootVisible(src) {
+		src = ""
+		if pv != nil {
+			if paths := pv.AccessPaths(); len(paths) > 0 {
+				src = toPOSIXRoot(paths[0])
+			}
 		}
 	}
 	dst := strings.TrimSpace(cfg.ExportRoot)

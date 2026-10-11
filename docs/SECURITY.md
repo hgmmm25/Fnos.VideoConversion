@@ -32,6 +32,13 @@
 - 渲染节点 SMB 凭据使用 `CredentialID` 档案键（07 §5）引用，**禁止**在任务载荷/日志中写入明文口令。
 - 日志（`server/logs`）含任务路径信息，按最小权限访问；生产环境建议轮转与归档。
 
+### 2.4 数据持久化与 SQLite 存储（2026-09-21 校准增补）
+
+- **P0-2 SQLite 迁移已落地（2026-09-21，git a72b8ff / 9e122d5 / 5dd373e）**：FVCC store 持久化载体由 JSON 文件迁移为 SQLite（`modernc.org/sqlite` v1.14.0 纯 Go 驱动；`server/internal/store/sqlite.go` / `sqlite_import.go` / `sqlite_load.go` / `sqlite_persist.go` + store.go），12 张实体表 + schema v1 迁移链，存量 JSON 导入后 SQLite 读回主路径并切换 persist 载体；
+- **凭据仍走加密层，SQLite 不落明文口令**：AuthKey / SMBPassword 等敏感字段继续由 `internal/security/crypto.go`（AES-256-GCM + 主密钥 0600 落盘 secret.key + `enc:v1:` 前缀 + API 脱敏）加密存储，迁移前后口径一致；
+- **根目录运行时数据边界**：FVCC 根目录的 `credentials.db` / `master.key` / `secret.key` / `locks.json` / `tasks.json` 等为 FVCS 渲染端（fvcs-service.exe）常驻 FVCC 根目录运行的产物，按禁删原则保留原位，与 FVCC store 自身 SQLite 迁移（fvcc.db）区分；
+- **详细安全细则**：网关鉴权（GatewayUserMiddleware / RequireAdmin / 权限分级）、限流四类阈值、审计类型表、路径四层校验 + EDL 结构化白名单、传输链路引用见 `FVCC/docs/SECURITY.md`（2026-09-21 已补写，消除 server/main.go、models.go 悬空引用）。
+
 ## 3. 数据面 HTTPS/WSS 加密（P1-3）
 
 | 项 | 状态 | 说明 |

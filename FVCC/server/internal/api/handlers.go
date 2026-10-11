@@ -669,6 +669,8 @@ func (h *Handlers) browseDirs(c *gin.Context) {
 	}
 
 	// 计算上级目录（仅在授权目录内才返回 parent）
+	// 边界特判：Windows 盘符根（D:\）Clean 后仍以分隔符结尾，直接拼接会产生
+	// 双分隔符（D:\\）导致子路径永不命中，此时根本身即为边界。
 	parent := ""
 	for _, root := range h.pv.AccessPaths() {
 		if pathParam == root {
@@ -676,7 +678,11 @@ func (h *Handlers) browseDirs(c *gin.Context) {
 			parent = ""
 			break
 		}
-		if strings.HasPrefix(pathParam, root+string(filepath.Separator)) {
+		sep := root
+		if !strings.HasSuffix(sep, string(filepath.Separator)) {
+			sep += string(filepath.Separator)
+		}
+		if strings.HasPrefix(pathParam, sep) {
 			parent = filepath.Dir(pathParam)
 			break
 		}

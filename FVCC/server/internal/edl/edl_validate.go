@@ -156,9 +156,18 @@ func validateRelPathDecoded(rel string, allowExt map[string]bool) *edlValidation
 }
 
 // edlWithinRoot 前缀校验必须带分隔符边界（防 /media/videos2 被误判为 /media/videos 子路径）。
+// 边界特判：Windows 盘符根（如 D:\）Clean 后仍以分隔符结尾，若再拼接分隔符会得到
+// 双分隔符（D:\\），任何子路径（D:\xxx）都无法命中前缀，导致「授权根为盘符根时
+// 读取文件全部报无权限」。此时根本身即为边界，子路径只需以该根为前缀。
 func edlWithinRoot(root, abs string) bool {
 	r := filepath.Clean(root)
-	return abs == r || strings.HasPrefix(abs, r+string(os.PathSeparator))
+	if abs == r {
+		return true
+	}
+	if strings.HasSuffix(r, string(os.PathSeparator)) {
+		return strings.HasPrefix(abs, r)
+	}
+	return strings.HasPrefix(abs, r+string(os.PathSeparator))
 }
 
 // edlResolveRelPath 把相对路径解析为根下的绝对物理路径，并完成 L4 校验（07 §3.2）。

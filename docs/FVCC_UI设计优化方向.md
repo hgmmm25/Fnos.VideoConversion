@@ -9,13 +9,13 @@
 >
 > 证据来源：`FVCC\ui-src\src\style.css`、`tailwind.config.js`、`theme.ts`、`ui.ts`、`main.ts`、`index.html`、`pages\{tasks,settings,scanner,history,servers,profiles}.ts`、`pages\editor\{layout,preset,dialog,taskDrawer}.ts`、`lib\useListPage.ts`、`scripts\check-design.mjs`、`docs\DESIGN.md`；`freecut\DESIGN.md`、`freecut\PRODUCT.md`、`freecut\src\index.css`。
 >
-> 状态（2026-09-21 复核）：P0 / P1-1~P1-5 / P2-2 无障碍 / P2-3 门禁 与 §7 美化图示化阶段 A-D 均已落地（版本 1.5.3）；1.5.x 编辑器交互增强已实现（播放头随播放联动 / 时间轴缩放 / 预览最大化，见 §1.1）；剩余收尾见 §5.2 / §7.6。
+> 状态（2026-09-22 复核）：P0 / P1-1~P1-5 / P2-2 无障碍 / P2-3 门禁 与 §7 美化图示化阶段 A-D 均已落地（版本 1.5.7，1.5.3 已打 tag v1.5.3、1.5.4 已提交 080754c、1.5.5~1.5.7 工作区未提交）；1.5.x 编辑器交互增强已实现（播放头随播放联动 / 时间轴缩放 / 预览最大化 / 变速播放 J-K-L，见 §1.1）；后端 P0-2 SQLite 迁移与 P1-1 事件驱动调度已落地，与本文档方向无冲突；剩余收尾见 §5.2 / §7.6。
 
 ---
 
 ## 0. 核心结论（先看这五条）
 
-| # | 结论（原始判断） | 当前状态（2026-09-20 源码复核） |
+| # | 结论（原始判断） | 当前状态（2026-09-21 源码复核） |
 |---|------|------|
 | 1 | 设计令牌两套真源、darkMode 策略不一致 | ✅ 已收敛：body 改 `bg-page text-ink`，预览底改 `--c-preview-bg`，darkMode 改 `['selector','[data-theme="dark"]']` |
 | 2 | 通用后台面板色彩语言 vs 专业工具语言 | ✅ 已升级：引入 `--c-signal` 单一信号色，语义色收敛为 success/danger/warning |
@@ -29,14 +29,14 @@
 
 ### 1.1 技术底座与结构
 
-- 版本：ui-src `package.json` / 服务端 `VERSION` / `manifest` 三处均为 **1.5.3**（工作区未提交；1.5.0~1.5.3 为编辑器交互增强）。
+- 版本：ui-src `package.json` / 服务端 `VERSION` / `manifest` 三处均为 **1.5.7**（2026-09-22 工作区实测；1.5.3 已提交打 tag v1.5.3，1.5.4 已提交 080754c，1.5.5~1.5.7 未提交；1.5.0~1.5.3 为编辑器交互增强 + SQLite 迁移，1.5.4~1.5.7 为变速播放 + 按钮图标化 + Windows 路径边界修复）。
 - Vite + TypeScript + Tailwind，**零框架**。依赖 `@fontsource/ibm-plex-sans` / `@fontsource/ibm-plex-mono`（^5.3.0）、`lightweight-charts`（^5.2.1，异步 chunk 仅 history 页签加载）与 vite（^8.3.0）/ typescript（^7.0.2）/ tailwindcss（^3.4.17）工具链；**无 React/Vue/Preact、无路由库、无状态库、无 UI 组件库**。DOM 由 `src/ui.ts` 的 `el(tag, attrs, children)` 手工构造，图标为内联 SVG 路径表（`ICON_PATHS`，统一 `stroke-width: 2`）。
-- 规模：`src/` 共 **33 个 .ts 文件、约 1 万行**（2026-09-20 实测）；7 个页签页 + editor 子模块 14 个文件（timeline 599 / assets 606 / preview 533 / index 556 行）；最大单文件 scanner.ts（1,332 行）、profiles.ts（1,168 行）。相对上一版复核：scanner/profiles 因分页与重构精简，tasks（523 行）因队列可视化增大；新增 `lib\` 公共层（`useListPage` 列表流程 / `formBuilder` / `crudActions` / `scrollPos`）与 editor 的 dialog / editorStore / preset / ruler / shortcuts / taskDrawer / taskView 等拆分文件。
+- 规模：`src/` 共 **33 个 .ts 文件、约 10,315 行**（2026-09-21 实测）；7 个页签页 + editor 子模块 14 个文件（timeline 599 / assets 606 / preview 533 / index 556 行）；最大单文件 scanner.ts（1,332 行）、profiles.ts（1,168 行）。相对上一版复核：scanner/profiles 因分页与重构精简，tasks（523 行）因队列可视化增大；新增 `lib\` 公共层（`useListPage` 列表流程 / `formBuilder` / `crudActions` / `scrollPos`）与 editor 的 dialog / editorStore / preset / ruler / shortcuts / taskDrawer / taskView 等拆分文件。
 - 构建产物（`vite` `outDir: '../app/ui'`）：主 chunk `index-*.js` **192.6 KB（无代码分割）**、CSS 36.3 KB、字体 192.2 KB、lightweight-charts/standalone 异步 chunk 189.6 KB（仅 history 页签动态加载），约 13 个核心产物文件（2026-09-20 实测）。后端 Go(gin) 托管，网关前缀 `/app/fvcc`。
 - 路由：`main.ts` 中的 hash 路由，7 个平级页签——`剪辑(editor) / 任务清单(tasks) / 视频文件(scanner) / 转码服务器(servers) / 转码方案(profiles) / 历史任务(history) / 设置(settings)`；`editor` 支持 `#/editor/:projectId` 子路由与 `renderProjectPicker`。
 - 外壳：顶部导航已按 `NAV_GROUPS` 分组（编辑工作区 / 资源 / 运行 / 系统，main.ts:35），移动端（`md` 以下）折叠为下拉菜单；外壳底部已有**全局状态条**（节点 / 队列 / WS，main.ts:233-274）；**全局命令面板 Ctrl+K** 已接入（main.ts:98）。
 - 图示化（§7 已落地）：tasks 队列状态堆叠条、history 趋势图（lightweight-charts）、servers 负载圆环（SVG 自绘）、scanner 格式/大小占比条与分页、editor 进度复用。
-- 1.5.x 编辑器交互增强（2026-09-21 复核，工作区 1.5.3）：① 播放头随预览播放联动推进（index.ts:479 `preview.onTime → timeline.setTime`，时间线竖线 playhead + 片段覆盖指示条）；② 时间轴 ALT+滚轮 / 双指捏合缩放（editorStore `scale` 0.25~8，timeline.ts 锚点保持 + 缩放百分比 chip，`touch-action:pan-x`）；③ 预览最大化按钮（preview.ts maxBtn，Esc / 再次点击还原，全屏态 root 自滚动）。
+- 1.5.x 编辑器交互增强（2026-09-22 复核，工作区 1.5.7）：① 播放头随预览播放联动推进（index.ts:479 `preview.onTime → timeline.setTime`，时间线竖线 playhead + 片段覆盖指示条）；② 时间轴 ALT+滚轮 / 双指捏合缩放（editorStore `scale` 0.25~8，timeline.ts 锚点保持 + 缩放百分比 chip，`touch-action:pan-x`）；③ 预览最大化按钮（preview.ts maxBtn，Esc / 再次点击还原，全屏态 root 自滚动）；④ 预览变速播放（1.5.4，preview.ts `setSpeed(dir)` 驱动 `video.playbackRate`，PR 惯例 J 快退 / K 暂停 / L 快进，同向 2x→3x→4x、最大 4x、反向重置；shortcuts.ts 接入 J/K/L）；⑤ 播放控制按钮图标化（1.5.4，ui.ts ICON_PATHS 新增 rewind/play/ff 内联 SVG，文字按钮换图标按钮）；⑥ 素材递归子文件夹扫描（1.5.7，assets.ts `recursive=true`，子文件夹视频汇入列表，修复 v1.5.6 不显示）。
 
 ### 1.2 设计令牌
 
@@ -53,7 +53,7 @@
 `style.css` 定义 keyframes：`slide-down` / `slide-up` / `fade-in-up` / `fade-in` / `scale-in` / `pulse-soft` / `slide-in-right` / `progress-stripes` / `skeleton-shimmer`。
 **P0-3 已完成**：`slide-*` 弃用 `max-height`（解除 300px 截断），改用 `transform + opacity`；引入缓动 token `--ease-out-strong` / `--ease-in-out-strong`；`@media (prefers-reduced-motion: reduce)` 全局降级。
 
-### 1.4 页面级范式（抽样，2026-09-20）
+### 1.4 页面级范式（抽样，2026-09-21 复核）
 
 - `tasks.ts`（523 行）：每任务一张 `.card`，内部横向排布 `拖拽手柄 + 复选框 + 状态 badge + 文件名/元信息 + 进度条 + 最多 4 个按钮`；进度色由 `getPhaseStyle()` 映射（上传=`primary`、转码=`signal`、下载/完成=`success`、其余=`neutral-soft`）；**B-阶段队列可视化**：状态占比堆叠条 + 计数摘要（tasks.ts:105，自绘 CSS 零依赖）；进度条 `role="progressbar"` + `aria-valuenow`（tasks.ts:257/407-410）；拖拽落点已收敛为 `--c-drop-line`；空状态调用 `emptyState()`。
 - `settings.ts`（361 行）：单张 `.card` 承载全部设置，分段用 `border-t border-line`；**已改骨架屏** `skeletonRows(6, 'h-10')`（settings.ts:24）；日志查看器为自建 overlay + `<pre>`，ANSI 颜色映射为 `--ansi-*` 变量，且已补对话框语义（role=dialog / aria-modal / Esc / 焦点陷阱 / 返回焦点，settings.ts:282）。
@@ -73,7 +73,7 @@
 
 ---
 
-## 2. 差距对照（2026-09-20 复核）
+## 2. 差距对照（2026-09-21 复核）
 
 | 维度 | freecut（目标） | FVCC 原始差距 | 当前状态 |
 |------|------------------|------------------------|----------|
@@ -94,7 +94,7 @@
 
 ## 3. 优化方向（按优先级）
 
-### 3.0 落地状态总览（2026-09-20 源码复核）
+### 3.0 落地状态总览（2026-09-21 源码复核）
 
 | P 项 | 状态 | 源码证据 |
 |------|------|---------|
@@ -165,13 +165,13 @@ P1-1 单一信号色 / P1-2 明度阶梯 / P1-3 字体与数据排版 / P1-4 信
 1. **P2-1 乐观更新**：tasks 选中/排序、servers 静音切换等低风险操作加乐观更新 + 失败回滚（唯一遗留的 P 级项）。
 2. **门禁脚本化扩展（可选）**：DESIGN.md 的 R6-R10 目前仅文档级约束，可将对话框 aria 属性、progressbar aria-valuenow、骨架屏等可机器判定的项并入 check-design.mjs。
 3. **复核类（§6 / §7.6 未勾项）**：Squint Test 人工复测；hint 对比度 ≥4.5:1 复核（`--c-ink-subtle` 用于非文本或升级 muted）；`tabular-nums` 在列表页全量核对；转码进度 1s 刷新无肉眼掉帧记录；图示化新增控件移动端 ≥44px 复核。
-4. **版本同步**：本报告随版本号迭代（当前 1.5.3，工作区未提交）；后端 P2-1 分层（internal/edl、ws、node、scheduler、media、remote）已收尾，与 UI 方向无冲突。
+4. **版本同步**：本报告随版本号迭代（当前 1.5.7，2026-09-22 工作区实测；1.5.3 已打 tag、1.5.4 已提交 080754c、1.5.5~1.5.7 未提交）；后端 P2-1 分层已收尾、P0-2 SQLite 迁移与 P1-1 事件驱动调度已落地，与 UI 方向无冲突。
 
 ---
 
 ## 6. 验收清单（可直接作为 review 依据）
 
-> 状态（2026-09-20）：已勾项均有源码证据（见 §3.0 / §7.6）；未勾项为待人工复核或未落地项。
+> 状态（2026-09-21）：已勾项均有源码证据（见 §3.0 / §7.6）；未勾项为待人工复核或未落地项。
 
 - [ ] Squint Test 通过：界面模糊后仍能分辨主次与当前活动态（待人工复测）
 - [x] 全站无硬编码颜色（除登记的 `--ansi-*` 语义色），无 Tailwind 原色板引用（check-design R1/R2 已接入 build）
@@ -193,7 +193,7 @@ P1-1 单一信号色 / P1-2 明度阶梯 / P1-3 字体与数据排版 / P1-4 信
 
 > 定位：在 §3 的方向与 §5 的路线之上，补充"全站观感美化 + 数据图示化"的可执行规划。核心原则：**零框架优先、图示化按需引入、首屏体积不劣化、分阶段试点后确认再全量**。
 >
-> **落地状态（2026-09-20，版本 1.4.9）**：阶段 A-D 已全部完成并收口（git e151d08）——阶段 B（tasks 队列可视化 + history 趋势图）、阶段 C（servers 负载圆环 + scanner 分布条）、阶段 D（scanner 大列表分页 + 性能复核）均已上线。`app/ui/assets` 含 `lightweight-charts.production-*.js` 异步 chunk（189.6 KB，仅 history 页签动态加载）。
+> **落地状态（2026-09-22 复核，版本 1.5.7）**：阶段 A-D 已全部完成并收口（git e151d08）——阶段 B（tasks 队列可视化 + history 趋势图）、阶段 C（servers 负载圆环 + scanner 分布条）、阶段 D（scanner 大列表分页 + 性能复核）均已上线。`app/ui/assets` 含 `lightweight-charts.production-*.js` 异步 chunk（189.6 KB，仅 history 页签动态加载）；1.5.x 编辑器交互增强（播放头联动 / 时间轴缩放 / 预览最大化 / 变速播放 J-K-L / 按钮图标化 / 素材递归扫描）保持本报告结论不变。
 
 ### 7.1 目标与边界（不变）
 

@@ -10,7 +10,7 @@
 
 FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 Web 客户端：浏览本地素材、把转码/代理/渲染任务下发给 FVCS 渲染端、通过 WebSocket 实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript 零框架原生 DOM，产物以 fpk 形式打包供 fnOS 安装。
 
-当前版本 **v1.5.3**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-09-21 实测复核；v1.5.3 已打 tag，SQLite 迁移三个提交已入库，工作区剩 5 个文件未提交——见 §6.3/§8）。
+当前版本 **v1.5.7**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-09-22 工作区实测；1.5.3 已打 tag，SQLite 迁移三个提交已入库；1.5.4 已提交 080754c 未打 tag——编辑器变速播放 + 按钮图标化；1.5.5~1.5.7 为 Windows 路径边界修复 + 剪辑页素材递归扫描，工作区未提交——见 §6.3/§8 与 IMPROVEMENT_LOG §十一）。
 
 治理进展：P0-2 SQLite 迁移已落地（2026-09-21，提交 a72b8ff / 9e122d5 / 5dd373e）；P1 组（P1-1 ~ P1-5）全部落地或部分落地（P1-1 事件驱动调度已落地，提交 eab7688）；P2 组（P2-1 ~ P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。
 
@@ -27,7 +27,7 @@ FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 W
 
 ### 1.2 构建产物与运行形态
 
-- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.5.3）。实测修正：根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
+- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.5.7）。实测修正：根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
 - 运行时数据（2026-09-21 复核，按禁删原则保留原位）：`config.enc.json`（加密配置）、`master.key` / `secret.key`（凭据密钥）、`credentials.db`（凭据库 SQLite，含 -shm/-wal）、`tasks.json` / `history_tasks.json`（任务存储）、`locks.json`（锁表）。实测修正：根目录**无** `task.db`（仅 `archive/` 下存 12KB 备份）。
 - `config/`：fnOS 应用配置目录（privilege / resource）。
 - `logs/`：运行时日志（按日期 + app_*.log）。
@@ -87,7 +87,7 @@ D:\Fnos.VideoConversion\FVCC\
 │   └── STORE_PERSISTENCE_ROADMAP.md  # 持久化方案评审稿（SQLite 迁移已落地，剩余定时备份/快照回滚方案见 §8 步骤 4）
 ├── logs/                      # 运行时日志（git 忽略）
 ├── temp/                      # 打包 stage 目录（2026-09-21 已清理 15 个 fpk_stage* 与 fvcc-win-debug.exe，现仅剩 logs/，git 忽略）
-├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.5.3）
+├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.5.7）
 ├── config.enc.json            # 加密配置（凭据相关）
 ├── credentials.db / -shm / -wal   # 凭据库（SQLite）
 ├── master.key / secret.key    # 凭据密钥
@@ -253,16 +253,19 @@ D:\Fnos.VideoConversion\FVCC\
 
 ---
 
-## 7. 剪辑页功能改进可行性方案（实现状态：功能 1 已实现 3/4，功能 2 已完整实现，功能 3 已删除；2026-09-21 复核：1.5.3 已提交并打 tag v1.5.3，当前工作区为文档校准改动未提交）
+## 7. 剪辑页功能改进可行性方案（实现状态：功能 1 已实现 3/4，功能 2 已完整实现，功能 3 已删除，功能 4/5 新增已实现；2026-09-22 复核：1.5.4 已提交 080754c，1.5.5~1.5.7 Windows 路径边界修复 + 素材递归扫描工作区未提交）
 
-> 适用范围：`ui-src/src/pages/editor/`（剪辑编辑器，14 个 TS 模块）；功能 1/2 均为前端层改动，无架构性风险。
+> 适用范围：`ui-src/src/pages/editor/`（剪辑编辑器，14 个 TS 模块）；功能 1/2/4/5 均为前端层改动，无架构性风险。
 > 现状标注（2026-09-21 代码核查）：功能 1「视频栏改造」**已实现 3/4**——标题半透明浮层（timeline.ts `buildClipEl` 内 titleBar `bg-black/55` 覆盖缩略图下缘）、删除时长信息（行内 label + 时长已移除，移入片段 tooltip）、随时间滚动指示条（`playBarByClip` + `updatePlayhead` 按播放比例覆盖 + 底部亮线）；**未实现**：视频/音频双栏（仍为单轨 v1，无 `{videoTracks,audioTracks}` 数据模型）。功能 2「ALT+滚轮 / 双指缩放时间轴」**已完整实现**——ALT+滚轮（timeline.ts `onWheel` 校验 `e.altKey`、±20%/格、锚点 ms 回正滚动）、双指捏合（`onPinchDown/Move/End` 两指距离比值驱动、中点锚定、`touch-action:pan-x`）、scale 状态入 editorStore（0.25~8、`setScale`、缩放百分比 chip）。
-> 排期建议：剩余工作仅功能 1 的**双栏子项**（涉及数据模型 `{videoTracks,audioTracks}` 变更，需先确认后端/渲染端是否依赖单轨结构）；功能 2 已实现，无需排期。
+> 现状标注（2026-09-22 复核，1.5.4~1.5.7）：功能 4「预览变速播放 J/K/L」**已实现（1.5.4，080754c）**——preview.ts `setSpeed(dir)` 驱动 `video.playbackRate`，PR 惯例同向 2x→3x→4x、最大 4x、反向/K 键重置；shortcuts.ts 接入 J/K/L；播放控制按钮图标化（ui.ts ICON_PATHS）。功能 5「素材递归子文件夹扫描」**已实现（1.5.7，工作区未提交）**——assets.ts `recursive=true`，修复 v1.5.6 子文件夹视频不显示；配套 Windows 盘符根路径边界修复（stream/edl/trash/smbshare/handlers 五处）使 `D:\` 授权根下素材可正常预览/回收。
+> 排期建议：剩余工作仅功能 1 的**双栏子项**（涉及数据模型 `{videoTracks,audioTracks}` 变更，需先确认后端/渲染端是否依赖单轨结构）；功能 2/4/5 已实现，无需排期。
 
 | 功能 | 难度 | 关键点 | 状态 |
 |---|---|---|---|
 | 1. 视频栏改造 | 低~中 | 标题半透明浮层（纯 CSS）；删除时长信息（注意联动引用）；随时间滚动指示条（监听播放进度 + rAF/节流绘制）；改"视频/音频"双栏（唯一涉及数据模型 `{videoTracks,audioTracks}`，后端/渲染端需兼容） | ⚠️ 已实现 3/4（仅双栏未实现） |
 | 2. ALT+滚轮 / 双指缩放时间轴 | 高 | wheel 监听 `e.altKey` 以鼠标为锚点缩放；触屏 pointer 双触点距离比值驱动；共用 scale 状态（建议放 editorStore），`touch-action:none` | ✅ 已完整实现 |
+| 4. 预览变速播放 J/K/L | 中 | preview.ts `setSpeed(dir)` 驱动 `video.playbackRate`（同向 2x→3x→4x、最大 4x、反向重置）；shortcuts.ts 接入 J/K/L；控制按钮图标化 | ✅ 已实现（1.5.4，080754c） |
+| 5. 素材递归子文件夹扫描 | 低 | assets.ts `recursive=true` 使子文件夹视频汇入列表；依赖 Windows 盘符根路径边界修复（盘符根 `D:\\` 双分隔符）才能命中子路径 | ✅ 已实现（1.5.7，工作区未提交） |
 
 **踩坑预警（基于 v1.2.3 白屏经验）**：指示条回调订阅注意变量声明顺序避免 TDZ 白屏；组件销毁时移除监听防泄漏（复用 P2-2 dispose 模式）。
 
@@ -346,7 +349,7 @@ D:\Fnos.VideoConversion\FVCC\
 
 - 目录树：`D:\Fnos.VideoConversion\FVCC`（深度 3 递归扫描，2026-09-20）
 - 代码规模：Go 96 文件 / 21,071 行（含测试 43 文件 / 6,853 行）；TS 33 文件 / 10,315 行（2026-09-21 实测）
-- 版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = 1.5.3（2026-09-21 复核；2026-09-20 实测为 1.4.9）
+- 版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = 1.5.7（2026-09-22 工作区实测；1.5.4 已提交 080754c，1.5.5~1.5.7 未提交；2026-09-21 曾为 1.5.3 并打 tag）
 - TODO 扫描：`server/`、`ui-src/src/`、`cmd/` 全量关键词扫描（TODO/FIXME/未完成/占位/stub）
 - 关键文件：`server/main.go`、`server/internal/api/router.go`、`server/internal/scheduler/scheduler.go`、`server/internal/store/store.go`、`ui-src/src/main.ts`、`ui-src/src/store.ts`、`ui-src/src/api.ts`、`ui-src/src/pages/editor/*.ts`
 - 文档：`FVCC/README.md`、`FVCC/docs/*.md`、`D:\Fnos.VideoConversion\docs\*`

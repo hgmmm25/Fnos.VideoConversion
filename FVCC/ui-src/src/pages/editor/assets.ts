@@ -154,8 +154,9 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
   let sortKey: SortKey = 'name'
   // 需求2：名称/时长/大小 支持正序/倒序（1 正序 / -1 倒序）
   let sortDir: 1 | -1 = 1
-  // 需求3：文件夹式阅览——非递归扫描，子目录由前端据视频相对路径推导后在此列展示
-  const recursive = false
+  // 2026-09-22 修复：素材扫描支持递归子文件夹（用户 v1.5.6 下子文件夹视频不显示）
+  // 递归模式下子文件夹视频直接汇入列表展示；ensureSubDir 目录行不再触发（保持列表展示）
+  const recursive = true
   interface DirEntry {
     name: string
     path: string

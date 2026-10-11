@@ -293,3 +293,56 @@ func TestM4ThumbFallbackAndGuards(t *testing.T) {
 		t.Fatalf("非法 root 应 400 E_ROOT_UNKNOWN，实际 %d %s", w.Code, w.Body.String())
 	}
 }
+
+// newM4MultiRootEnv 构造多授权根测试环境（2026-09-22 修复②）：
+// videoRoot=rootA（本机可见但素材不在其中），AccessiblePaths 授权 [rootA, rootB]，
+// 模拟剪辑页在非缺省授权根浏览素材的场景。
+func newM4MultiRootEnv(t *testing.T) (*m4Env, string, string) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	st := NewStore(t.TempDir())
+	if err := st.Load(); err != nil {
+		t.Fatalf("Load() 失败: %v", err)
+	}
+	st.SaveSettings(Settings{
+		VideoRoot:      toPOSIXRoot(rootA),
+		AccessiblePaths: []string{toPOSIXRoot(rootA), toPOSIXRoot(rootB)},
+	})
+	pv := security.NewPathValidator(false, "")
+	pv.SetExtraPaths([]string{rootA, rootB})
+	h := &Handlers{store: st, hub: NewHub(), pv: pv}
+	probeInfo := VideoInfo{Duration: 1, Fps: "30/1", Width: 16, Height: 16}
+	h.probe = &stubProber{fallback: &probeInfo}
+	h.thumbFFmpeg = filepath.Join(t.TempDir(), "no-such-ffmpeg")
+	return &m4Env{r: newRouter(Config{}, h), store: st, h: h, root: rootA}, rootA, rootB
+}
+
+// TestM4StreamTicketMultiRootFallback 多根错位兜底（2026-09-22 修复②）：
+// 素材真实位于授权根 rootB，而前端 root 仅传 'src'（解析为 videoRoot=rootA，
+// 本机可见且不含该素材）→ 修复前 404 E_ASSET_MISSING；修复后应遍历授权根命中 rootB。
+func TestM4StreamTicketMultiRootFallback(t *testing.T) {
+	e, rootA, rootB := newM4MultiRootEnv(t)
+	_ = rootA
+	m4WriteFile(t, filepath.Join(rootB, "demo", "b_01.mp4"), 2048)
+
+	// 1) 素材在 rootB、缺省 src 根为 rootA → 修复后应 200 签发
+	w := doEDLRequest(t, e.r, http.MethodPost, "/api/stream/ticket", `{"path":"demo/b_01.mp4"}`)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "ticket") {
+		t.Fatalf("多根素材应签发票据，实际 %d %s", w.Code, w.Body.String())
+	}
+
+	// 2) 票据申请成功后 Range 流应 206（多根解析与票据同路径）
+	tk := m4Ticket(t, e, "demo/b_01.mp4")
+	w = m4StreamReq(t, e.r, http.MethodGet, "/api/stream?path=demo/b_01.mp4&root=src&ticket="+tk, "bytes=0-1023")
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("多根素材 Range 应 206，实际 %d %s", w.Code, w.Body.String())
+	}
+
+	// 3) 所有授权根均缺失 → 仍 404 E_ASSET_MISSING（兜底不改变缺失语义）
+	w = doEDLRequest(t, e.r, http.MethodPost, "/api/stream/ticket", `{"path":"demo/missing.mp4"}`)
+	if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "E_ASSET_MISSING") {
+		t.Fatalf("缺失素材应 404 E_ASSET_MISSING，实际 %d %s", w.Code, w.Body.String())
+	}
+}

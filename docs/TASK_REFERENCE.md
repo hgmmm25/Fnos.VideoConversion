@@ -2,7 +2,7 @@
 
 > 用途：混乱报告 P2-6「清理任务编号注释」的落地物。代码注释中散落的 `B-xx / C-xx / D-xx / M4 / Px-x / 修复①-⑤` 任务编号与 `03 §4.2` 式章节引用，在本表中统一登记为可读语义，供维护者追溯设计依据。
 > 约定：新增注释请直接书写可读语义，编号仅作括号溯源；本表与代码同仓维护，`docs/` 为章节引用文档的权威位置说明。
-> 维护日期：2026-09-21（第六版；同步混乱报告第七版 1.5.3：P0-2 SQLite 迁移落地——store 包新增 sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go，代码注释新增"P0-2 提交 1/2/3"批次标记（见 §2.1 编号漂移登记补录）；P1-1 事件驱动调度落地补登记（eab7688）。B-05/B-06 编号语义与代表位置不变）
+> 维护日期：2026-09-22（第七版；对齐 1.5.7——1.5.4 编辑器变速播放 J/K/L + 按钮图标化（080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复（handlers.go/edl_validate.go/trash.go/smbshare.go/stream.go/roots.go + assets.ts 递归扫描）落地，均未引入新任务编号，属既有 B 组路径校验/P2 系列的延续修复，详见 IMPROVEMENT_LOG §十一。第六版记录保留如下：同步混乱报告第七版 1.5.3：P0-2 SQLite 迁移落地——store 包新增 sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go，代码注释新增"P0-2 提交 1/2/3"批次标记（见 §2.1 编号漂移登记补录）；P1-1 事件驱动调度落地补登记（eab7688）。B-05/B-06 编号语义与代表位置不变）
 
 ---
 
@@ -27,17 +27,18 @@
 | 编号 | 可读语义 | 代表位置 |
 |---|---|---|
 | P0-1 | 凭据安全：AuthKey/SMBPassword 加密落库 + 响应不回显明文（internal/store/model/models.go 过时 TODO 已随 1.4.7 清理） | server/internal/security/crypto.go、internal/store/store.go、internal/api/handlers.go |
-| P1-1 | updateProfile 59 块手写字段映射收敛（反射白名单 helper applyFields） | server/internal/protocol/applyjson.go、internal/scheduler/scheduler.go（tick 合并快照） |
+| P1-1 | updateProfile 59 块手写字段映射收敛（反射白名单 helper applyFields） | server/internal/protocol/applyjson.go、internal/scheduler/scheduler.go（1.5.3 已升级为事件驱动调度 eab7688：事件循环 + 内存索引 + 定时落盘 + WS 广播全覆盖） |
 | P1-2 | SMB 共享路径校验收敛为 helper（doScanDirectory/probeVideo/browseDirs/createTask 四处复用） | server/internal/security/smb_validate.go |
 | P1-3 | 文档落地（README/规格入库）与数据面 WSS 加密（SECURITY.md §4） | server/internal/remote/remote.go、docs/SECURITY.md |
 | P2-1 | 可观测性：trace ID 全链路 + /metrics 指标扩展 + 前端骨架屏/空态 | server/internal/api/（handlers 拆分）、internal/store/store.go、ui-src/* |
 | P2-2 | 测试补强 / 前端无障碍对话框语义（role=dialog/焦点陷阱） | server/internal/*/*_test.go、ui-src/src/* |
-| P2-3 | CI 流水线 + 覆盖率基线（≥60%） | .github/workflows/fvcc-ci.yml、scripts/check-coverage.ps1 |
+| P2-3 | CI 流水线 + 覆盖率基线（≥55%；口径修复后实测 56.7%，上调 60% 为 P3-7 待办） | .github/workflows/fvcc-ci.yml、scripts/check-coverage.ps1 |
 | P2-4 | 统一 API 错误契约 {ok:false,code,msg,detail?} | server/internal/protocol/apierr.go、ui-src/src/api.ts、docs/API_CONTRACT.md |
 | P2-5 | 删除操作回收站化（_trash 移入/恢复/清空） | server/internal/store/trash.go、ui-src/src/api.ts |
 | P2-6 | 清理 AIGC 残留与任务编号注释（本表即落地物） | docs/TASK_REFERENCE.md |
 
-> **编号漂移登记（2026-09-19，路径更新 2026-09-20）**：混乱报告 §4 中 `P2-1`（后端分层）、`P2-2`（前端组件化）为**报告体系编号**（均已落地）；代码注释中的 `P2-1` 多指"可观测性：Prometheus 指标端点"（internal/api/handler_metrics_test.go），`P2-2` 在代码注释中未见（前端 P 组为另一套清单，见 §2.2）。两套语义并存属历史事实，维护者按文件归属对照。本表"代表位置"已更新为 P2-1 分层后 internal 路径；B/C/D/M4/修复 组的旧路径映射见 §3 顶部路径说明。
+> **编号漂移登记（2026-09-19，路径更新 2026-09-20，P0-2 补录 2026-09-21）**：混乱报告 §4 中 `P2-1`（后端分层）、`P2-2`（前端组件化）为**报告体系编号**（均已落地）；代码注释中的 `P2-1` 多指"可观测性：Prometheus 指标端点"（internal/api/handler_metrics_test.go），`P2-2` 在代码注释中未见（前端 P 组为另一套清单，见 §2.2）。两套语义并存属历史事实，维护者按文件归属对照。
+> **P0-2 双语义补录（2026-09-21 第六版）**：`P0-2` 在《项目分析与改进方向.md》中为"清理工程残留 + .gitignore"（✅ 已落地），在混乱报告/IMPROVEMENT_LOG §三 中为"JSON 文件存储迁 SQLite"（✅ 已落地，2026-09-21 a72b8ff / 9e122d5 / 5dd373e）。1.5.3 起 `server/internal/store/sqlite*.go` 代码注释新增"P0-2 提交 1/2/3"批次标记（提交 1=引入驱动、提交 2=存量导入、提交 3=读回主路径 + persist 载体切换），该标记即 SQLite 迁移语义，**不再指工程残留清理**。两处历史语义均已落实，后续新增注释沿用 SQLite 迁移语义。本表"代表位置"已更新为 P2-1 分层后 internal 路径；B/C/D/M4/修复 组的旧路径映射见 §3 顶部路径说明。
 
 ### 2.2 前端 P 组（源自 FVCC 前端 UI 优化清单，**与后端同名编号含义不同**）
 
@@ -122,7 +123,7 @@
 | `genproxy_share_cred_test.go` | 代理生成 + 共享凭据（share_cred）场景测试（原名 `genproxy_share_cred_126_test.go`，`126` 为任务票号，2026-09-18 git mv 去票号） | 票号 126 的具体任务描述已不可考（代码内无台账对应） |
 | `handlers_edl_list_test.go` | EDL 列表接口契约测试（原名 `handlers_edl_list_contract_test.go`，contract 后缀表示按接口契约命名，2026-09-18 git mv 去后缀） | 契约语义可从 03 §4.2 追溯 |
 
-> 结论：测试文件命名混用「被测对象 + 票号/契约后缀」，与实现文件对应关系不直观，属混乱报告 §2.8 扣分项③；P2-7 已于 2026-09-18 落地，两文件统一为 `handlers_<domain>_test.go` 风格（git mv 保留历史），后续新测试沿用该风格。
+> 结论：测试文件命名混用「被测对象 + 票号/契约后缀」，与实现文件对应关系不直观，属混乱报告后端测试命名规范扣分项；P2-7 已于 2026-09-18 落地，两文件统一为 `handlers_<domain>_test.go` 风格（git mv 保留历史），后续新测试沿用该风格。
 
 ---
 

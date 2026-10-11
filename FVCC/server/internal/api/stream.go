@@ -77,12 +77,44 @@ func mediaErrStatus(code string) int {
 // resolveMediaFile 把 (root, 相对路径) 解析为根内真实文件路径（04 §2.6）：
 // ResolveRoot → 拼接 → EvalSymlinks → 前缀校验（复用 PathValidator 的四层思路）。
 // 返回错误码：空串表示成功。
+//
+// 2026-09-22 修复②（多根错位）：指定根（videoRoot / 缺省 src）下解析失败时，
+// 对**全部授权素材根**再做兜底尝试（剪辑页可在多个授权目录间切换素材，素材
+// 列表可见于任意授权根，而前端 root 仅传 'src'/'proxy' 枚举，不含根信息）。
+// 仅当指定根报「不存在/不可访问」时兜底；越权（软链逃逸 403）立即拒绝，绝不跨根。
 func (h *Handlers) resolveMediaFile(root, relPath string) (string, string) {
 	localRoot, code := h.ResolveRoot(root)
 	if code != "" {
 		logger.Error("stream", "非法 root=%q（04 §6，属编码缺陷）", root)
 		return "", code
 	}
+	abs, code := h.resolveMediaFileAt(localRoot, relPath)
+	if code == "" {
+		return abs, ""
+	}
+	if code == errCodeAssetNotInRoot {
+		return "", code
+	}
+	// 多根错位兜底：对每个授权素材根（proxy 场景取 <根>/_proxy，代理与素材同根）
+	// 再尝试一次；命中即成功，全部失败保持 E_ASSET_MISSING 原语义。
+	for _, cand := range h.srcRootCandidates() {
+		cand = filepath.Clean(filepath.FromSlash(cand))
+		if cand == "" || samePath(cand, localRoot) {
+			continue
+		}
+		if root == "proxy" {
+			cand = filepath.Join(cand, "_proxy")
+		}
+		if abs, code := h.resolveMediaFileAt(cand, relPath); code == "" {
+			return abs, ""
+		}
+	}
+	return "", errCodeAssetMissing
+}
+
+// resolveMediaFileAt 在给定本地根内解析相对路径为真实文件（拼接 + EvalSymlinks +
+// Stat + 前缀校验）；返回错误码，空串表示成功。
+func (h *Handlers) resolveMediaFileAt(localRoot, relPath string) (string, string) {
 	joined := filepath.Join(localRoot, filepath.FromSlash(relPath))
 
 	real, err := filepath.EvalSymlinks(joined)
