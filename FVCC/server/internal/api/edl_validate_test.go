@@ -119,6 +119,8 @@ func newD02RenderEnv(t *testing.T) (r *gin.Engine, s *Store, srcDir, destDir, ro
 	cfg := s.GetSettings()
 	cfg.VideoRoot = toPOSIXRoot(srcDir)
 	cfg.ExportRoot = toPOSIXRoot(destDir)
+	// 步骤8 e2e #8：配置共享根使渲染根映射为相对根（闸门 4b 要求）。
+	cfg.SMBSharePath = root
 	s.SaveSettings(cfg)
 
 	pv := security.NewPathValidator(false, "")

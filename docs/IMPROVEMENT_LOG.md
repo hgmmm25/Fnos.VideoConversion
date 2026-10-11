@@ -374,7 +374,7 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 | 5 | 代理提交不带素材根 → 非默认根文件报"素材不存在"（前端 `createProxy` 未发 root） | 前端为主 | A | ✅ 本轮修复 |
 | 6 | 代理 ready 态无法从服务端回填（仅瞬时 WS `proxy_ready`）；`VerifyProxyMeta` 帧率严格串相等易误判 invalid | 前端+后端 | A | ✅ 本轮修复 |
 | 7 | `judgeVisibility` 未纳入分辨率 → 4K 素材代理判定"很迷" | 前端 | B | 待产品决策（阈值） |
-| 8 | 渲染 `sourceRoot` 未映射时下发绝对路径被 FVCS 拒；自检 `rootMapped=false` 时跳过根错误掩盖 doomed 派发 | 后端+运维(配 smbSharePath) | A | 待修 |
+| 8 | 渲染 `sourceRoot` 未映射时下发绝对路径被 FVCS 拒；自检 `rootMapped=false` 时跳过根错误掩盖 doomed 派发 | 后端+运维(配 smbSharePath) | A | ✅ 本轮修复 |
 | 9 | 渲染/EDL 单根载荷模型（`WireClip` 无 per-clip root） | 跨端(FVCC+FVCS) | B | 待立项 |
 | 10 | 视频删除入口仅右键，无行内/批量按钮 | 前端 | A | 待修 |
 | 11 | FVCS 重连后节点状态需手点"测试连接"才广播 online | 后端/调度 | A | 待修 |
@@ -394,9 +394,16 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 - `VerifyProxyMeta`（`media/proxy.go`）帧率校验由严格串相等改为**数值近似（相对容差 1%）**，无法解析时回退严格比较——修复重编码/VFR 下分数串不同（如 `"25"` vs `"25/1"`）误判 valid 代理为 invalid 的问题；单测补 `"帧率同值异串(30 vs 30000/1001)"` 通过、`"25/1"` 仍拒。
 - 验证：`go build/vet/test` 全绿（含新增 `TestM4ProxyListHydration`）、`npm run build` 通过。
 
+**#8 渲染未映射绝对根早失败（本轮提交）**：
+
+- 根因：`resolveEDLRoots` 在未配置 `smbSharePath`（或根不在共享内）时 `rootMapped=false`，`sourceRoot` 回落本地绝对 POSIX（如 `/vol3/1000/T`）；载荷自检（闸门 8）在 `!rootMapped && isRootPathStyleErr` 时**仅告警放行并派发**，FVCS 侧 `ValidateRootRelPath` 立即拒 `E_EDL_INVALID 禁止绝对路径（sourceRoot）`——报错跨端、对用户不可行动。FVCS 以 `mountPath + SourceRoot` 拼接，绝对 sourceRoot 永不可用。
+- 修复：新增**闸门 4b**（`handlers_render.go`）：`!rootMapped && isAbsoluteEDLRoot(sourceRoot)` → 提交侧 400 `E_EDL_INVALID`，信息给出"在设置配置 smbSharePath 且 videoRoot/exportRoot 须位于共享根下"的可操作指引；不再入队 doomed 任务。闸门 8 的 warn-skip 分支保留（仅覆盖非绝对的历史过渡态）。
+- 测试：`newRenderTestEnv`/`newD02RenderEnv` 补配 `SMBSharePath=root`（映射为相对根，符合真实部署），新增 `TestB04RenderRootUnmappedAbsoluteFailsEarly` 断言 400 + 含 smbSharePath + 不入队。全套 `go build/vet/test` 绿。
+- 运维侧：NAS 启用 EDL 渲染须配置 `smbSharePath` 指向包含素材/成品根的共享根（本修复使未配置时给出明确报错而非静默跨端失败）。
+
 ### 14.5 待办延续
 
-- **A 档余下**：#8 渲染早失败、#10 删除按钮、#11 节点自动恢复——按序本轮后续提交。
+- **A 档余下**：#10 删除按钮、#11 节点自动恢复——按序本轮后续提交。
 - **B 档**：#7 分辨率阈值（待用户定阈值）、#9 渲染多根（跨端立项，与 §十三 多轨/EDL 契约立项合并评估）。
 - **P3-6**：e2e 实测 `ffprobe:true`，运行时依赖评估可据此关闭。
 - **步骤 8 收尾**：全部 A 档修复 + 用户真机复验通过后，更新状态并 STOP-for-review（不 push/tag，待确认）。

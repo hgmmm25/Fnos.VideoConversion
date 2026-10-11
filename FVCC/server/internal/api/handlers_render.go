@@ -119,12 +119,22 @@ func (h *Handlers) renderEDLProject(c *gin.Context) {
 		return
 	}
 
-	// 闸门 4：解析素材根 / 成品根（03 §2.3、09 §4.2）
+		// 闸门 4：解析素材根 / 成品根（03 §2.3、09 §4.2）
 	sourceRoot, destRoot, localSource, localDest, rootMapped := h.resolveEDLRoots()
 	if sourceRoot == "" || destRoot == "" {
 		edlErr(c, http.StatusBadRequest, errCodeEDLInvalid,
 			"未配置素材根/成品根，请在设置中配置 videoRoot/exportRoot",
 			gin.H{"field": "sourceRoot", "sourceRoot": sourceRoot, "destRoot": destRoot})
+		return
+	}
+	// 闸门 4b（步骤8 e2e #8）：根未映射为共享相对根且仍为本地绝对写法时，必然被 FVCS
+	// 以「禁止绝对路径（sourceRoot 不得以 / 开头）」拒绝。此前仅告警并派发 doomed 任务，
+	// 报错落在跨端、对用户不可行动。改为提交侧早失败，给出可操作的配置指引。
+	if !rootMapped && isAbsoluteEDLRoot(sourceRoot) {
+		edlErr(c, http.StatusBadRequest, errCodeEDLInvalid,
+			"渲染根未映射为共享相对根：请在「设置」配置 smbSharePath（SMB 共享根），"+
+				"并确保 videoRoot/exportRoot 位于该共享根之下；当前 sourceRoot 为本地绝对路径，渲染节点不接受。",
+			gin.H{"field": "sourceRoot", "sourceRoot": sourceRoot, "destRoot": destRoot, "rootMapped": false})
 		return
 	}
 
@@ -448,6 +458,20 @@ func toShareRelRoot(localRoot, shareBase string) (string, bool) {
 		return "", false
 	}
 	return rel, true
+}
+
+// isAbsoluteEDLRoot 判定 EDL 根写法是否为本地绝对路径（POSIX `/...` 或 Windows 盘符 `C:/...`）。
+// 未映射为共享相对根时用于闸门 4b 早失败：绝对 sourceRoot 必然被 FVCS 拒绝。
+func isAbsoluteEDLRoot(root string) bool {
+	r := strings.TrimSpace(root)
+	if strings.HasPrefix(r, "/") {
+		return true
+	}
+	if len(r) >= 2 && r[1] == ':' {
+		c := r[0]
+		return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+	}
+	return false
 }
 
 // isRootPathStyleErr 判断校验错误是否仅源于根路径写法（sourceRoot/destRoot）。
