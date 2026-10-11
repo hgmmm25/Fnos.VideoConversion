@@ -376,7 +376,7 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 | 7 | `judgeVisibility` 未纳入分辨率 → 4K 素材代理判定"很迷" | 前端 | B | 待产品决策（阈值） |
 | 8 | 渲染 `sourceRoot` 未映射时下发绝对路径被 FVCS 拒；自检 `rootMapped=false` 时跳过根错误掩盖 doomed 派发 | 后端+运维(配 smbSharePath) | A | ✅ 本轮修复 |
 | 9 | 渲染/EDL 单根载荷模型（`WireClip` 无 per-clip root） | 跨端(FVCC+FVCS) | B | 待立项 |
-| 10 | 视频删除入口仅右键，无行内/批量按钮 | 前端 | A | 待修 |
+| 10 | 视频删除入口仅右键，无行内/批量按钮 | 前端 | A | ✅ 本轮修复 |
 | 11 | FVCS 重连后节点状态需手点"测试连接"才广播 online | 后端/调度 | A | 待修 |
 
 ### 14.4 A 档逐项修复（随批回写）
@@ -401,9 +401,15 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 - 测试：`newRenderTestEnv`/`newD02RenderEnv` 补配 `SMBSharePath=root`（映射为相对根，符合真实部署），新增 `TestB04RenderRootUnmappedAbsoluteFailsEarly` 断言 400 + 含 smbSharePath + 不入队。全套 `go build/vet/test` 绿。
 - 运维侧：NAS 启用 EDL 渲染须配置 `smbSharePath` 指向包含素材/成品根的共享根（本修复使未配置时给出明确报错而非静默跨端失败）。
 
+**#10 视频删除入口可发现性（本轮提交）**：
+
+- 现状：scanner 视频删除仅存在于右键上下文菜单（`createContextMenu`），新用户难发现；`回收站`按钮可见但"删除到回收站"的入口不可见。
+- 修复：`scanner.ts` 工具栏补「删除」按钮（`btn-sm text-danger`，随选中态启用/禁用，与 `创建转码任务` 一致由 `updateStats` 驱动）。点击复用既有 `handleDelete`——`selectedVideos` 非空即按选中集批量删除（弹确认框、移入回收站），不新增删除逻辑。右键菜单保留。
+- 验证：`npm run build` 通过。
+
 ### 14.5 待办延续
 
-- **A 档余下**：#10 删除按钮、#11 节点自动恢复——按序本轮后续提交。
+- **A 档余下**：#11 节点自动恢复——本轮最后一个提交。
 - **B 档**：#7 分辨率阈值（待用户定阈值）、#9 渲染多根（跨端立项，与 §十三 多轨/EDL 契约立项合并评估）。
 - **P3-6**：e2e 实测 `ffprobe:true`，运行时依赖评估可据此关闭。
 - **步骤 8 收尾**：全部 A 档修复 + 用户真机复验通过后，更新状态并 STOP-for-review（不 push/tag，待确认）。

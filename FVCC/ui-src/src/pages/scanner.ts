@@ -99,6 +99,9 @@ export function renderScanner(container: HTMLElement) {
   browseBtn.append(svgIcon('folder-open', 16) as unknown as Node, el('span', {}, ['浏览目录']))
   const taskBtn = el('button', { class: 'btn btn-primary flex items-center gap-1.5', disabled: 'true' }, [])
   taskBtn.append(svgIcon('plus', 16) as unknown as Node, el('span', {}, ['创建转码任务']))
+  // 闭环④ #10：删除此前仅存于右键菜单，可发现性差；补工具栏批量删除按钮（随选中态启用）
+  const deleteBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5 text-danger', disabled: 'true' }, [])
+  deleteBtn.append(svgIcon('trash', 16) as unknown as Node, el('span', {}, ['删除']))
   const trashBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5' }, [])
   trashBtn.append(svgIcon('trash', 16) as unknown as Node, el('span', {}, ['回收站']))
   trashBtn.onclick = () => openTrashManager()
@@ -146,7 +149,7 @@ export function renderScanner(container: HTMLElement) {
   })
 
   const leftGroup = el('div', { class: 'flex items-center gap-2' }, [browseBtn, pathDisplay, refreshBtn])
-  const rightGroup = el('div', { class: 'flex items-center gap-2' }, [searchInput, trashBtn, taskBtn, colWrap])
+  const rightGroup = el('div', { class: 'flex items-center gap-2' }, [searchInput, trashBtn, deleteBtn, taskBtn, colWrap])
   toolbar.append(leftGroup, rightGroup)
 
   // 列表
@@ -736,6 +739,12 @@ export function renderScanner(container: HTMLElement) {
   }
 
   taskBtn.onclick = () => openCreateTaskModal(scanRoot)
+  // 闭环④ #10：工具栏批量删除——handleDelete 在 selectedVideos 非空时按选中集删除，video 参数仅单行时取 path
+  deleteBtn.onclick = () => {
+    if (selectedVideos.size === 0) return
+    const rep = scannedVideos.find((v) => selectedVideos.has(v.path))
+    if (rep) handleDelete(rep)
+  }
   browseBtn.onclick = () => openDirBrowser(async (selected) => {
     scanRoot = selected
     lastScanRoot = selected
@@ -753,6 +762,7 @@ export function renderScanner(container: HTMLElement) {
   const updateStats = () => {
     statSelected.textContent = `已选 ${selectedVideos.size} 个`
     taskBtn.disabled = selectedVideos.size === 0
+    deleteBtn.disabled = selectedVideos.size === 0
   }
   // C-阶段（7.3 scanner 行）：格式/大小占比条渲染（基于扫描全量，不随搜索词变化）
   const updateDist = () => {
