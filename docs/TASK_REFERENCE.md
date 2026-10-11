@@ -2,7 +2,7 @@
 
 > 用途：混乱报告 P2-6「清理任务编号注释」的落地物。代码注释中散落的 `B-xx / C-xx / D-xx / M4 / Px-x / 修复①-⑤` 任务编号与 `03 §4.2` 式章节引用，在本表中统一登记为可读语义，供维护者追溯设计依据。
 > 约定：新增注释请直接书写可读语义，编号仅作括号溯源；本表与代码同仓维护，`docs/` 为章节引用文档的权威位置说明。
-> 维护日期：2026-09-22（第七版；对齐 1.5.7——1.5.4 编辑器变速播放 J/K/L + 按钮图标化（080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复（handlers.go/edl_validate.go/trash.go/smbshare.go/stream.go/roots.go + assets.ts 递归扫描）落地，均未引入新任务编号，属既有 B 组路径校验/P2 系列的延续修复，详见 IMPROVEMENT_LOG §十一。第六版记录保留如下：同步混乱报告第七版 1.5.3：P0-2 SQLite 迁移落地——store 包新增 sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go，代码注释新增"P0-2 提交 1/2/3"批次标记（见 §2.1 编号漂移登记补录）；P1-1 事件驱动调度落地补登记（eab7688）。B-05/B-06 编号语义与代表位置不变）
+> 维护日期：2026-10-11（第八版；§2.1 补录 P1-2 双语义登记——项目分析清单"前端收敛"已定案关闭 vs 混乱报告"SMB 校验 helper"早已落地，见 IMPROVEMENT_LOG §十三。第七版=2026-09-22：对齐 1.5.7——1.5.4 编辑器变速播放 J/K/L + 按钮图标化（080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复（handlers.go/edl_validate.go/trash.go/smbshare.go/stream.go/roots.go + assets.ts 递归扫描）落地，均未引入新任务编号，属既有 B 组路径校验/P2 系列的延续修复，详见 IMPROVEMENT_LOG §十一。第六版记录保留如下：同步混乱报告第七版 1.5.3：P0-2 SQLite 迁移落地——store 包新增 sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go，代码注释新增"P0-2 提交 1/2/3"批次标记（见 §2.1 编号漂移登记补录）；P1-1 事件驱动调度落地补登记（eab7688）。B-05/B-06 编号语义与代表位置不变）
 
 ---
 
@@ -37,6 +37,7 @@
 | P2-5 | 删除操作回收站化（_trash 移入/恢复/清空） | server/internal/store/trash.go、ui-src/src/api.ts |
 | P2-6 | 清理 AIGC 残留与任务编号注释（本表即落地物） | docs/TASK_REFERENCE.md |
 
+> **P1-2 双语义补录（2026-10-11 第八版）**：`P1-2` 在《项目分析与改进方向.md》§5 中为"前端收敛（freecut 双轨）"，与本表 §2.1 的" SMB 校验 helper"（混乱报告体系）双语义并存。两者**均已关闭**：SMB helper 早于 1.4.x 落地（smb_validate.go）；前端收敛于 2026-10-11 定案关闭（方案 A 维持零框架、借设计不借底座，见 IMPROVEMENT_LOG §十三）。本表 §2.1 行维持 SMB helper 语义不变。
 > **编号漂移登记（2026-09-19，路径更新 2026-09-20，P0-2 补录 2026-09-21）**：混乱报告 §4 中 `P2-1`（后端分层）、`P2-2`（前端组件化）为**报告体系编号**（均已落地）；代码注释中的 `P2-1` 多指"可观测性：Prometheus 指标端点"（internal/api/handler_metrics_test.go），`P2-2` 在代码注释中未见（前端 P 组为另一套清单，见 §2.2）。两套语义并存属历史事实，维护者按文件归属对照。
 > **P0-2 双语义补录（2026-09-21 第六版）**：`P0-2` 在《项目分析与改进方向.md》中为"清理工程残留 + .gitignore"（✅ 已落地），在混乱报告/IMPROVEMENT_LOG §三 中为"JSON 文件存储迁 SQLite"（✅ 已落地，2026-09-21 a72b8ff / 9e122d5 / 5dd373e）。1.5.3 起 `server/internal/store/sqlite*.go` 代码注释新增"P0-2 提交 1/2/3"批次标记（提交 1=引入驱动、提交 2=存量导入、提交 3=读回主路径 + persist 载体切换），该标记即 SQLite 迁移语义，**不再指工程残留清理**。两处历史语义均已落实，后续新增注释沿用 SQLite 迁移语义。本表"代表位置"已更新为 P2-1 分层后 internal 路径；B/C/D/M4/修复 组的旧路径映射见 §3 顶部路径说明。
 
