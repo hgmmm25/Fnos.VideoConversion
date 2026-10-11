@@ -1,4 +1,4 @@
-# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-11 更新至 v1.5.9）
+# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-11 更新至 v1.5.10）
 
 > **现状快照（2026-10-11 第二十轮，本次落地）**：当前版本 **v1.5.8**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，check-versions.ps1 实测通过）。本轮完成 **P3-5 store 持久化健壮性（备份/迁移/快照回滚）**，按阶段 A~D 依次本地提交：**A 备份**（efef4bd：backup.go 定时 30min×12 轮转池 + 写前备份 + manual 永久）、**B 迁移框架**（16f1043：migrate.go data_version 锚点与 schema_version 正交，SQLite 走 import_meta、JSON 走 data_version.json，1→2→3 迁移链 + 全新安装打锚 + 高版本拒启）、**C 快照回滚**（59e4004：restore.go 整包验签换入 + API POST /store/restore 仅后端，zip 白名单防 zip-slip + 64MB 单条上限 + 回滚前自动 prerestore 备份 + 失败零副作用）、**D 收口**（store.go 头部 TODO(P1) 移除 + 版本 1.5.8 + 文档台账回写）。评审口径已锁：secret.key 不入备份、恢复沿用现密钥；恢复后运行中任务重置 QUEUE（同崩溃恢复语义）；本轮不做前端入口。上一轮（1.5.5~1.5.7 Windows 路径边界批次）**已提交 68ebdec 并打 tag v1.5.7**（校正第十九轮"工作区未提交"的过时记载，P3-1 对该批次关闭）。验证：`go build` / `go vet` / `go test -count=1 ./...`（12 包）全绿，coverage 56.7%→**59.0%**（门禁 55%）；-race 需 cgo，留 Linux CI。详见 §十二。
 
@@ -419,7 +419,7 @@ P3-5 收口后启动步骤 8（端到端验收），环境为**真实 NAS（Linu
 ### 14.5 待办延续
 
 - **A 档**：#6 代理回填、#5 代理带根、#10 删除按钮、#11 节点自动恢复复验通过（真机）。**#8 复验判原闸门 4b 为误修 → 已返工为跨端对齐**（FVCS 渲染 `srcBase=mountPath` 与代理一致 + FVCC 回退闸门 4b），两侧代码全绿，待真机复验：默认根与非默认根渲染均应像代理跑通——**需重建并重新部署渲染机 `fvcs-service.exe`（.104）+ FVCC fpk**。
-- **版本收口**：应用版本三方对齐 bump 至 **1.5.9**（`server/internal/version/VERSION` + `manifest` + `ui-src/package.json`），文档版本线（本台账头部 / `FVCC_项目现状与开发步骤.md` §步骤8 与"当前版本"）同步对齐，`check-versions.ps1` 应通过。构建部署后即可供真机复验。
+- **版本收口**：应用版本三方对齐 **1.5.9 → 1.5.10**（`server/internal/version/VERSION` + `manifest` + `ui-src/package.json`，`check-versions.ps1` 口径一致；注：fnOS 侧只能按更高版本号覆盖安装，故每次重下发 fpk 须递增版本）。文档版本线（本台账头部 / `FVCC_项目现状与开发步骤.md` §步骤8 与"当前版本"）同步对齐 1.5.10。构建部署后即可供真机复验。
 - **B 档（延后）**：#7 分辨率阈值（待用户定阈值）、#9 渲染多根（跨端立项，与 §十三 多轨/EDL 契约立项合并评估）。
 - **P3-6**：e2e 实测 `ffprobe:true`，运行时依赖评估可据此关闭。
-- **收尾**：A 档复验通过后走版本收口（v1.5.9）+ 文档对齐，随后 STOP-for-review——**未经确认不 push/不打 tag**。
+- **收尾**：A 档复验通过后走版本收口（v1.5.10）+ 文档对齐，随后 STOP-for-review——**未经确认不 push/不打 tag**。
