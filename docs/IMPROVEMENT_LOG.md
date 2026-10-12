@@ -572,3 +572,36 @@ v1.5.11 部署后真机复验：FVCC 提交侧不再 `E_ASSET_MISSING`，任务�
 - `go build ./...` / `go vet ./...` / `go test -count=1 ./...` 全绿；覆盖率门禁脚本端到端实跑输出 60.7% ≥ 60% PASS。
 - 台账回写：混乱报告（§2.7/§2.8/§4 P3-1/P2-3/P3-7/P3-9/§5 结论/维护记录）、项目现状（总体判断/CI 行/治理表/步骤 7/版本核验附录）、TASK_REFERENCE P2-3 行、项目分析（第七次回写 + #6/测试补强/git 状态）、UI 文档 tag 注记、FVCC/README P2-3 行。
 - **剩余 P3 债务仅 P3-6（ffprobe 生产依赖评估）/ P3-8（远期决策门）**。
+
+## 十九、第二十七轮（2026-10-12）：v1.6.0 视觉打磨版收口 + FVCS v1.3.0 渲染节点 GUI 复活
+
+### 19.1 背景
+
+按 `docs/FVCC_视觉更新方案_v1.6.0.md`（V1–V9 问题清单 + 六批次）执行 v1.6.0 视觉打磨版：方向 A「精修冷灰」令牌、控件层自绘化、外壳导航/搜索/状态栏重排、逐页修复（趋势图/任务分区/编辑器左栏/服务器栅格/内联样式清零）、微交互与 WCAG 对比度验收；并按既定决策将 FVCS Fyne GUI（托盘 + 设置窗口）纳入同批发布（FVCS 1.2.6→1.3.0，GUI 从"源码存在但无构建通道"复活为一等交付产物）。
+
+### 19.2 批次落实（①–⑤ 均经用户逐批验收）
+
+- **批次①令牌层**：style.css 明暗两套 `--c-*` 按方向 A 重排（暗色卡片提亮一档/边框降一档拉开层次；浅色主按钮降一档明度 #2563eb 去刺眼）；`color-scheme` 声明使原生弹层随主题。
+- **批次②控件层**：ui.ts 新增 `selectField`（原生 select + chevron 覆盖层的 DOM 兼容门面，35 处调用点零逻辑改动迁移）、`.checkbox`（自绘勾选/半选 SVG data-URI + ring focus，规避 R3）、`.btn-ghost`/`.btn-danger-ghost` 变体；V2 原生下拉/V4 实心红删除按钮全部替换。
+- **批次③外壳**：导航分组标签（`.nav-group-label`）+ 分隔线（`.nav-divider`）、V3 Unicode 图标全部换 svgIcon、搜索胶囊重排（rounded-full + kbd 徽标）、状态栏徽标化（`.status-chip`）。
+- **批次④逐页**：
+  - **V1 趋势图**：右轴 `minimumWidth:44`、成功率线迁隐藏 `rate` 自定义轴（v5 需系列绑定后再 applyOptions 隐藏）、`lastValueVisible/priceLineVisible` 关悬空标签、空日视窗压缩（数据首尾 ±3 天、最少 7 天）、TradingView 角标（曾被误读为"17"）CSS 淡显移至右上；
+  - **V5**：任务页 overview 容器补 flex（此前占比条换行成伪小节线）、空态垂直居中、统计文字 tabular-nums；
+  - **V6**：授权根下拉显示末两段路径 + 完整路径 tooltip、↑↓ 文本箭头换 svgIcon、浏览按钮防截断；
+  - **V7**：服务器空态居中、负载环零任务时「—」替代歧义「0」；
+  - **V8**：profiles.ts 53 处 `.style.display` 收编 `setDisplay()`（hidden 工具类）；deleteSourceHint/ffmpegPreview/预览深底/素材栏折叠收编工具类（tailwind 新增 `log-bg`/`preview.bg` 映射）；timeline.ts 18 处为动态几何值，维持内联（评估结论：收编无收益）。
+- **批次⑤微交互 + V9**：页面切换 0.2s 淡入（重排重放）、任务卡首入场淡入（animationend 摘类防重挂闪烁）、toast 规范（滑入淡入/错误 4s 其余 2.5s/同屏 ≤4 条/z-[60] 高于对话框遮罩）；V9 对比度实测修复——ink-subtle 浅 2.73→4.76、暗 4.04→4.80，新增 `.chip-active`（暗色选中态深蓝底 3.68→5.17），PROXY 徽标 warning 底改恒定深色字 2.15→8.80，不一致徽标换 danger-hover 底 3.76→4.83，success/danger toast 改 soft 底+强色字（≥4.6）。
+
+### 19.3 FVCS v1.3.0 GUI 复活（批次⑥）
+
+- `build.ps1` 新增 `-Target FVCS-UI`：CGO/mingw 通道编译 `cmd/ui`→`fvcs-ui.exe`、`cmd/settings`→`fvcs-settings.exe`（`-H windowsgui` 免控制台窗），15.3s 双产物成功；ALL 模式不含 GUI（保持原流水线速度）。
+- 新增 `FVCS/pkg/fynetheme`：Fyne v2.8 `fyne.Theme` 接口包装，Primary/Focus/Hyperlink 色贴近 FVCC 方向 A 蓝调（浅 #2563eb / 暗 #3b82f6）；cmd/ui 与 cmd/settings 明暗分支统一接入（此前暗色分支外一律默认主题）。
+- 版本：`pkg/version/VERSION` 1.2.6→**1.3.0**，version_test 同步；`go test ./pkg/... ./cmd/service ./cmd/ui ./cmd/settings -count=1` 全绿。
+- 图标沿用现有内嵌资源（FVCS.png/FVCS.ico + cmd/ui syso），未新增素材。
+
+### 19.4 版本与治理
+
+- FVCC 三方版本对齐 1.5.12→**1.6.0**（manifest / ui-src/package.json / server/internal/version/VERSION），`scripts/check-versions.ps1` 实跑通过；
+- 门禁：每批次 `tsc --noEmit` + `check-design --all`（33 文件）+ `npm run build` 全绿；
+- 临时产物清理：`ui-src/public/seed-theme.html`（走查主题播种页）与 `server/_walkthrough/`（走查素材）随本轮删除；`.gitignore` 补 `FVCC/server/_wve_cache/`、`backup/`、`data_version.json` 运行库；
+- README（根）版本行、可视化托盘管理章节（fynetheme 注记）、部署行（fvcs-ui/fvcs-settings + FVCS-UI 构建命令）同步。

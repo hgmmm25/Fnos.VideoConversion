@@ -88,3 +88,8 @@ FVCS/master.key
 FVCS/task.db
 FVCS/wss-cert.pem
 FVCS/wss-key.pem
+
+# ---- FVCC server 运行时产物（v1.6.0 收口：缩略图缓存/自动备份/数据版本标记，测试与运行会再生成，不入库）----
+FVCC/server/_wve_cache/
+FVCC/server/backup/
+FVCC/server/data_version.json

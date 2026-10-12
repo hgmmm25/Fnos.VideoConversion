@@ -90,13 +90,13 @@ go test ./...
 
 | 文件 | 字段 | 当前值 |
 |------|------|--------|
-| `manifest` | `version` | 1.5.12 |
-| `ui-src/package.json` | `version` | 1.5.12 |
-| `server/internal/version/VERSION` | 文件内容 | 1.5.12 |
+| `manifest` | `version` | 1.6.0 |
+| `ui-src/package.json` | `version` | 1.6.0 |
+| `server/internal/version/VERSION` | 文件内容 | 1.6.0 |
 
-配套渲染节点 FVCS 版本见仓库根 `FVCS/pkg/version/VERSION`（当前 1.2.6）。
+配套渲染节点 FVCS 版本见仓库根 `FVCS/pkg/version/VERSION`（当前 1.3.0）。
 
-## 近期版本线摘要（1.5.4 ~ 1.5.12）
+## 近期版本线摘要（1.5.4 ~ 1.6.0）
 
 | 版本 | 内容 |
 |------|------|
@@ -107,8 +107,9 @@ go test ./...
 | 1.5.10 | 渲染取根跨端对齐代理（#8 返工） |
 | 1.5.11 | 渲染取根「有界单根」：`EDLClip.sourceRoot` 透传 + `resolveRenderRoots`；FVCS `makeSrcResolver` 对齐 `BuildSMBPath`（配套 FVCS v1.2.5） |
 | 1.5.12 | RENDER_EDL 终态轮询收口（`pollRenderTerminal`/`completeRenderTask`，修出片后卡「收尾·100%」）；`validateRootRelPath` 与 FVCS `ValidateRootPath` 严格同规则（配套 FVCS v1.2.6） |
+| 1.6.0 | 视觉打磨版（方向 A 精修冷灰）：令牌层重排 / selectField·checkbox·按钮变体 / 导航分组·搜索胶囊·状态栏 / V1 趋势图修复·V5-V8 逐页 / 微交互 + WCAG 对比度验收（配套 FVCS v1.3.0：Fyne 托盘 GUI 纳入构建 `-Target FVCS-UI`，主题贴近 FVCC 蓝调） |
 
-逐轮明细见仓库根 `docs/IMPROVEMENT_LOG.md`（§十一~§十六）。
+逐轮明细见仓库根 `docs/IMPROVEMENT_LOG.md`（§十一~§十九）。
 
 ## 项目内文档体系
 
@@ -143,7 +144,7 @@ go test ./...
 | P1-1 | Profile 反射白名单更新 | ✅ 已落地 | `server/internal/protocol/applyjson.go` + 单测（P2-1 分层后位置） |
 | P1-2 | SMB 路径校验 | ✅ 已落地 | `server/internal/security/smb_validate.go` + 单测（P2-1 分层后位置） |
 | P1-3 | 文档落地（代码注释引用设计规格） | ✅ 已落地 | 注释以 `WebVideoEditor_Design/07-§3.2` 形式引用 |
-| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地 | 三处 1.5.12 已同步（2026-10-12 复核，随版本线推进持续对齐）；本表已更新，消除 README 滞后 |
+| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地 | 三处 1.6.0 已同步（2026-10-12 复核，随版本线推进持续对齐）；本表已更新，消除 README 滞后 |
 | P1-5 | 依赖瘦身（前端字体 / 后端 indirect） | 🟡 部分落地 | 字体 latin 子集已瘦身（app/ui/assets 12 文件）；go.mod 已执行 `go mod tidy` 复核：29 个 indirect 均为 gin v1.12 传递依赖（mongo-driver v2 由 gin 直接 require、quic-go 由 gin http3 引入），无进一步精简空间；node_modules 全字符集不进入构建产物，建议保持不动 |
 
 ## 治理计划状态（P2-1 ~ P2-8）

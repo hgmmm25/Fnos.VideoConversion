@@ -46,7 +46,7 @@ motion:
 
 # FVCC Web UI — Design Contract
 
-> 复核：2026-10-12（对齐 FVCC v1.5.12）——令牌真源 `src/style.css`、门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）与 Named Rules 均与代码一致；P1-2 决策门定案（2026-10-11）后本契约维持零框架前端不变。
+> 复核：2026-10-12（对齐 FVCC v1.6.0）——令牌真源 `src/style.css`、门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）与 Named Rules 均与代码一致；P1-2 决策门定案（2026-10-11）后本契约维持零框架前端不变。
 
 ## 北极星
 
