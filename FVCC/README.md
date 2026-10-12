@@ -154,7 +154,7 @@ go test ./...
 |---|---|---|---|
 | P2-1 | 后端 internal 分层 | ✅ 已落地（2026-09-19） | `server/internal/` 11 包 + store/model 子包，根包仅剩 main.go（87 个 .go 含测试，非测试 49）；阶段 A/B/C 完成、8 shim 内联删除；1.4.8/1.4.9 继续细化（stream_media / roots / aliases / config / trash_handlers / edl 扩展）；1.5.8 增补 `pathutil` 包（WithinRoot 单一真源，现共 12 包）；基线 tag v1.4.3；详见 [docs/P2-1_后端分层_阶段A实施记录.md](<docs/P2-1_后端分层_阶段A实施记录.md>) |
 | P2-2 | 前端组件化 | ✅ 已收口（2026-09-19） | `src/lib/` 4 件套接入 6 页、样板残留 0；main.ts 路由切换接入 dispose 防订阅泄漏；决策门已定案关闭（P1-2，2026-10-11：维持零框架）；详见 [docs/P2-2_细化细则.md](<docs/P2-2_细化细则.md>)（Checklist 全勾） |
-| P2-3 | 建立 CI 流水线 | ✅ 已落地 | `.github/workflows/fvcc-ci.yml`（paths 限定 FVCC/**）+ `scripts/check-coverage.ps1`（覆盖率门槛 ≥55%，基线 56.1%，后续上调 60%） |
+| P2-3 | 建立 CI 流水线 | ✅ 已落地 | `.github/workflows/fvcc-ci.yml`（paths 限定 FVCC/**）+ `scripts/check-coverage.ps1`（覆盖率门槛 ≥60%，2026-10-12 上调；演进：基线 56.1%→56.7%→59.0%→补测后实测 60.7%） |
 | P2-4 | 统一 API 契约与命名 | ✅ 已收口 | 统一错误契约（apierr.go + API_CONTRACT.md + api.ts 适配层）已落地；存量 `{error}` 裸格式 grep 为 0；remote.go snake_case 结构体均为 FVCS 对等协议段（API_CONTRACT §3.2 已登记边界），无剩余动作 |
 | P2-5 | 删除操作回收站化 | ✅ 已落地 | `server/internal/store/trash.go`（P2-1 分层后位置）：视频删除移入授权根下 `_trash`，同名时间戳后缀；listTrash 列表接口 |
 | P2-6 | 清理 AIGC 残留与任务编号注释 | ✅ 已收口 | AIGC frontmatter 已清（README / API_CONTRACT / ui-src PRODUCT / 根目录 2 份 / 混乱报告自身 / docs/ 3 份补清；2026-10-12 补清 `FVCC/docs/SECURITY.md` frontmatter 与尾注声明）；编号映射见 docs/TASK_REFERENCE.md |

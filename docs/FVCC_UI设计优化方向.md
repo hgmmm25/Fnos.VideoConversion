@@ -9,7 +9,7 @@
 >
 > 证据来源：`FVCC\ui-src\src\style.css`、`tailwind.config.js`、`theme.ts`、`ui.ts`、`main.ts`、`index.html`、`pages\{tasks,settings,scanner,history,servers,profiles}.ts`、`pages\editor\{layout,preset,dialog,taskDrawer}.ts`、`lib\useListPage.ts`、`scripts\check-design.mjs`、`docs\DESIGN.md`；`freecut\DESIGN.md`、`freecut\PRODUCT.md`、`freecut\src\index.css`。
 >
-> 状态（2026-09-22 复核，**2026-10-12 对齐 v1.5.12 再复核**）：P0 / P1-1~P1-5 / P2-2 无障碍 / P2-3 门禁 与 §7 美化图示化阶段 A-D 均已落地（当前版本 **1.5.12** 三处一致；1.5.3 已打 tag v1.5.3、1.5.4 已提交 080754c、1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7、1.5.8 已打 tag v1.5.8、1.5.9~1.5.12 已提交推送 fork/baseline-snapshot 未打 tag；UI 侧 1.5.9~1.5.12 仅剪辑页 sourceRoot 透传与代理回填等增量，本文档结论不变）；1.5.x 编辑器交互增强已实现（播放头随播放联动 / 时间轴缩放 / 预览最大化 / 变速播放 J-K-L，见 §1.1）；后端 P0-2 SQLite 迁移与 P1-1 事件驱动调度已落地，与本文档方向无冲突；剩余收尾见 §5.2 / §7.6；**定案（2026-10-11）**：§7.2 框架决策"维持零框架"转正，项目分析清单 P1-2（freecut 双轨）据此关闭。
+> 状态（2026-09-22 复核，**2026-10-12 对齐 v1.5.12 再复核**）：P0 / P1-1~P1-5 / P2-2 无障碍 / P2-3 门禁 与 §7 美化图示化阶段 A-D 均已落地（当前版本 **1.5.12** 三处一致；1.5.3 已打 tag v1.5.3、1.5.4 已提交 080754c、1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7、1.5.8 已打 tag v1.5.8、1.5.9~1.5.12 已提交推送 fork/baseline-snapshot 并已于 2026-10-12 打 tag v1.5.12；UI 侧 1.5.9~1.5.12 仅剪辑页 sourceRoot 透传与代理回填等增量，本文档结论不变）；1.5.x 编辑器交互增强已实现（播放头随播放联动 / 时间轴缩放 / 预览最大化 / 变速播放 J-K-L，见 §1.1）；后端 P0-2 SQLite 迁移与 P1-1 事件驱动调度已落地，与本文档方向无冲突；剩余收尾见 §5.2 / §7.6；**定案（2026-10-11）**：§7.2 框架决策"维持零框架"转正，项目分析清单 P1-2（freecut 双轨）据此关闭。
 
 ---
 
@@ -29,7 +29,7 @@
 
 ### 1.1 技术底座与结构
 
-- 版本：ui-src `package.json` / 服务端 `VERSION` / `manifest` 三处一致——2026-09-22 工作区实测 **1.5.7**，**2026-10-12 实测 1.5.12**（1.5.3 已提交打 tag v1.5.3，1.5.4 已提交 080754c，1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7；1.5.8 打 tag v1.5.8；1.5.9~1.5.12 为 e2e A 档修复与 #8 渲染收口批次，已推送 fork/baseline-snapshot、未打 tag；1.5.0~1.5.3 为编辑器交互增强 + SQLite 迁移，1.5.4~1.5.7 为变速播放 + 按钮图标化 + Windows 路径边界修复，1.5.8 为 P3-5 持久化收口，1.5.9~1.5.12 为渲染/代理链路收口）。
+- 版本：ui-src `package.json` / 服务端 `VERSION` / `manifest` 三处一致——2026-09-22 工作区实测 **1.5.7**，**2026-10-12 实测 1.5.12**（1.5.3 已提交打 tag v1.5.3，1.5.4 已提交 080754c，1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7；1.5.8 打 tag v1.5.8；1.5.9~1.5.12 为 e2e A 档修复与 #8 渲染收口批次，已推送 fork/baseline-snapshot、v1.5.12 已于 2026-10-12 打 tag；1.5.0~1.5.3 为编辑器交互增强 + SQLite 迁移，1.5.4~1.5.7 为变速播放 + 按钮图标化 + Windows 路径边界修复，1.5.8 为 P3-5 持久化收口，1.5.9~1.5.12 为渲染/代理链路收口）。
 - Vite + TypeScript + Tailwind，**零框架**。依赖 `@fontsource/ibm-plex-sans` / `@fontsource/ibm-plex-mono`（^5.3.0）、`lightweight-charts`（^5.2.1，异步 chunk 仅 history 页签加载）与 vite（^8.3.0）/ typescript（^7.0.2）/ tailwindcss（^3.4.17）工具链；**无 React/Vue/Preact、无路由库、无状态库、无 UI 组件库**。DOM 由 `src/ui.ts` 的 `el(tag, attrs, children)` 手工构造，图标为内联 SVG 路径表（`ICON_PATHS`，统一 `stroke-width: 2`）。
 - 规模：`src/` 共 **33 个 .ts 文件、约 10,315 行**（2026-09-21 实测；2026-10-12 复测 33 文件 / **11,257 行**，增量为 1.5.9~1.5.12 剪辑页 sourceRoot 透传与代理回填等）；7 个页签页 + editor 子模块 14 个文件（timeline 599 / assets 606 / preview 533 / index 556 行）；最大单文件 scanner.ts（1,332 行）、profiles.ts（1,168 行）。相对上一版复核：scanner/profiles 因分页与重构精简，tasks（523 行）因队列可视化增大；新增 `lib\` 公共层（`useListPage` 列表流程 / `formBuilder` / `crudActions` / `scrollPos`）与 editor 的 dialog / editorStore / preset / ruler / shortcuts / taskDrawer / taskView 等拆分文件。
 - 构建产物（`vite` `outDir: '../app/ui'`）：主 chunk `index-*.js` **192.6 KB（无代码分割）**、CSS 36.3 KB、字体 192.2 KB、lightweight-charts/standalone 异步 chunk 189.6 KB（仅 history 页签动态加载），约 13 个核心产物文件（2026-09-20 实测）。后端 Go(gin) 托管，网关前缀 `/app/fvcc`。
@@ -165,7 +165,7 @@ P1-1 单一信号色 / P1-2 明度阶梯 / P1-3 字体与数据排版 / P1-4 信
 1. **P2-1 乐观更新**：tasks 选中/排序、servers 静音切换等低风险操作加乐观更新 + 失败回滚（唯一遗留的 P 级项）。
 2. **门禁脚本化扩展（可选）**：DESIGN.md 的 R6-R10 目前仅文档级约束，可将对话框 aria 属性、progressbar aria-valuenow、骨架屏等可机器判定的项并入 check-design.mjs。
 3. **复核类（§6 / §7.6 未勾项）**：Squint Test 人工复测；hint 对比度 ≥4.5:1 复核（`--c-ink-subtle` 用于非文本或升级 muted）；`tabular-nums` 在列表页全量核对；转码进度 1s 刷新无肉眼掉帧记录；图示化新增控件移动端 ≥44px 复核。
-4. **版本同步**：本报告随版本号迭代（2026-10-12 复核为 **1.5.12** 三处一致；历史：2026-09-22 实测 1.5.7 工作区，1.5.3/1.5.7/1.5.8 已打 tag，1.5.9~1.5.12 已提交推送 fork/baseline-snapshot 未打 tag）；后端 P2-1 分层已收尾、P0-2 SQLite 迁移与 P1-1 事件驱动调度已落地，与 UI 方向无冲突。
+4. **版本同步**：本报告随版本号迭代（2026-10-12 复核为 **1.5.12** 三处一致；历史：2026-09-22 实测 1.5.7 工作区，1.5.3/1.5.7/1.5.8 已打 tag，1.5.9~1.5.12 已提交推送 fork/baseline-snapshot、v1.5.12 已于 2026-10-12 打 tag）；后端 P2-1 分层已收尾、P0-2 SQLite 迁移与 P1-1 事件驱动调度已落地，与 UI 方向无冲突。
 
 ---
 

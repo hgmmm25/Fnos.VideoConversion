@@ -33,7 +33,7 @@
 | P1-3 | 文档落地（README/规格入库）与数据面 WSS 加密（SECURITY.md §4） | server/internal/remote/remote.go、docs/SECURITY.md |
 | P2-1 | 可观测性：trace ID 全链路 + /metrics 指标扩展 + 前端骨架屏/空态 | server/internal/api/（handlers 拆分）、internal/store/store.go、ui-src/* |
 | P2-2 | 测试补强 / 前端无障碍对话框语义（role=dialog/焦点陷阱） | server/internal/*/*_test.go、ui-src/src/* |
-| P2-3 | CI 流水线 + 覆盖率基线（≥55%；口径修复后实测 56.7%，上调 60% 为 P3-7 待办） | .github/workflows/fvcc-ci.yml、scripts/check-coverage.ps1 |
+| P2-3 | CI 流水线 + 覆盖率基线（门槛 ≥60%；演进 55%/56.7%→59.0%→2026-10-12 补测后 60.7% 上调关闭，原 P3-7 待办已落地） | .github/workflows/fvcc-ci.yml、scripts/check-coverage.ps1 |
 | P2-4 | 统一 API 错误契约 {ok:false,code,msg,detail?} | server/internal/protocol/apierr.go、ui-src/src/api.ts、docs/API_CONTRACT.md |
 | P2-5 | 删除操作回收站化（_trash 移入/恢复/清空） | server/internal/store/trash.go、ui-src/src/api.ts |
 | P2-6 | 清理 AIGC 残留与任务编号注释（本表即落地物） | docs/TASK_REFERENCE.md |

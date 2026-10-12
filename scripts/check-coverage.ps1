@@ -1,6 +1,6 @@
-# FVCC 覆盖率检查脚本（混乱报告 P2-3：覆盖率基线，当前门槛 55%，后续补测试后上调至 60%）
-# 用法：powershell -File scripts/check-coverage.ps1 [-Threshold 55] [-Short] [-Race]
-#   -Threshold  覆盖率阈值（默认 55，低于则退出码 1）
+# FVCC 覆盖率检查脚本（混乱报告 P2-3：覆盖率基线；P3-7 已上调，当前门槛 60%，2026-10-12 实测 60.7%）
+# 用法：powershell -File scripts/check-coverage.ps1 [-Threshold 60] [-Short] [-Race]
+#   -Threshold  覆盖率阈值（默认 60，低于则退出码 1）
 #   -Short      加 -short（本地快速回归；CI 不用）
 #   -Race       加 -race -covermode=atomic（CI 用）
 # 输出：go tool cover -func 汇总 + 总覆盖率，达标退出码 0，未达标退出码 1。
@@ -8,7 +8,7 @@
 # 改为 './...' 使 -coverpkg 与测试目标一致，总覆盖率方为真实值。
 
 param(
-    [int]$Threshold = 55,
+    [int]$Threshold = 60,
     [switch]$Short,
     [switch]$Race
 )
