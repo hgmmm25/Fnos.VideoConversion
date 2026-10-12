@@ -2,6 +2,7 @@
 
 > 依据《项目分析与改进方向.md》P1-3「数据面 HTTPS/WSS 加密」改进方向编制（2026-09-17）。
 > 目标读者：部署运维 / 二次开发。文中"代码即真相"：以 `FVCC/server`、`FVCS` 源码实现为准。
+> 复核记录：2026-10-12 对齐 FVCC v1.5.12 / FVCS v1.2.6 复核，本文策略口径无漂移（传输链路与 WSS 配置项未变）。代码面新增校验细则不在本文展开、登记于 `FVCC/docs/SECURITY.md` 同轮对齐：快照回滚审计 `snapshot.restore`（P3-5，v1.5.8）、渲染根字段 `validateRootRelPath` 与 FVCS `ValidateRootPath` 跨端同规则（#8，v1.5.12）、根边界单一真源 `internal/pathutil.WithinRoot`（v1.5.8）。
 
 ## 1. 当前传输链路
 

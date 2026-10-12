@@ -1,7 +1,8 @@
 # FVCC Store 持久化健壮性方案（备份 / 迁移 / 快照回滚）
 
-> 依据《FVCC_项目现状与开发步骤.md》§8 步骤 4 编制（2026-09-21 方案评审稿）。**2026-10-11 已按阶段 A~D 全部落地（v1.5.8）**，落地记录见文末变更记录与 `docs/IMPROVEMENT_LOG.md` §十二。
+> 依据《FVCC_项目现状与开发步骤.md》§8 步骤 4 编制（2026-09-21 方案评审稿）。**2026-10-11 已按阶段 A~D 全部落地（v1.5.8）**，落地记录见文末变更记录与仓库根 `docs/IMPROVEMENT_LOG.md` §十二。
 > 目标：补齐 `internal/store/store.go` 头部 `TODO(P1): 定时备份、配置迁移、快照回滚`（已随落地移除），在既有原子写基础上构建可恢复、可回滚、可升级的持久化体系。
+> 现状注记（2026-10-12 对齐 v1.5.12）：持久化主载体已切换为 **SQLite**（`store/sqlite*.go`，v1.5.6~1.5.7 迁入，存量 JSON 一次性导入）；本文各节"json 文件/Rename 换入"写法为 2026-09-21 方案稿快照，落地时的两处有意偏差见文末变更记录①②。
 
 ## 1. 现状盘点
 
@@ -97,4 +98,5 @@
 变更记录：
 - 2026-09-21 方案评审稿（未落地代码）。
 - 2026-10-11 **已落地（v1.5.8）**，阶段 A~D 四次本地提交：A 备份 `efef4bd`（backup.go，定时 30min×12 + 写前备份 + 手动 API + manifest SHA-256 验签）；B 迁移框架 `16f1043`（migrate.go）；C 快照回滚 `59e4004`（restore.go + `POST /api/store/restore` + `snapshot.restore` 审计）；D 收口（TODO 移除 + 版本 1.5.8 + 文档回写）。
-- **落地时对 SQLite 主载体的两处有意偏差**：① §3.1 的文件级 `Version` 锚点改为独立 **`data_version`** 数据面锚点（与 SQLite DDL `schema_version` 正交；载体 = `import_meta` 表 + `data_version.json` 镜像；目标值 3，链 1→2 task-columns-default、2→3 project-schema-ver；全新安装直接打锚不跑链，锚点高于目标拒绝启动）；② §4.2 的"Rename 换入 + 重新 Load"改为**先验签解析、后内存换入**（zip 条目不落地解包，条目名精确匹配白名单防 zip-slip，单条 64MB 上限；回滚前强制 prerestore 备份，失败中止=零副作用；换入后全量 persist 回载体并幂等重跑迁移链）。备份内容源同为内存快照（§2.3 语义保持）。
+- **落地时对 SQLite 主载体的两处有意偏差**：① §3.1 的文件级 `Version` 锚点改为独立 **`data_version`** 数据面锚点（与 SQLite DDL `schema_version` 正交；载体 = `import_meta` 表 + `data_version.json` 镜像；锚点目标值即 `migrate.go` 迁移链最高 To（当前链 1→2 task-columns-default、2→3 project-schema-ver，目标值 3）；全新安装直接打锚不跑链，锚点高于目标拒绝启动）；② §4.2 的"Rename 换入 + 重新 Load"改为**先验签解析、后内存换入**（zip 条目不落地解包，条目名精确匹配白名单防 zip-slip，单条 64MB 上限；回滚前强制 prerestore 备份，失败中止=零副作用；换入后全量 persist 回载体并幂等重跑迁移链）。备份内容源同为内存快照（§2.3 语义保持）。
+- 2026-10-12 随 v1.5.12 台账对齐复核：代码无新变更（v1.5.8 收口后单元稳定），仅澄清 SQLite 主载体与锚点目标值口径（见顶部现状注记与 ①）。

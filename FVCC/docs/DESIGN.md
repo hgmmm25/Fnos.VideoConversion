@@ -46,6 +46,8 @@ motion:
 
 # FVCC Web UI — Design Contract
 
+> 复核：2026-10-12（对齐 FVCC v1.5.12）——令牌真源 `src/style.css`、门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）与 Named Rules 均与代码一致；P1-2 决策门定案（2026-10-11）后本契约维持零框架前端不变。
+
 ## 北极星
 
 **"调度台，不是仪表盘。"** FVCC 是 NAS 上的转码调度端：用户要的是"一眼看到队列与节点在干什么、哪里出了问题、怎么补一刀"，不是消费级糖果界面，也不是炫技 SaaS 数据看板。素材信息、进度与日志是屏幕上最需要可读的东西。

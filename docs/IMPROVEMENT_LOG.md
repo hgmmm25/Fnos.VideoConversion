@@ -1,4 +1,4 @@
-# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-11 更新至 v1.5.10）
+# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-12 更新至 v1.5.12）
 
 > **现状快照（2026-10-11 第二十轮，本次落地）**：当前版本 **v1.5.8**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，check-versions.ps1 实测通过）。本轮完成 **P3-5 store 持久化健壮性（备份/迁移/快照回滚）**，按阶段 A~D 依次本地提交：**A 备份**（efef4bd：backup.go 定时 30min×12 轮转池 + 写前备份 + manual 永久）、**B 迁移框架**（16f1043：migrate.go data_version 锚点与 schema_version 正交，SQLite 走 import_meta、JSON 走 data_version.json，1→2→3 迁移链 + 全新安装打锚 + 高版本拒启）、**C 快照回滚**（59e4004：restore.go 整包验签换入 + API POST /store/restore 仅后端，zip 白名单防 zip-slip + 64MB 单条上限 + 回滚前自动 prerestore 备份 + 失败零副作用）、**D 收口**（store.go 头部 TODO(P1) 移除 + 版本 1.5.8 + 文档台账回写）。评审口径已锁：secret.key 不入备份、恢复沿用现密钥；恢复后运行中任务重置 QUEUE（同崩溃恢复语义）；本轮不做前端入口。上一轮（1.5.5~1.5.7 Windows 路径边界批次）**已提交 68ebdec 并打 tag v1.5.7**（校正第十九轮"工作区未提交"的过时记载，P3-1 对该批次关闭）。验证：`go build` / `go vet` / `go test -count=1 ./...`（12 包）全绿，coverage 56.7%→**59.0%**（门禁 55%）；-race 需 cgo，留 Linux CI。详见 §十二。
 
@@ -27,9 +27,9 @@
 | P1-1 | updateProfile 反射重构 + 调度 tick 优化 | ✅ 已落地 | `internal/protocol/applyjson.go` 反射白名单（实测 `if v, ok := updates[` = 0）；scheduler tick 合并快照 |
 | P1-2 | 抽取 SMB 校验 helper | ✅ 已落地 | `internal/security/smb_validate.go`，5 处调用点统一 |
 | P1-3 | 文档落地消除悬空引用 + 数据面 WSS 加密 | ✅ 已落地 | WebVideoEditor_Design/ 01-10 入库 + 速查表；FVCS TLS 证书 + FVCC wss 拨号（第二轮，双端单测全绿） |
-| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地（文档表滞后见 P3-4） | `version.go` go:embed VERSION + version_test.go 三处一致校验 + `scripts/check-versions.ps1` |
+| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地（文档表滞后已随 P3-4 于 2026-10-12 对齐 1.5.12 清零） | `version.go` go:embed VERSION + version_test.go 三处一致校验 + `scripts/check-versions.ps1` |
 | P1-5 | 依赖瘦身 | 🟡 部分落地 | app/ui 字体 latin 子集瘦身（56→10，-70%）；go.mod tidy 复核零变化、无进一步精简空间 |
-| P2-1 | 后端 internal 分层 | ✅ 已落地（2026-09-19） | 11 包 + store/model 子包，根包仅剩 main.go；阶段 A/B/C 完成、shim 已删；实施记录见 `FVCC/docs/P2-1_后端分层_阶段A实施记录.md` |
+| P2-1 | 后端 internal 分层 | ✅ 已落地（2026-09-19） | 11 包 + store/model 子包（v1.5.8 增 pathutil 后 12 包），根包仅剩 main.go；阶段 A/B/C 完成、shim 已删；实施记录见 `FVCC/docs/P2-1_后端分层_阶段A实施记录.md` |
 | P2-2 | 前端组件化 | ✅ 已收口（2026-09-19） | `src/lib/` 4 件套（crudActions / scrollPos / useListPage / formBuilder）接入 6 页，样板残留 0；细则见 `FVCC/docs/P2-2_细化细则.md` |
 | P2-3 | 建立 CI 流水线 + 覆盖率门禁 | ✅ 已落地 | `.github/workflows/fvcc-ci.yml`（go vet + test -race + 覆盖率 ≥55% + 前端 check:design/tsc/build）+ `scripts/check-coverage.ps1` |
 | P2-4 | 统一 API 契约与命名 | ✅ 已收口 | `API_CONTRACT.md` + apierr.go + api.ts 适配兜底；`{error}` 裸格式 grep 0；remote snake_case 为 FVCS 对等协议段已登记边界 |
@@ -44,15 +44,15 @@
 |---|---|---|
 | P0-2 | ~~JSON 文件存储迁 SQLite~~ | ✅ **已落地（2026-09-21 第十八轮确认）**：a72b8ff 引入 modernc.org/sqlite v1.14.0 纯 Go 驱动、9e122d5 存量 JSON 导入、5dd373e SQLite 读回主路径 + persist 载体切换；12 张实体表 + schema v1 迁移链；store 内存索引 + 脏标记 Flush 批量落盘。注：此前根目录 `task.db` / `credentials.db` 为 FVCS 渲染端运行产物（fvcs-service.exe 常驻根目录所致），现已与 FVCC 自身迁移区分开 |
 | P1-1 完整版 | ~~1s ticker 改纯事件驱动调度~~ | ✅ **已落地（2026-09-21 第十八轮确认）**：提交 eab7688 事件循环 + 内存索引 + 定时落盘 + WS 广播全覆盖（第十六轮漏登，第十八轮补登记） |
-| P1-2 | 前端收敛 freecut | 跨前端代码库 UI 合并，需产品决策 |
-| P2-3 门槛 | 覆盖率 ≥60% 强制门槛 | 已以 ≥55% 落地（口径修复后实测基线 56.7%），上调 60% 列为低优先（P3-7） |
+| P1-2 | 前端收敛 freecut | ✅ **已定案关闭（2026-10-11 第二十一轮，§十三）**：方案 A——维持零框架、借 freecut 设计不借底座；框架试点绑定多轨 `{videoTracks,audioTracks}` 立项再评审 |
+| P2-3 门槛 | 覆盖率 ≥60% 强制门槛 | 已以 ≥55% 落地（口径修复后实测基线 56.7%，2026-10-12 实测 59.0%），上调 60% 列为低优先（P3-7） |
 
 ## 四、关键验证结果（最新基线）
 
-1. `cd FVCC\server && go build ./...` / `go vet ./...` / `go test -short ./...` —— ✅ 通过（1.5.3，go 1.27.1；本轮代码清理后 go vet / go test 11 包全绿）
-2. 覆盖率门禁：全包口径 **56.7%**（check-coverage.ps1 口径修复 `'.'`→`'./...'` 后实测，阈值 55%，第十七轮）
+1. `cd FVCC\server && go build ./...` / `go vet ./...` / `go test ./...` —— ✅ 通过（**最新基线 1.5.12 全量复绿**，第二十四轮；1.5.3 批次历史口径：go 1.27.1、go vet / go test 11 包全绿）
+2. 覆盖率门禁：全包口径 56.7% → **59.0%**（check-coverage.ps1 口径修复 `'.'`→`'./...'` 后实测，阈值 55%；第二十轮 1.5.8 复测）
 3. 前端：`tsc --noEmit` / `npm run build`（tsc + check:design + vite）—— ✅ 通过（本轮 npm run build 含 check:design:diff + tsc -b + vite build 通过）
-4. 版本校验：`scripts\check-versions.ps1` —— ✅ 退出码 0（manifest / package.json / VERSION 三处一致 = 1.5.3）
+4. 版本校验：`scripts\check-versions.ps1` —— ✅ 退出码 0（manifest / package.json / VERSION 三处一致 = **1.5.12**，2026-10-12 实测；配套 FVCS v1.2.6）
 5. 早期轮次专项验证（WSS 双端单测、trace ID 注入、回收站/审计单测、并发/fuzz）见 §五 对应轮次摘要
 
 ## 五、历史轮次摘要（原 §六~§十四 压缩）
@@ -81,10 +81,10 @@
 |---|---|---|---|---|---|
 | P0-2 | JSON 文件存储 → SQLite | P0 | 消除手写持久化 | M1/M2/M3 | ✅ 已落地（2026-09-21，详见 §十） |
 | P1-1 | ticker → 事件驱动调度 | P1 | 纯事件驱动 + 超时兜底 | M1/M2/M3 | ✅ 已落地（2026-09-21，详见 §十） |
-| P1-2 | 前端收敛 freecut | P1 | 单前端单入口 | M1/M2/M3 | 🔲 待启动（需产品决策） |
+| P1-2 | 前端收敛 freecut | P1 | 单前端单入口 | M1/M2/M3 | ✅ 已定案关闭（2026-10-11 第二十一轮，方案 A 维持零框架，详见 §十三） |
 | P3-5 | store 持久化健壮性（定时备份/配置迁移/快照回滚） | P3 | 原子写 + 备份轮转 | 下一迭代 | ✅ 已落地（2026-10-11 v1.5.8，阶段 A~D：efef4bd 备份 / 16f1043 迁移框架 / 59e4004 快照回滚 / 本轮收口，详见 §十二） |
-| P3-6 | ffprobe 运行时环境依赖评估 | P3 | 生产缺探测能力兜底 | 下一迭代 | 🔲 待启动（源自现状文档） |
-| P3-7 | 覆盖率门槛 55% → 60% | P3 | CI 稳定后上调 | 后续 | 🟡 口径已修复（实测 56.7%），上调延续 |
+| P3-6 | ffprobe 运行时环境依赖评估 | P3 | 生产缺探测能力兜底 | 下一迭代 | 🟡 实际已满足（2026-10-11 真机 `/info` ffprobe:true，fnOS mediasrv 提供，无 stub；仅剩可选 probe-vs-ffprobe 差异核对） |
+| P3-7 | 覆盖率门槛 55% → 60% | P3 | CI 稳定后上调 | 后续 | 🟡 口径已修复（2026-10-12 实测 59.0%），上调延续 |
 
 ### 6.2 推进约定
 
@@ -203,7 +203,7 @@ P0-2（SQLite 迁移）、P1-1 完整版（事件驱动）、P1-2（freecut 收�
 
 ---
 
-*维护记录：2026-09-17 起稿（第一轮）→ 2026-09-18（第二~七轮）→ 2026-09-19（第十三轮，1.4.4）→ 2026-09-20（第十四轮，1.4.7）→ 2026-09-20 复核更新（v1.4.9，压缩历史轮次为 §五 摘要，新增 §七 第十五轮）→ 2026-09-21（第十六轮，1.5.3，新增 §八 本轮落实日志）→ 2026-09-21（第十七轮，1.5.3，新增 §九 步骤4方案稿/步骤5文档同步/步骤7门禁修复/P3-1提交收尾）→ 2026-09-21（第十八轮，1.5.3，新增 §十 docs 校准：P0-2 SQLite 迁移 / P1-1 事件驱动补登为已落地，7 份台账全面对齐代码现状）→ 2026-09-22（第十九轮，1.5.7，新增 §十一：1.5.4 编辑器变速播放 J/K/L + 按钮图标化（已提交 080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复 + 剪辑页多根兜底 + roots 回落 + 素材递归扫描 + 配套单测（工作区未提交），全套台账对齐 1.5.7）。* → 2026-10-11（第二十轮 P3-5 v1.5.8 §十二 / 第二十一轮 P1-2 定案 §十三 / 第二十二轮 步骤8 e2e 缺陷批量修复 + #8 跨端返工 v1.5.10 §十四）→ 2026-10-12（第二十三轮，1.5.11，新增 §十五：#8 再复验——渲染取根「有界单根」提交侧修复，片段所属授权根透传 + `resolveRenderRoots`，不动 checksum；含旧项目回落边界；同轮追加 §15.6 第三层——FVCS `makeSrcResolver` 对齐代理（`BuildSMBPath`，修 `sourceRoot 为空` 误报）+ 重建部署 `fvcs-service.exe`）→ 2026-10-12（第二十四轮，1.5.12，新增 §十六：渲染出片后 FVCC 卡在「收尾·100%」——补 RENDER_EDL 终态轮询收口 `pollRenderTerminal`/`completeRenderTask`（FVCC-only，镜像 `proxyWf.Poll`；Success→COMPLETED+归档 / Failed→ERROR / Cancelled→CANCELLED））。*
+*维护记录：2026-09-17 起稿（第一轮）→ 2026-09-18（第二~七轮）→ 2026-09-19（第十三轮，1.4.4）→ 2026-09-20（第十四轮，1.4.7）→ 2026-09-20 复核更新（v1.4.9，压缩历史轮次为 §五 摘要，新增 §七 第十五轮）→ 2026-09-21（第十六轮，1.5.3，新增 §八 本轮落实日志）→ 2026-09-21（第十七轮，1.5.3，新增 §九 步骤4方案稿/步骤5文档同步/步骤7门禁修复/P3-1提交收尾）→ 2026-09-21（第十八轮，1.5.3，新增 §十 docs 校准：P0-2 SQLite 迁移 / P1-1 事件驱动补登为已落地，7 份台账全面对齐代码现状）→ 2026-09-22（第十九轮，1.5.7，新增 §十一：1.5.4 编辑器变速播放 J/K/L + 按钮图标化（已提交 080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复 + 剪辑页多根兜底 + roots 回落 + 素材递归扫描 + 配套单测（工作区未提交），全套台账对齐 1.5.7）。* → 2026-10-11（第二十轮 P3-5 v1.5.8 §十二 / 第二十一轮 P1-2 定案 §十三 / 第二十二轮 步骤8 e2e 缺陷批量修复 + #8 跨端返工 v1.5.10 §十四）→ 2026-10-12（第二十三轮，1.5.11，新增 §十五：#8 再复验——渲染取根「有界单根」提交侧修复，片段所属授权根透传 + `resolveRenderRoots`，不动 checksum；含旧项目回落边界；同轮追加 §15.6 第三层——FVCS `makeSrcResolver` 对齐代理（`BuildSMBPath`，修 `sourceRoot 为空` 误报）+ 重建部署 `fvcs-service.exe`）→ 2026-10-12（第二十四轮，1.5.12，新增 §十六：渲染出片后 FVCC 卡在「收尾·100%」——补 RENDER_EDL 终态轮询收口 `pollRenderTerminal`/`completeRenderTask`（FVCC-only，镜像 `proxyWf.Poll`；Success→COMPLETED+归档 / Failed→ERROR / Cancelled→CANCELLED））→ 2026-10-12（第二十五轮，基线 1.5.12，新增 §十七：文档全面对齐轮——FVCC/README、FVCC/docs 7 份、根 docs/ 7 份台账与 BUILD.md 统一对齐 v1.5.12 / FVCS v1.2.6，P3-4 文档滞后清零，纯文档不动代码）。*
 
 
 ## 十、第十八轮（2026-09-21）：docs 与代码现状对齐校准
@@ -514,3 +514,36 @@ v1.5.11 部署后真机复验：FVCC 提交侧不再 `E_ASSET_MISSING`，任务�
 
 - 修复（FVCC-only）：`edl_validate.go` `validateRootRelPath` 重写为与 FVCS `ValidateRootPath` 同规则——`TrimSpace` 后空放行，`ReplaceAll(\→/)` 分段仅拒 `..` 穿越段（错误码 `E_ASSET_NOT_IN_ROOT`，对齐 `PL-ROOT-TRAVERSAL`）。渲染根的**授权边界不在此字符级校验**，而由提交侧 `resolveRenderRoots`→`matchAuthorizedSrcRoot`（精确匹配授权根）与落地侧 §15.6 `makeSrcResolver`（`BuildSMBPath`+根前缀+`os.Stat`）双重把关，故放宽绝对/反斜杠写法是安全的跨端对齐，不削弱安全。
 - 验证：`internal/edl` + `internal/api` + 全量 `go test ./...` 复绿；`go vet` 干净。本轮 fpk 因此改动一并重打。
+
+---
+
+## 十七、第二十五轮（2026-10-12）：文档全面对齐轮——全部台账统一对齐 v1.5.12 / FVCS v1.2.6（P3-4 清零）
+
+### 17.1 背景与口径
+
+全局任务"按最新版本更新文档"。范围 = `FVCC/README.md` + `FVCC/docs/` 7 份 + 根 `docs/` 7 份台账 + 根 `BUILD.md`（根 `README.md` 的对齐已先行提交 4dcdb26）。口径：对齐的是**现状陈述**（版本号、代码规模、包结构、helper 真源路径、落实状态），各轮**带日期的历史快照按台账惯例保留原文**，只追加复核注记；纯文档改动，不动代码与版本号（基线仍 1.5.12）。本轮实测口径：internal 12 包 / 107 个 .go（58 实现 + 49 测试）/ main.go 274 行；前端 TS 33 文件 11,257 行；coverage 59.0%。
+
+### 17.2 逐文件落实
+
+| 文件 | 改动 |
+|---|---|
+| `FVCC/README.md` | 版本表与三处一致推进至 **1.5.12**（配套 FVCS v1.2.6）；目录树重写（新增 `pathutil/` 行、`store/` 改"SQLite 主载体 + JSON 备份/迁移/快照回滚"、`api/` 补 backup_handlers、docs/ 列全 7 份、脚本归属修正 check-design.mjs∈ui-src/scripts 与 check-versions/coverage∈根 scripts/）；**新增「近期版本线摘要（1.5.4~1.5.12）」表**；设计规格链接修复为 `../../WebVideoEditor_Design/` 可点路径；P1-4/P2-1/P2-2/P2-6 行状态刷新 |
+| `FVCC/docs/API_CONTRACT.md` | 版本头 1.5.12；§2.3/§2.4 错误 helper 真源改实路径（`internal/protocol/apierr.go` Fail/FailWithCode/FailCode + edlErr/streamErr/网关内联）；§3.2 SQLite 载体口径 + `pollRenderTerminal` 上游状态透传注记；§4 示例改 `protocol.Fail` 写法；**新增 §6 接口段登记表**（`/api/store/backup|backups|restore` `{backupId}` camelCase、`GET /api/proxy`、render 提交 `EDLClip.sourceRoot`）；§7 验收两项勾 [x]（`gin.H{"error"` 实测 0） |
+| `FVCC/docs/SECURITY.md` | 清 AIGC frontmatter 与尾注残留；§5 审计表补 `snapshot.restore`；§6.1 补渲染根字段 v1.5.12 写法（`validateRootRelPath` ≡ FVCS `ValidateRootPath`，共用向量）与 `pathutil.WithinRoot` 单一真源；changelog 记 2026-10-12 对齐 |
+| `FVCC/docs/P2-1_后端分层_阶段A实施记录.md` | 头部加 2026-10-12 复核（第 12 包 pathutil 增补注记）；阶段 C "待提交"回填实际提交 `009e2f8` |
+| `FVCC/docs/P2-2_细化细则.md` | 决策门定案关闭回写（P1-2，2026-10-11，`be43119`：维持零框架，框架试点绑定多轨立项）；Checklist 末项勾 [x] |
+| `FVCC/docs/DESIGN.md` | H1 后加复核横幅（令牌真源 / check:design 门禁 / Named Rules 与代码一致；P1-2 定案后契约维持零框架不变） |
+| `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` | 现状注记：SQLite 自主载体（v1.5.6~1.5.7），正文 JSON 文件表述为 2026-09-21 方案稿快照；锚点目标值改"迁移链最高 To"非退化写法；changelog 记 2026-10-12 复核 |
+| 根 `BUILD.md` | 版本同步表与正文版本行 1.5.3→**1.5.12**；archive/fpk 归档范围注记 |
+| `docs/FVCC_项目现状与开发步骤.md` | #8 全链路真机复验通过 + 已推送 fork/baseline-snapshot 收口陈述；manifest/版本核验附录 1.5.12；步骤 5/步骤 8 状态翻转；§5 同步表更新；尾注 AIGC 声明移除；治理进展登记本轮文档对齐 |
+| `docs/FVCC_混乱度评价报告_细化版.md` | **第十版**：更新说明段 + §1 概览行（12 包/107 .go/1.5.12/版本控制状态）+ 目录树注记 + §2.1/§2.5/§2.6 现状刷新 + §3 评分表结论列 + §4 P1-4/P3-1/P3-4 状态（**P3-4 文档同步清零**）+ §5 结论与维护记录 |
+| `docs/项目分析与改进方向.md` | **第六次回写**（文首基线 1.5.12 + #8 收口 + 推送状态）；不足表 #1（P3-5 已关闭）/#5（文档滞后清零）刷新；§5 P0 store 备份子项翻 ✅、P2 测试补强刷新（49 test / 59.0%）、P2-3/P3-1 git 状态注记、P3 文档同步项收口（根 README 4dcdb26） |
+| `docs/FVCC_UI设计优化方向.md` | 状态行/§1.1 版本与规模/§5 版本同步/§7.6 落地状态：1.5.7→**1.5.12** 复核（含 1.5.5~1.5.7 已提交 68ebdec + tag 校正、UI 结论不变声明） |
+| `docs/TASK_REFERENCE.md` | **第九版**：登记新编号族「闭环①-⑤ / A档 #N」（§3.7，含 #8 四层语义与代表位置、#7/#9 B档沿用同族注记）；§1 总览表补行；维护日期刷新 |
+| `docs/SECURITY.md`（根） | 头部加 2026-10-12 复核记录：传输策略口径无漂移，代码面新增校验（snapshot.restore / validateRootRelPath 跨端 / WithinRoot 单一真源）登记于 FVCC/docs/SECURITY.md |
+
+### 17.3 验证与状态
+
+- 全部为 markdown 文档改动；未触碰代码、版本号与构建产物（1.5.12 三方一致不受影响，`check-versions.ps1` 口径不变）。
+- 事实核验方式：逐条对照当前源码/文件系统/git log（包清单、helper 符号与调用点、路由与载荷、审计枚举、共用向量、脚本位置、archive/fpk 内容、提交哈希 `009e2f8`/`be43119`/`68ebdec`/`24cbbc5`/`6043fbd` 均经实查）；代码规模与 TS 行数为 2026-10-12 实测。
+- **状态：本轮改动全部为工作区未提交，待用户评审后决定是否提交/推送（checkpoint 惯例，不自动 push/tag）。**

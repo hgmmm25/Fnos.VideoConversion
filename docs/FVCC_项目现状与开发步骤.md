@@ -10,24 +10,24 @@
 
 FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 Web 客户端：浏览本地素材、把转码/代理/渲染任务下发给 FVCS 渲染端、通过 WebSocket 实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript 零框架原生 DOM，产物以 fpk 形式打包供 fnOS 安装。
 
-当前版本 **v1.5.12**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-10-12 实测；1.5.3 已打 tag，SQLite 迁移三个提交已入库；1.5.4 已提交 080754c；1.5.5~1.5.7 Windows 路径边界修复 + 剪辑页素材递归扫描**已提交 68ebdec 并打 tag v1.5.7**（校正 2026-09-22 台账"工作区未提交"的过时记载，后续 9468ad5 .gitignore / 6b2f399 pathutil 收口）；1.5.8 为 P3-5 store 备份/迁移/回滚落地，**已推送 fork/baseline-snapshot 并打 tag v1.5.8**——见 §8 步骤 4 与 IMPROVEMENT_LOG §十二；**1.5.9 为步骤 8 e2e A 档缺陷修复起点（代理回填 #6 / 代理带根 #5 / 渲染未映射根早失败 #8 / scanner 删除按钮 #10 / FVCS 重连自动 online #11）；1.5.10 为复验后返工——#6/#5/#10/#11 真机通过，#8 原闸门4b 判为误修，改为渲染取根跨端对齐代理（FVCS `srcBase=mountPath` + FVCC 回退闸门4b，需重部署渲染机），并因 fnOS 仅接受更高版本覆盖安装而递增版本；1.5.11 为 #8 再复验后的提交侧收口——渲染仍报 `E_ASSET_MISSING` 定位到 `precheckAssets` 一律回落 `videoRoot`、丢弃片段所属授权根，改为「有界单根」：EDLClip 透传 `sourceRoot`，`resolveRenderRoots` 按片段所属授权根取根（同代理机制），跨根明确拒绝、旧无根片段回落 videoRoot，不动 checksum/WireClip；同轮追加第三层 FVCS `makeSrcResolver` 对齐代理 `BuildSMBPath`，修渲染落地 `sourceRoot 为空` 误报并重建 `fvcs-service.exe`（见 IMPROVEMENT_LOG §十五）；**1.5.12 为 #8 出片后再复验——FVCS 渲染已成功出片（`_exports` 内 MP4 可播放），但 FVCC 任务永远卡在「转码中 / 收尾·100%」。定位：RENDER_EDL 无终态收口（WS 只回推进度、不发终态事件，`ApplyRenderProgress` 不改 Status；调度分支仅 GEN_PROXY 有 `proxyWf.Poll`，RENDER_EDL 直接 return）。修复：FVCC-only 新增 `pollRenderTerminal` 按窗口 `QueryTaskDetail` 轮询终态（镜像 `proxyWf.Poll`）+ `completeRenderTask`（Success→COMPLETED+延迟归档 / Failed→ERROR 带节点码 / Cancelled→CANCELLED），渲染产物已落共享导出目录故无需代理式本地校验（见 IMPROVEMENT_LOG §十六）；至此 #8 全链路 = 取根三层 + 完成收口，端到端等价代理。均本地改动、未 push/未打 tag，待真机复验收口**）。
+当前版本 **v1.5.12**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，2026-10-12 实测；1.5.3 已打 tag，SQLite 迁移三个提交已入库；1.5.4 已提交 080754c；1.5.5~1.5.7 Windows 路径边界修复 + 剪辑页素材递归扫描**已提交 68ebdec 并打 tag v1.5.7**（校正 2026-09-22 台账"工作区未提交"的过时记载，后续 9468ad5 .gitignore / 6b2f399 pathutil 收口）；1.5.8 为 P3-5 store 备份/迁移/回滚落地，**已推送 fork/baseline-snapshot 并打 tag v1.5.8**——见 §8 步骤 4 与 IMPROVEMENT_LOG §十二；**1.5.9 为步骤 8 e2e A 档缺陷修复起点（代理回填 #6 / 代理带根 #5 / 渲染未映射根早失败 #8 / scanner 删除按钮 #10 / FVCS 重连自动 online #11）；1.5.10 为复验后返工——#6/#5/#10/#11 真机通过，#8 原闸门4b 判为误修，改为渲染取根跨端对齐代理（FVCS `srcBase=mountPath` + FVCC 回退闸门4b，需重部署渲染机），并因 fnOS 仅接受更高版本覆盖安装而递增版本；1.5.11 为 #8 再复验后的提交侧收口——渲染仍报 `E_ASSET_MISSING` 定位到 `precheckAssets` 一律回落 `videoRoot`、丢弃片段所属授权根，改为「有界单根」：EDLClip 透传 `sourceRoot`，`resolveRenderRoots` 按片段所属授权根取根（同代理机制），跨根明确拒绝、旧无根片段回落 videoRoot，不动 checksum/WireClip；同轮追加第三层 FVCS `makeSrcResolver` 对齐代理 `BuildSMBPath`，修渲染落地 `sourceRoot 为空` 误报并重建 `fvcs-service.exe`（见 IMPROVEMENT_LOG §十五）；**1.5.12 为 #8 出片后再复验——FVCS 渲染已成功出片（`_exports` 内 MP4 可播放），但 FVCC 任务永远卡在「转码中 / 收尾·100%」。定位：RENDER_EDL 无终态收口（WS 只回推进度、不发终态事件，`ApplyRenderProgress` 不改 Status；调度分支仅 GEN_PROXY 有 `proxyWf.Poll`，RENDER_EDL 直接 return）。修复：FVCC-only 新增 `pollRenderTerminal` 按窗口 `QueryTaskDetail` 轮询终态（镜像 `proxyWf.Poll`）+ `completeRenderTask`（Success→COMPLETED+延迟归档 / Failed→ERROR 带节点码 / Cancelled→CANCELLED），渲染产物已落共享导出目录故无需代理式本地校验（见 IMPROVEMENT_LOG §十六）；至此 #8 全链路 = 取根三层 + 完成收口，端到端等价代理。**2026-10-12 真机复验通过（Success 收口 + 进度平滑推进），#8 全链路已提交并推送 `fork/baseline-snapshot`（800eb4c / de20d03 / d63d68e / f74ec54，另 a20cc6b .gitignore / 4dcdb26 根 README 对齐），未打新 tag（v1.5.12 即当前收口版本）；Failed/Cancelled 终态分支无自然复现，按约定遇真实失败顺带验证**）。
 
-治理进展：P0-2 SQLite 迁移已落地（2026-09-21，提交 a72b8ff / 9e122d5 / 5dd373e）；P1 组（P1-1 ~ P1-5）全部落地或部分落地（P1-1 事件驱动调度已落地，提交 eab7688）；P2 组（P2-1 ~ P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。
+治理进展：P0-2 SQLite 迁移已落地（2026-09-21，提交 a72b8ff / 9e122d5 / 5dd373e）；P1 组（P1-1 ~ P1-5）全部落地或部分落地（P1-1 事件驱动调度已落地，提交 eab7688）；P2 组（P2-1 ~ P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。**2026-10-12 文档全面对齐轮**：FVCC/README.md、FVCC/docs/ 7 份、根 BUILD.md/README.md 与根 docs/ 台账统一对齐 v1.5.12（helper 真源路径、SQLite 主载体口径、/api/store/* 接口段登记、SECURITY.md AIGC 残留清除、P2-2 决策门定案回写、README 设计规格链接修复）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。
 
-**总体判断**：项目主干功能完整、工程质量较高（分层清晰、测试齐全、契约规范、SQLite 持久化落地），处于"功能已闭环、局部待打磨"阶段。真实待办集中在：store 定时备份/快照回滚（P1 TODO，方案评审稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md` 已出、代码待落地）、ffprobe 运行时环境依赖、覆盖率门槛上调、以及少数清理残留（server/build_err.txt 0 字节文件）。
+**总体判断**：项目主干功能完整、工程质量较高（分层清晰、测试齐全、契约规范、SQLite 持久化落地），处于"功能已闭环、局部待打磨"阶段。真实待办集中在：覆盖率门槛上调（P3-7，2026-10-12 实测 59.0%、门禁 55%）与少数清理残留（server/build_err.txt 0 字节文件，P3-9）；store 定时备份/快照回滚已随 v1.5.8 落地关闭（P3-5，`/api/store/*` 仅后端 API，前端入口有意缓做），ffprobe 运行时依赖真机验证已满足（NAS `/info` ffprobe:true，2026-10-11）。
 
 ### 1.1 代码规模（实测）
 
 | 维度 | 文件数 | 行数 | 说明 |
 |---|---|---|---|
-| Go 后端（非测试） | 53 | 14,218 | `server/` 根包 + `internal/` 11 包 + `logger/` + `smbshare/`（2026-09-21 实测） |
-| Go 测试 | 43 | 6,853 | 含 e2e / 并发 / SQLite 迁移回归（sqlite_*_test.go 3 份） |
-| TypeScript 前端 | 33 | 10,315 | `ui-src/src/` 全部页面与逻辑（2026-09-21 实测） |
-| **合计** | **129** | **31,386** | 不含 node_modules、构建产物、fpk 包 |
+| Go 后端（非测试） | 58 | 17,191 | `server/` 根包 + `internal/` 12 包 + `logger/` + `smbshare/`（2026-10-12 实测；v1.5.8 增 `internal/pathutil`，历史 2026-09-21 快照为 53 文件 / 14,218 行） |
+| Go 测试 | 49 | 8,841 | 含 e2e / 并发 / SQLite 迁移（sqlite_*_test.go 3 份）/ P3-5 备份-迁移-回滚 / #8 render_poll 回归（历史 2026-09-21 快照为 43 文件 / 6,853 行） |
+| TypeScript 前端 | 33 | 11,257 | `ui-src/src/` 全部页面与逻辑（2026-10-12 实测；历史 2026-09-21 快照 10,315 行） |
+| **合计** | **140** | **37,289** | 不含 node_modules、构建产物、fpk 包 |
 
 ### 1.2 构建产物与运行形态
 
-- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.5.8）。实测修正：根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
+- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.5.12）。实测修正：根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
 - 运行时数据（2026-09-21 复核，按禁删原则保留原位）：`config.enc.json`（加密配置）、`master.key` / `secret.key`（凭据密钥）、`credentials.db`（凭据库 SQLite，含 -shm/-wal）、`tasks.json` / `history_tasks.json`（任务存储）、`locks.json`（锁表）。实测修正：根目录**无** `task.db`（仅 `archive/` 下存 12KB 备份）。
 - `config/`：fnOS 应用配置目录（privilege / resource）。
 - `logs/`：运行时日志（按日期 + app_*.log）。
@@ -87,7 +87,7 @@ D:\Fnos.VideoConversion\FVCC\
 │   └── STORE_PERSISTENCE_ROADMAP.md  # 持久化方案评审稿（SQLite 迁移已落地，剩余定时备份/快照回滚方案见 §8 步骤 4）
 ├── logs/                      # 运行时日志（git 忽略）
 ├── temp/                      # 打包 stage 目录（2026-09-21 已清理 15 个 fpk_stage* 与 fvcc-win-debug.exe，现仅剩 logs/，git 忽略）
-├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.5.8）
+├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.5.12）
 ├── config.enc.json            # 加密配置（凭据相关）
 ├── credentials.db / -shm / -wal   # 凭据库（SQLite）
 ├── master.key / secret.key    # 凭据密钥
@@ -230,8 +230,8 @@ D:\Fnos.VideoConversion\FVCC\
 | 项 | 现状 | 动作 |
 |---|---|---|
 | `FVCC/docs/SECURITY.md` | ✅ 已补写（2026-09-21，第十七轮步骤 5），消除 `server/main.go:205/207`、`models.go:158` 与 gateway.go 对 docs/SECURITY.md 的悬空引用 | 无需处理（内容覆盖网关鉴权/凭据加密/审计/限流/路径约束） |
-| `FVCC/README.md` 版本表 | 已更新至 **1.5.3**（2026-09-21），与工作区三处版本一致 | 无需处理 |
-| `FVCC/README.md` 目录树 | 已同步（2026-09-20 复核：已列 `ui-src/src/lib/` 速查与 `FVCC/docs/` 下 P2-1/P2-2 文档） | 无需处理 |
+| `FVCC/README.md` 版本表 | 已更新至 **1.5.12**（2026-10-12 文档全面对齐轮），与工作区三处版本一致；并新增「近期版本线摘要 1.5.4~1.5.12」小节 | 无需处理 |
+| `FVCC/README.md` 目录树 | 已同步（2026-10-12 复核：补 `internal/pathutil` 与 store 的 SQLite/backup/migrate/restore 口径，docs 清单补全 7 份；修复设计规格 01~10 速查表相对链接 `../../WebVideoEditor_Design/`） | 无需处理 |
 | 上层 `docs/IMPROVEMENT_LOG.md` 等 | 与代码现状需定期核对（如 P2 状态表） | 纳入版本发布 checklist |
 
 ### 6.4 清理项（低风险，不阻塞功能）
@@ -275,7 +275,7 @@ D:\Fnos.VideoConversion\FVCC\
 
 ## 8. 下一步开发步骤
 
-> 完成状态总览（2026-09-21 实测，2026-10-11 更新）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 部分完成**；**步骤 3 / 5 / 6 已完成（2026-09-21）**；**步骤 4 已完成（2026-10-11，v1.5.8，P3-5 阶段 A~D 落地）**；**步骤 7 门禁修复已完成（覆盖率上调未达 60%，延续 P3-7）**；**步骤 8 已执行（2026-10-11，真实 NAS+Windows 走查，①④⑤ pass / ②③ 缺陷），A 档五项缺陷已修复并本地提交（#6/#5/#10/#11 复验通过；#8 返工为渲染根跨端对齐 v1.5.10 → 再复验仍报 `E_ASSET_MISSING`，v1.5.11 提交侧「有界单根」按片段所属授权根取根，同轮追加 FVCS `makeSrcResolver` 落地加固 v1.5.11→出片；1.5.12 补 RENDER_EDL 终态收口 `pollRenderTerminal`（出片后由「收尾·100%」翻 COMPLETED），#8 端到端等价代理），待复验收口；B 档 #7/#9 延后——见 IMPROVEMENT_LOG §十四~§十六**。各步骤标题后〔〕内为实测状态标注。
+> 完成状态总览（2026-09-21 实测，2026-10-11 更新）：**步骤 1 本机已就绪（部署机待核验）**；**步骤 2 部分完成**；**步骤 3 / 5 / 6 已完成（2026-09-21）**；**步骤 4 已完成（2026-10-11，v1.5.8，P3-5 阶段 A~D 落地）**；**步骤 7 门禁修复已完成（覆盖率上调未达 60%，延续 P3-7）**；**步骤 8 已执行（2026-10-11，真实 NAS+Windows 走查，①④⑤ pass / ②③ 缺陷），A 档五项缺陷已修复并本地提交（#6/#5/#10/#11 复验通过；#8 返工为渲染根跨端对齐 v1.5.10 → 再复验仍报 `E_ASSET_MISSING`，v1.5.11 提交侧「有界单根」按片段所属授权根取根，同轮追加 FVCS `makeSrcResolver` 落地加固 v1.5.11→出片；1.5.12 补 RENDER_EDL 终态收口 `pollRenderTerminal`（出片后由「收尾·100%」翻 COMPLETED），#8 端到端等价代理，**2026-10-12 真机复验通过并推送 fork/baseline-snapshot**）；B 档 #7/#9 延后——见 IMPROVEMENT_LOG §十四~§十六**。各步骤标题后〔〕内为实测状态标注。
 
 按"环境就绪 → 数据安全 → 代码清理 → 文档同步 → 质量门禁 → 端到端验收"顺序执行，每步含验收标准。
 
@@ -312,10 +312,10 @@ D:\Fnos.VideoConversion\FVCC\
 2. 代码落地时路由挂载到 `server/internal/api/router.go`；破坏性恢复操作接入 `internal/security/audit.go` 的 `auditDestructive`。✅ 已落地（2026-10-11）：`POST /api/store/backup` / `GET /api/store/backups` / `POST /api/store/restore` 均挂 RequireAdmin；回滚审计新增枚举 `AuditActionSnapshotRestore`，成功走 store 内 `snapshot.restore(ok)` + 失败 `security.alert(error)`，handler 另记带操作者的 `AuditDestructive`。
 3. **验收**：模拟损坏 settings.json → 回滚快照恢复；连续 3 次备份仅保留最新 N 份；`go test ./...` 含备份/迁移/回滚单测。✅ 已过（2026-10-11）：篡改 zip 验签拒绝且内存零改动、轮转 12 份保留、迁移链幂等/部分链跳步/未来版本拒启均有单测；全量 `go test ./...` 12 包绿（`-race` 需 Linux CI，本机 cgo 缺失未跑）；coverage 门禁 59.0%（阈值 55%）。
 
-### 步骤 5：文档同步（约 0.5 天）〔✅ 已完成（2026-09-21）：README 版本表/目录树已同步 1.5.3，FVCC/docs/SECURITY.md 已补写〕
+### 步骤 5：文档同步（约 0.5 天）〔✅ 已完成（2026-09-21；2026-10-12 随 v1.5.12 全量再同步：FVCC/README.md + FVCC/docs/ 7 份 + 根 BUILD.md）〕
 
 1. ✅ 已执行（2026-09-21 第十七轮）：按 `WebVideoEditor_Design/07-安全校验与凭据管理细则.md` 补写 `FVCC/docs/SECURITY.md`（网关鉴权、requireAdmin、DPAPI 凭据、限流、审计、路径约束），消除 `server/main.go:205/207`、`models.go:158`、gateway.go 注释悬空引用。
-2. ✅ 已执行（2026-09-21）：`FVCC/README.md`「版本号单一来源」表 1.4.4 → 1.5.3；目录树补 `ui-src/src/lib/` 与 `FVCC/docs/` 下 P2-1/P2-2 文档。README 非 docs/ 台账，治理状态记录统一维护于 `docs/IMPROVEMENT_LOG.md`。
+2. ✅ 已执行（2026-09-21）：`FVCC/README.md`「版本号单一来源」表 1.4.4 → 1.5.3；目录树补 `ui-src/src/lib/` 与 `FVCC/docs/` 下 P2-1/P2-2 文档。**2026-10-12 再同步**：版本表 → 1.5.12 + FVCS v1.2.6 对照 + 版本线摘要；目录树/文档体系表补全；SECURITY.md 清 AIGC 残留并补 snapshot.restore 审计与根校验跨端同规则；API_CONTRACT.md helper 路径改 internal 分层真源并登记 `/api/store/*` 接口段。README 非 docs/ 台账，治理状态记录统一维护于 `docs/IMPROVEMENT_LOG.md`。
 3. **验收**：README 三处版本与 `manifest` / `package.json` / `VERSION` 一致；`npm run check:design` 不回归。
 
 ### 步骤 6：清理低风险残留（约 0.5 天，🟡 删除类操作逐项确认）〔✅ 已完成（2026-09-21）〕
@@ -335,7 +335,7 @@ D:\Fnos.VideoConversion\FVCC\
 4. 全量打包回归：`D:\Fnos.VideoConversion\build.ps1 -Target FVCC` 产出新 fpk。
 5. **验收**：三项全绿；CI 流水线跑通；fpk 产出成功。
 
-### 步骤 8：端到端验收（约 1 天）〔🟡 已执行（2026-10-11，真实 NAS+Windows）：①转码/④回收站/⑤断联 pass；②代理/③EDL 渲染暴露缺陷；A 档 #5/#6/#10/#11 已修复（复验通过）；#8 渲染全链路收口——取根三层：①FVCS 落地 `srcBase=mountPath`（v1.5.10）②FVCC 提交侧「有界单根」按片段所属授权根取根（v1.5.11，`resolveRenderRoots`）③FVCS `makeSrcResolver` 对齐代理 `BuildSMBPath`（修 `sourceRoot 为空` 误报，重建 `fvcs-service.exe`）；完成收口第四层：④FVCC 补 RENDER_EDL 终态轮询 `pollRenderTerminal`/`completeRenderTask`（v1.5.12，出片后由「收尾·100%」翻 COMPLETED，见 IMPROVEMENT_LOG §十六）；均本地改动、待真机复验收口（仅需重装 FVCC fpk 至 .106）；B 档 #7 分辨率阈值 / #9 渲染多根延后。走查记录与缺陷台账见 IMPROVEMENT_LOG §十四~§十六〕
+### 步骤 8：端到端验收（约 1 天）〔🟡 已执行（2026-10-11，真实 NAS+Windows）：①转码/④回收站/⑤断联 pass；②代理/③EDL 渲染暴露缺陷；A 档 #5/#6/#10/#11 已修复（复验通过）；#8 渲染全链路收口——取根三层：①FVCS 落地 `srcBase=mountPath`（v1.5.10）②FVCC 提交侧「有界单根」按片段所属授权根取根（v1.5.11，`resolveRenderRoots`）③FVCS `makeSrcResolver` 对齐代理 `BuildSMBPath`（修 `sourceRoot 为空` 误报，重建 `fvcs-service.exe`）；完成收口第四层：④FVCC 补 RENDER_EDL 终态轮询 `pollRenderTerminal`/`completeRenderTask`（v1.5.12，出片后由「收尾·100%」翻 COMPLETED，见 IMPROVEMENT_LOG §十六）；**2026-10-12 真机复验通过（Success 收口 + 进度平滑）并已提交推送 fork/baseline-snapshot**（Failed/Cancelled 分支无自然复现，顺带验证）；B 档 #7 分辨率阈值 / #9 渲染多根延后。走查记录与缺陷台账见 IMPROVEMENT_LOG §十四~§十六〕
 
 按以下闭环走查，每项需 WS 实时进度可观察：
 1. **素材→转码**：扫描目录 → probe 真实数据 → 创建转码任务 → 调度下发 FVCS → RUNNING → 完成 → 历史记录落库。
@@ -350,9 +350,8 @@ D:\Fnos.VideoConversion\FVCC\
 ## 附：调查证据索引
 
 - 目录树：`D:\Fnos.VideoConversion\FVCC`（深度 3 递归扫描，2026-09-20）
-- 代码规模：Go 96 文件 / 21,071 行（含测试 43 文件 / 6,853 行）；TS 33 文件 / 10,315 行（2026-09-21 实测）
-- 版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = 1.5.8（2026-10-11 实测，check-versions.ps1 通过；1.5.4 已提交 080754c，1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7；1.5.8 为 P3-5 store 备份/迁移/回滚收口版本）
+- 代码规模：Go 107 文件 / 26,032 行（非测试 58 / 17,191 + 测试 49 / 8,841）；TS 33 文件 / 11,257 行（2026-10-12 复测；历史快照 2026-09-21：Go 96 文件 / 21,071 行、TS 33 / 10,315）
+- 版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = **1.5.12**（2026-10-12 实测；1.5.4 已提交 080754c，1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7；1.5.8 为 P3-5 store 备份/迁移/回滚收口版本并打 tag v1.5.8；1.5.9~1.5.12 为步骤 8 e2e 缺陷修复与 #8 渲染全链路收口，已推送 fork/baseline-snapshot、1.5.12 未打 tag）
 - TODO 扫描：`server/`、`ui-src/src/`、`cmd/` 全量关键词扫描（TODO/FIXME/未完成/占位/stub）
 - 关键文件：`server/main.go`、`server/internal/api/router.go`、`server/internal/scheduler/scheduler.go`、`server/internal/store/store.go`、`ui-src/src/main.ts`、`ui-src/src/store.ts`、`ui-src/src/api.ts`、`ui-src/src/pages/editor/*.ts`
 - 文档：`FVCC/README.md`、`FVCC/docs/*.md`、`D:\Fnos.VideoConversion\docs\*`
-*（内容由AI生成，仅供参考）*

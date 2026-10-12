@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_bace8b0fb59411f183e7525400de85a5
-    ReservedCode1: Doos8W1RmCRrBGJz7mRU7ksKJcD7CjfkazbSHt9J2dQgLecaCHWRrMnYD10+YIp1XGPncP8I8pD3bRdVFkNyjq2hkoa9HX249VP6a4j7mQnhNwWgnhlEjV7hgT2VcBzKaLB7UA6EQA0Cjhscj1V4TVtsybNmwYHKDqj60+jSttPRpaUTlzXCm1CrmOc=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_bace8b0fb59411f183e7525400de85a5
-    ReservedCode2: Doos8W1RmCRrBGJz7mRU7ksKJcD7CjfkazbSHt9J2dQgLecaCHWRrMnYD10+YIp1XGPncP8I8pD3bRdVFkNyjq2hkoa9HX249VP6a4j7mQnhNwWgnhlEjV7hgT2VcBzKaLB7UA6EQA0Cjhscj1V4TVtsybNmwYHKDqj60+jSttPRpaUTlzXCm1CrmOc=
----
-
 # FVCC 数据面安全策略
 
 > 依据《WebVideoEditor_Design/07-安全校验与凭据管理细则.md》补写（2026-09-21），消除 `server/main.go` 等注释对 `docs/SECURITY.md` 的悬空引用。
@@ -88,6 +77,7 @@ AIGC:
 | 删除（视频→回收站 / 服务器 / 方案 / 任务 / 历史） | `destructive.delete` |
 | 清空日志 / 清空视频缓存 | `destructive.clear` |
 | 清空回收站 | `destructive.empty_trash` |
+| 快照回滚（P3-5，v1.5.8：成功/失败均记，附 backup ID 与操作者） | `snapshot.restore` |
 
 - 审计目标经 `SetAuditSink(store.AppendAudit)` 注入落库；未注入时降级日志。
 - 新增破坏性操作（如快照回滚）需同步扩展审计类型。
@@ -104,6 +94,8 @@ AIGC:
 | L4 落地 | 拼接根后 `filepath.Clean` → `EvalSymlinks` → 校验前缀含分隔符边界 | `E_ASSET_NOT_IN_ROOT` |
 
 - `src`/`proxy`/`dest` 三根只从配置读取，**禁止**从请求参数传入任意根。
+- 渲染根字段（`sourceRoot`/`destRoot`/`proxyRoot`）自 v1.5.12 起按「下发专用写法」校验（`validateRootRelPath`，与 FVCS `protocol.ValidateRootPath` 严格同规则、共用 `edl_vectors.json` 测试向量）：允许空（回落服务端默认根）、允许相对写法、允许 FVCC 未映射时的本地绝对写法（交调度侧 `BuildSMBPath` 解析实际共享），**只拒绝含 `..` 的穿越段**——纵深防御，实际落地边界仍由挂载/授权根决定。
+- 根边界判定 `WithinRoot(root, abs)` 收敛于 `internal/pathutil`（v1.5.8 单一真源，含 Windows 盘符根边界处理），各域禁止自行实现前缀包含。
 - SMB 传输模式：`ValidateSMBPath` 校验 path 位于已共享目录内。
 
 ### 6.2 EDL 载荷结构化白名单（对齐 07 §3.3）
@@ -122,5 +114,4 @@ AIGC:
 
 安全自测用例（S1~S15）见 07 §8，覆盖路径穿越、注入、载荷上限、权限、票据、重名、符号链接等；实现位置：`server/internal/edl/edl_validate_test.go` 与 FVCS 侧 `pkg/protocol` 测试，两侧共用同一组测试向量保证规则一致。
 
-变更记录：2026-09-21 补写（消除 main.go:205/207 等悬空引用）。
-*（内容由AI生成，仅供参考）*
+变更记录：2026-09-21 补写（消除 main.go:205/207 等悬空引用）；2026-10-12 对齐 v1.5.12（清理 AIGC frontmatter 残留，补 `snapshot.restore` 审计、`validateRootRelPath` 跨端同规则与 `pathutil.WithinRoot` 单一真源）。

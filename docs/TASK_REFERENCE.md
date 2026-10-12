@@ -2,7 +2,7 @@
 
 > 用途：混乱报告 P2-6「清理任务编号注释」的落地物。代码注释中散落的 `B-xx / C-xx / D-xx / M4 / Px-x / 修复①-⑤` 任务编号与 `03 §4.2` 式章节引用，在本表中统一登记为可读语义，供维护者追溯设计依据。
 > 约定：新增注释请直接书写可读语义，编号仅作括号溯源；本表与代码同仓维护，`docs/` 为章节引用文档的权威位置说明。
-> 维护日期：2026-10-11（第八版；§2.1 补录 P1-2 双语义登记——项目分析清单"前端收敛"已定案关闭 vs 混乱报告"SMB 校验 helper"早已落地，见 IMPROVEMENT_LOG §十三。第七版=2026-09-22：对齐 1.5.7——1.5.4 编辑器变速播放 J/K/L + 按钮图标化（080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复（handlers.go/edl_validate.go/trash.go/smbshare.go/stream.go/roots.go + assets.ts 递归扫描）落地，均未引入新任务编号，属既有 B 组路径校验/P2 系列的延续修复，详见 IMPROVEMENT_LOG §十一。第六版记录保留如下：同步混乱报告第七版 1.5.3：P0-2 SQLite 迁移落地——store 包新增 sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go，代码注释新增"P0-2 提交 1/2/3"批次标记（见 §2.1 编号漂移登记补录）；P1-1 事件驱动调度落地补登记（eab7688）。B-05/B-06 编号语义与代表位置不变）
+> 维护日期：2026-10-12（第九版；对齐 1.5.9~1.5.12 步骤 8 e2e 真机验证批次——该批次在代码注释中引入**新编号族「闭环①-⑤ / A档 #N」**（代理就绪回填、渲染四层收口、工具栏批量删除、重连自动上线等，见 §3.7 登记），除新族外未引入其他任务编号；文档全面对齐轮（根 README/BUILD、FVCC/README、FVCC/docs 7 份、根 docs/ 台账统一对齐 v1.5.12）不涉编号变更。第八版=2026-10-11：§2.1 补录 P1-2 双语义登记——项目分析清单"前端收敛"已定案关闭 vs 混乱报告"SMB 校验 helper"早已落地，见 IMPROVEMENT_LOG §十三。第七版=2026-09-22：对齐 1.5.7——1.5.4 编辑器变速播放 J/K/L + 按钮图标化（080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复（handlers.go/edl_validate.go/trash.go/smbshare.go/stream.go/roots.go + assets.ts 递归扫描）落地，均未引入新任务编号，属既有 B 组路径校验/P2 系列的延续修复，详见 IMPROVEMENT_LOG §十一。第六版记录保留如下：同步混乱报告第七版 1.5.3：P0-2 SQLite 迁移落地——store 包新增 sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go，代码注释新增"P0-2 提交 1/2/3"批次标记（见 §2.1 编号漂移登记补录）；P1-1 事件驱动调度落地补登记（eab7688）。B-05/B-06 编号语义与代表位置不变）
 
 ---
 
@@ -16,6 +16,7 @@
 | `D-xx` | 安全类任务（D 组） | server/ | 安全加固批次 |
 | `M4` | 预览网关与代理工作流模块 | server/ | 模块/里程碑编号（其余 M 编号均为前端 SVG path 误报） |
 | `修复①-⑤` | 2026-09-16 剪辑页缺陷修复批次 | server 与 ui-src | 缺陷修复标记 |
+| `闭环①-⑤ / A档 #N` | 2026-10-11~12 步骤 8 e2e 真机验证批次（见 §3.7） | server 与 ui-src | 闭环场景编号与缺陷编号（FVCS 侧 render_edl / makeSrcResolver 同族） |
 | `nn §x.y` | WebVideoEditor_Design 规格文档章节 | server 与 ui-src | 规格文档引用（文档位置见 §4） |
 
 ---
@@ -125,6 +126,20 @@
 | `handlers_edl_list_test.go` | EDL 列表接口契约测试（原名 `handlers_edl_list_contract_test.go`，contract 后缀表示按接口契约命名，2026-09-18 git mv 去后缀） | 契约语义可从 03 §4.2 追溯 |
 
 > 结论：测试文件命名混用「被测对象 + 票号/契约后缀」，与实现文件对应关系不直观，属混乱报告后端测试命名规范扣分项；P2-7 已于 2026-09-18 落地，两文件统一为 `handlers_<domain>_test.go` 风格（git mv 保留历史），后续新测试沿用该风格。
+
+### 3.7 闭环①-⑤ / A档 #N（2026-10-11~12 步骤 8 e2e 真机验证批次，第九版登记）
+
+「闭环①-⑤」= 步骤 8 e2e 走查的五个业务闭环场景；「#N」= 走查中发现的 A 档缺陷编号（台账见 `docs/IMPROVEMENT_LOG.md` §十四~§十六，FVCS 侧同族改动见 §十五/§十六）。代码注释中 `闭环② 回填`、`闭环④ #10` 等短写依下表还原：
+
+| 编号 | 可读语义 | 结局 | 代表位置 |
+|---|---|---|---|
+| 闭环① | 转码链路走查 | PASS（无缺陷） | — |
+| 闭环② | 代理就绪态（#5 提交带素材根、#6 挂载回填 `GET /api/proxy` + `VerifyProxyMeta` 帧率数值近似） | 已修复（v1.5.9） | server/internal/api/handlers_proxy.go、router.go、internal/media/proxy.go、ui-src/src/api.ts、types.ts、pages/editor/assets.ts |
+| 闭环③ | EDL 渲染链路（**#8 四层收口**：①FVCS `srcBase=mountPath` ②FVCC 提交侧有界单根 `EDLClip.sourceRoot`→`resolveRenderRoots` ③FVCS `makeSrcResolver`→`BuildSMBPath` ④FVCC `pollRenderTerminal`/`completeRenderTask` 终态轮询，附 edl `validateRootRelPath` 与 FVCS `ValidateRootPath` 跨端同规则） | 已修复并真机复验通过（v1.5.10~1.5.12） | server/internal/scheduler/scheduler.go、internal/api/handlers_render.go、internal/edl/edl_validate.go、FVCS pkg/task/render_edl.go |
+| 闭环④ | 回收站（#10 工具栏批量删除按钮，原仅右键入口） | 已修复（v1.5.9） | ui-src/src/pages/scanner.ts |
+| 闭环⑤ | 节点断联（#11 FVCS 重连 Hello 自动收口 online，不再滞留离线） | 已修复（v1.5.9） | server/internal/node/node.go（ApplyNodeHello 自动收口 online）、main.go 回调接线、internal/node/node_test.go |
+
+> 注意区分：本节 `#N` 为 e2e 走查缺陷编号（#5/#6/#8/#10/#11），与 IMPROVEMENT_LOG 各轮次编号、混乱报告 Px-x 编号分属不同体系；B档遗留项 **#7**（代理可见性判定分辨率阈值）与 **#9**（跨多授权根混合渲染，现提交侧显式拒绝）沿用同一 #N 族，未落地。
 
 ---
 

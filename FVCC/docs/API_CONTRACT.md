@@ -1,7 +1,7 @@
 # FVCC API 契约与命名规范（P2-4）
 
 > 生效范围：FVCC（NAS 调度端 Web UI）REST API + SSE/WS 推送。本文件是 `ui-src/src/api.ts` 统一错误契约与 `server/` 响应写法的**唯一权威依据**；新增接口、修改错误响应必须遵循本规范。
-> 版本：1.4.4 ｜ 落实日期：2026-09-18 ｜ 最后复核：2026-09-19（版本号随工作区三处同步）｜ 关联混乱报告 P2-4「统一 API 契约与命名」
+> 版本：1.5.12 ｜ 落实日期：2026-09-18（1.4.4 初版）｜ 最后复核：2026-10-12（helper 路径与路由表随 P2-1 分层 / P3-5 store API / #8 渲染收口对齐；版本号随工作区三处同步）｜ 关联混乱报告 P2-4「统一 API 契约与命名」
 
 ---
 
@@ -47,7 +47,7 @@
 
 ### 2.3 code 映射表
 
-后端 `server/apierr.go` 的 `fail()` 按 HTTP 状态码自动映射 code；`failWithCode()` 用于显式业务码。
+后端 `internal/protocol/apierr.go` 的 `Fail()` 按 HTTP 状态码自动映射 code；`FailWithCode()` 用于显式业务码（`FailCode(status)` 供只取 code 的场景）。
 
 | HTTP 状态码 | code | 典型场景 |
 |---|---|---|
@@ -62,12 +62,12 @@
 
 ### 2.4 域内既有 helper（同一契约，勿重复造轮子）
 
-以下 helper 已输出同一契约形状，**保留使用**，新代码优先复用：
+以下 helper 已输出同一契约形状（P2-1 分层后位置，2026-10-12 复核），**保留使用**，新代码优先复用：
 
-- `server/apierr.go`：`fail(c, status, msg, detail...)` / `failWithCode(c, status, code, msg, detail...)` —— **默认选择**。
-- `server/handlers_edl.go`：`edlErr(c, status, code, msg, detail)` —— EDL 域，附带审计记账副作用。
-- `server/stream.go`：`streamErr(c, status, code, msg)` —— 预览网关域。
-- `server/gateway.go`：`{ok:false, code, msg}` 内联 —— 网关鉴权域（必要时可迁至 `failWithCode`）。
+- `server/internal/protocol/apierr.go`：`Fail(c, status, msg, detail...)` / `FailWithCode(c, status, code, msg, detail...)` —— **默认选择**，`internal/api` 内直接 `protocol.Fail(...)` 调用。
+- `server/internal/api/handlers_edl.go`：`edlErr(c, status, code, msg, detail)`（转调 `edl.EDLErr`）—— EDL 域，附带审计记账副作用。
+- `server/internal/api/stream.go`：`streamErr(c, status, code, msg)` —— 预览网关域。
+- `server/internal/security/gateway.go`：`{ok:false, code, msg}` 内联 —— 网关鉴权域（必要时可迁至 `FailWithCode`）。
 
 ---
 
@@ -95,8 +95,8 @@ type VideoInfoCache struct {
 
 以下场景**允许** snake_case，且只允许出现在这些场景：
 
-1. **FVCS 对等 WS 报文**（`server/remote.go`：`progressPush`、`helloPush` 等）：与 FVCS 渲染端既有协议对齐，线上字段为 `task_id` / `out_time_ms` / `seg_total` / `server_id` / `cpu_cores` 等。**接收端必须双风格兼容**：`parseHelloCaps` 等解析函数逐字段合并 camelCase / snake_case，camelCase 优先、缺失回落 snake_case——新增字段时同步补两侧解析，禁止只读一侧。
-2. **持久化存储字段**：`store.go` JSON 落盘文件属内部数据格式，可沿用既有命名；但**暴露给前端的字段**必须转换/声明为 camelCase。
+1. **FVCS 对等 WS 报文**（`server/internal/remote/remote.go`：`progressPush`、`helloPush` 等）：与 FVCS 渲染端既有协议对齐，线上字段为 `task_id` / `out_time_ms` / `seg_total` / `server_id` / `cpu_cores` 等。**接收端必须双风格兼容**：`parseHelloCaps` 等解析函数逐字段合并 camelCase / snake_case，camelCase 优先、缺失回落 snake_case——新增字段时同步补两侧解析，禁止只读一侧。RENDER_EDL 终态轮询（v1.5.12 `pollRenderTerminal`/`completeRenderTask`）读取的也是该协议段回传的 `Status`/`ErrorCode`/`ErrorMessage` 原始命名，属上游透传（见第 3 条）。
+2. **持久化存储字段**：P3-5（v1.5.6~1.5.8）后主载体为 **SQLite**（`store/sqlite*.go`），JSON 文件仅作为备份/迁移/回滚的交换格式（`backup.go`/`restore.go`）——两者均属内部数据格式，可沿用既有命名；但**暴露给前端的字段**必须转换/声明为 camelCase。
 3. **第三方/上游协议透传**（如 ffprobe JSON、FVCS 状态回传的 `ErrorCode/ErrorMessage`）：保持上游原始命名，不做改写。
 
 **判断口诀**：凡字段会被 `fetch` / `WebSocket` 送到浏览器，一律 camelCase；凡字段只在 Go 进程间或落盘 JSON 内流转，可按所属协议段选择，但必须在注释中标注"内部协议"。
@@ -106,16 +106,16 @@ type VideoInfoCache struct {
 ## 4. 实现约定（Go）
 
 ```go
-// ✅ 新写法
+// ✅ 新写法（P2-1 分层后：internal/api 内调用 internal/protocol 导出 helper）
 if err := validate(); err != nil {
-    fail(c, http.StatusBadRequest, "路径不能为空")          // 自动映射 E_BAD_REQUEST
+    protocol.Fail(c, http.StatusBadRequest, "路径不能为空")   // 自动映射 E_BAD_REQUEST
     return
 }
 if err := h.moveToTrash(path); err != nil {
-    fail(c, http.StatusInternalServerError, "删除失败: "+err.Error())
+    protocol.Fail(c, http.StatusInternalServerError, "删除失败: "+err.Error())
     return
 }
-failWithCode(c, http.StatusOK, "E_SERVER_OFFLINE", err.Error()) // HTTP 200 业务失败
+protocol.FailWithCode(c, http.StatusOK, "E_SERVER_OFFLINE", err.Error()) // HTTP 200 业务失败
 
 // ❌ 已废弃写法（禁止新增）
 c.JSON(400, gin.H{"error": "..."})
@@ -136,10 +136,20 @@ json.Marshal(gin.H{"type": "error", "error": "..."})
 
 ---
 
-## 6. 验收标准
+## 6. 接口段登记（增量须同步本表）
 
-- [ ] 全仓 grep `gin.H{"error"` 结果为 0（`server/` 下）；
-- [ ] 全仓 grep `{"type": "error", "error"` 结果为 0（SSE/WS 错误消息）；
+| 段 | 路由 | 契约要点 |
+|---|---|---|
+| store 备份/回滚（P3-5，v1.5.8，仅后端 API） | `POST /api/store/backup`、`GET /api/store/backups`、`POST /api/store/restore`（均 admin） | 请求体 `{backupId}`（camelCase）；响应 `{ok:true, backup|backups|restore}`；失败走统一契约 `protocol.Fail` |
+| 代理就绪回填（v1.5.9） | `GET /api/proxy` | 只读列出已就绪代理，字段 camelCase；写侧 `POST /api/proxy` 带素材根 |
+| 渲染提交（03 §4.4） | `POST /api/edl/projects/:id/render` | 载荷为 EDL 对等协议段（EDLClip 含 `sourceRoot`，camelCase）；渲染终态由服务端 `pollRenderTerminal` 收口后经 WS/任务状态推送，不新增线上 snake_case 字段 |
+
+---
+
+## 7. 验收标准
+
+- [x] 全仓 grep `gin.H{"error"` 结果为 0（`server/` 下，2026-10-12 复核通过）；
+- [x] 全仓 grep `{"type": "error", "error"` 结果为 0（SSE/WS 错误消息，2026-10-12 复核通过）；
 - [ ] `go build ./...`、`go vet ./...`、`go test -short ./...` 通过；
 - [ ] `npx tsc --noEmit` 通过；
-- [ ] 新接口错误响应输出 `{ok:false, code, msg}`，禁止裸 `{error}`。
+- [ ] 新接口错误响应输出 `{ok:false, code, msg}`，禁止裸 `{error}`（默认写法 `protocol.Fail` / `protocol.FailWithCode`）。
