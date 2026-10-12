@@ -1,6 +1,6 @@
 import { store } from '../store'
 import { api } from '../api'
-import { el, toast, formatSize, formatDuration, emptyState, svgIcon, skeletonRows, setupDialogAccessibility, showBatchResult } from '../ui'
+import { el, toast, formatSize, formatDuration, emptyState, svgIcon, skeletonRows, setupDialogAccessibility, showBatchResult, selectField } from '../ui'
 import { type VideoInfo, type StreamInfo } from '../types'
 import { useListPage } from '../lib/useListPage'
 
@@ -128,7 +128,7 @@ export function renderScanner(container: HTMLElement) {
   colDropdown.appendChild(colLabel)
   const colKeys = Object.keys(colLabels) as ColKey[]
   for (const key of colKeys) {
-    const cb = el('input', { type: 'checkbox', class: 'rounded mr-1.5' }) as HTMLInputElement
+    const cb = el('input', { type: 'checkbox', class: 'checkbox mr-1.5' }) as HTMLInputElement
     cb.checked = visibleCols.has(key)
     cb.onchange = () => {
       if (cb.checked) visibleCols.add(key)
@@ -197,7 +197,7 @@ export function renderScanner(container: HTMLElement) {
   const detailToggle = el('button', { 
     class: 'text-xs text-primary hover:text-primary-hover flex items-center gap-1 transition-colors',
     title: '展开文件详情'
-  }, [el('span', {}, ['文件详情']), el('span', {}, ['▼'])])
+  }, [el('span', {}, ['文件详情']), svgIcon('chevron-down', 12)])
   
   statBar.append(
     el('div', { class: 'flex items-center gap-4' }, [statTotal, statSelected]),
@@ -452,10 +452,9 @@ export function renderScanner(container: HTMLElement) {
   
   const toggleDetail = () => {
     detailExpanded = !detailExpanded
-    detailToggle.innerHTML = ''
-    detailToggle.append(
-      el('span', {}, ['文件详情']), 
-      el('span', {}, [detailExpanded ? '▲' : '▼'])
+    detailToggle.replaceChildren(
+      el('span', {}, ['文件详情']),
+      svgIcon(detailExpanded ? 'chevron-up' : 'chevron-down', 12)
     )
     if (detailExpanded) {
       detailPanel.classList.remove('hidden')
@@ -916,7 +915,7 @@ export function renderScanner(container: HTMLElement) {
   const cols = (Object.keys(colLabels) as ColKey[]).filter(k => visibleCols.has(k))
 
   // 全选复选框
-  const allCb = el('input', { type: 'checkbox', class: 'rounded' }) as HTMLInputElement
+  const allCb = el('input', { type: 'checkbox', class: 'checkbox' }) as HTMLInputElement
   allCb.checked = sorted.length > 0 && sorted.every((v) => selectedVideos.has(v.path))
   allCb.indeterminate = !allCb.checked && sorted.some((v) => selectedVideos.has(v.path))
   allCb.onchange = () => {
@@ -953,13 +952,13 @@ export function renderScanner(container: HTMLElement) {
         el('span', {}, [colLabels[col]]),
       ])
       if (isActive) {
-        wrap.appendChild(el('span', { class: 'text-xs' }, [sortDir === 'asc' ? '▲' : '▼']))
+        wrap.appendChild(svgIcon(sortDir === 'asc' ? 'chevron-up' : 'chevron-down', 12))
       }
       th.appendChild(wrap)
     } else {
       const children: Node[] = [el('span', {}, [colLabels[col]])]
       if (isActive) {
-        children.push(el('span', { class: 'text-xs ml-1' }, [sortDir === 'asc' ? '▲' : '▼']))
+        children.push(svgIcon(sortDir === 'asc' ? 'chevron-up' : 'chevron-down', 12))
       }
       th.append(...children)
     }
@@ -974,7 +973,7 @@ export function renderScanner(container: HTMLElement) {
     const selected = selectedVideos.has(v.path)
     if (selected) tr.classList.add('bg-primary/5')
 
-    const cb = el('input', { type: 'checkbox', class: 'rounded' }) as HTMLInputElement
+    const cb = el('input', { type: 'checkbox', class: 'checkbox' }) as HTMLInputElement
     cb.checked = selected
     cb.dataset.path = v.path
     cb.onchange = () => {
@@ -1259,7 +1258,7 @@ function openCreateTaskModal(scanRoot: string) {
   const modal = el('div', { class: 'card w-full max-w-md p-5' })
   const title = el('h3', { class: 'font-semibold text-base mb-3' }, [`创建转码任务（${selectedVideos.size} 个文件）`])
   const serverLabel = el('label', { class: 'block text-sm mb-1' }, ['转码服务器 *'])
-  const serverSel = el('select', { class: 'input mb-3' }) as HTMLSelectElement
+  const serverSel = selectField({ class: 'mb-3 w-full' })
   
   const localServer = store.servers.find(s => s.isLocal)
   if (localServer) {
@@ -1276,7 +1275,7 @@ function openCreateTaskModal(scanRoot: string) {
   }
 
   const profileLabel = el('label', { class: 'block text-sm mb-1' }, ['转码方案 *'])
-  const profileSel = el('select', { class: 'input mb-3' }) as HTMLSelectElement
+  const profileSel = selectField({ class: 'mb-3 w-full' })
   for (const p of store.profiles) {
     profileSel.appendChild(el('option', { value: p.id }, [p.name]))
   }

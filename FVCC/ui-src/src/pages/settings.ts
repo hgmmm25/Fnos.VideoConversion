@@ -1,6 +1,6 @@
 import { api } from '../api'
 import { store } from '../store'
-import { el, toast, svgIcon, confirmDialog, skeletonRows, setupDialogAccessibility } from '../ui'
+import { el, toast, svgIcon, confirmDialog, skeletonRows, setupDialogAccessibility, selectField } from '../ui'
 import { type Settings, type AppInfo, LOG_LEVELS } from '../types'
 import { themeOptions, getCurrentTheme, setTheme } from '../theme'
 import { formBuilder } from '../lib/formBuilder'
@@ -53,7 +53,7 @@ export function renderSettings(container: HTMLElement) {
       el('div', { class: 'grid grid-cols-1 sm:grid-cols-2 gap-3' }, [a, b])
 
     // 外观（主题切换）
-    const themeSel = el('select', { class: 'input' }) as HTMLSelectElement
+    const themeSel = selectField({})
     for (const t of themeOptions) {
       const opt = el('option', { value: t.id }, [t.name])
       if (t.id === getCurrentTheme()) (opt as HTMLOptionElement).selected = true

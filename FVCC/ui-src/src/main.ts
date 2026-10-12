@@ -86,7 +86,7 @@ function syncTabHighlight() {
       ? 'px-3 py-2 min-h-11 text-sm rounded transition-colors flex items-center gap-2 '
       : 'px-2.5 py-1.5 text-sm rounded transition-colors flex items-center gap-1.5 whitespace-nowrap '
     btn.className =
-      baseClass + (active ? 'bg-primary text-white' : 'text-ink-muted hover:bg-surface-hover')
+      baseClass + (active ? 'chip-active' : 'text-ink-muted hover:bg-surface-hover')
   })
 }
 
@@ -121,25 +121,17 @@ function renderShell(): HTMLElement {
   menuBtn.append(svgIcon('list', 20) as unknown as Node)
   nav.appendChild(menuBtn)
 
-  // 桌面端分组 tabs（md 及以上显示）
+  // 桌面端分组 tabs（md 及以上显示）：V1.6-③ 分组以分隔线+小标签样式化
   const tabs = el('div', { class: 'hidden md:flex items-center gap-0.5 overflow-x-auto' })
   for (const g of NAV_GROUPS) {
-    tabs.appendChild(
-      el(
-        'span',
-        {
-          class:
-            'px-2 text-xs font-semibold uppercase tracking-wider text-ink-muted/70 select-none whitespace-nowrap',
-        },
-        [g.label]
-      )
-    )
+    tabs.appendChild(el('span', { class: 'nav-divider', 'aria-hidden': 'true' }))
+    tabs.appendChild(el('span', { class: 'nav-group-label' }, [g.label]))
     for (const p of g.items) {
       const btn = el('button', {
         class:
           'px-2.5 py-1.5 text-sm rounded transition-colors flex items-center gap-1.5 whitespace-nowrap ' +
           (p.id === route.page
-            ? 'bg-primary text-white'
+            ? 'chip-active'
             : 'text-ink-muted hover:bg-surface-hover'),
         'data-page': p.id,
       })
@@ -150,17 +142,17 @@ function renderShell(): HTMLElement {
   }
   nav.appendChild(tabs)
 
-  // P1-4：全局命令入口（桌面端，顶栏右侧）
+  // P1-4：全局命令入口（桌面端，顶栏右侧；V1.6-③ 搜索胶囊重排为圆角药丸）
   const cmdBtn = el('button', {
     class:
-      'hidden md:flex ml-auto items-center gap-1.5 px-2.5 py-1.5 text-xs rounded transition-colors border border-line bg-surface-alt text-ink-muted hover:bg-surface-hover',
+      'hidden md:flex ml-auto items-center gap-2 h-8 pl-3 pr-1 rounded-full border border-line bg-surface-alt text-xs text-ink-subtle transition-colors hover:border-primary/50 hover:text-ink-muted',
     'aria-label': '全局命令 (Ctrl+K)',
     title: '全局命令 (Ctrl+K)',
   })
   cmdBtn.append(
     svgIcon('search', 14) as unknown as Node,
-    el('span', { class: 'text-ink-muted' }, ['跳转 / 搜索']),
-    el('kbd', { class: 'text-xs px-1 py-0.5 rounded bg-surface-hover text-ink-muted' }, ['⌘K'])
+    el('span', {}, ['跳转 / 搜索']),
+    el('kbd', { class: 'px-1.5 py-0.5 rounded-full bg-surface border border-line text-ink-muted font-mono' }, ['⌘K'])
   )
   cmdBtn.onclick = () => palette.open()
   nav.appendChild(cmdBtn)
@@ -186,14 +178,7 @@ function renderShell(): HTMLElement {
   mobileMenu.appendChild(mCmd)
   for (const g of NAV_GROUPS) {
     mobileMenu.appendChild(
-      el(
-        'div',
-        {
-          class:
-            'px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-ink-muted/70 select-none',
-        },
-        [g.label]
-      )
+      el('div', { class: 'nav-group-label px-3 pt-2 pb-1' }, [g.label])
     )
     for (const p of g.items) {
       const btn = el('button', {
@@ -201,7 +186,7 @@ function renderShell(): HTMLElement {
         class:
           'px-3 py-2 min-h-11 text-sm rounded transition-colors flex items-center gap-2 ' +
           (p.id === route.page
-            ? 'bg-primary text-white'
+            ? 'chip-active'
             : 'text-ink-muted hover:bg-surface-hover'),
         'data-page': p.id,
         'data-mobile': '1',
@@ -231,22 +216,23 @@ function renderShell(): HTMLElement {
   const content = el('div', { class: 'flex-1 overflow-auto', id: 'page-content' })
 
   // ===== P1-4：全局状态条（外壳底部细条，所有页面可见；数据来自 store/ws 真实状态）=====
+  // V1.6-③：三段状态徽标化（chip：圆角底 + 状态点 + 文字），替代裸文字流
   const statusBar = el('div', {
     class:
-      'flex items-center gap-3 sm:gap-5 px-3 h-7 text-xs shrink-0 bg-surface border-t border-line text-ink-muted overflow-x-auto',
+      'flex items-center gap-2 sm:gap-3 px-3 h-8 text-xs shrink-0 bg-surface border-t border-line overflow-x-auto',
   })
   const nodeDot = el('span', { class: 'w-1.5 h-1.5 rounded-full inline-block shrink-0 bg-ink-muted/40' })
   const nodeEl = el('span', {})
-  const nodeWrap = el('div', { class: 'flex items-center gap-1.5 shrink-0' })
+  const nodeWrap = el('div', { class: 'status-chip' })
   nodeWrap.append(nodeDot, nodeEl)
   const queueDot = el('span', { class: 'w-1.5 h-1.5 rounded-full inline-block shrink-0 bg-ink-muted/40' })
   const queueEl = el('span', {})
-  const queueWrap = el('div', { class: 'flex items-center gap-1.5 shrink-0' })
+  const queueWrap = el('div', { class: 'status-chip' })
   queueWrap.append(queueDot, queueEl)
   const statusSpacer = el('div', { class: 'flex-1 min-w-2' })
   const wsDot = el('span', { class: 'w-1.5 h-1.5 rounded-full inline-block shrink-0 bg-ink-muted/40' })
   const wsEl = el('span', {})
-  const wsWrap = el('div', { class: 'flex items-center gap-1.5 shrink-0' })
+  const wsWrap = el('div', { class: 'status-chip' })
   wsWrap.append(wsDot, wsEl)
   statusBar.append(nodeWrap, queueWrap, statusSpacer, wsWrap)
 
@@ -333,6 +319,10 @@ function renderPage() {
     pageCleanup = null
   }
   content.innerHTML = ''
+  // V1.6-⑤：页面切换统一 0.2s 淡入（先摘类再触发重排，保证重复导航也能重放动画）
+  content.classList.remove('animate-fade-in')
+  void content.offsetWidth
+  content.classList.add('animate-fade-in')
   switch (route.page) {
     case 'editor':
       if (route.projectId) {

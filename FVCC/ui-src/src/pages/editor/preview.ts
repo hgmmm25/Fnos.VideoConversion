@@ -96,10 +96,12 @@ export function buildPreview(opts: PreviewOptions): PreviewController {
   const frameEl = el('div', { class: 'px-1.5 py-0.5 rounded bg-black/60 text-white font-mono text-xs' }, [
     '帧 0 / 00:00:00.000',
   ])
-  const proxyBadge = el('div', { class: 'px-1.5 py-0.5 rounded bg-warning text-white text-xs hidden' }, [
+  // V1.6-⑤ V9：warning 底白字仅 2.15 不达 AA，预览区恒为深底，改配恒定深色文字（8.8）
+  const proxyBadge = el('div', { class: 'px-1.5 py-0.5 rounded bg-warning text-preview-bg text-xs font-medium hidden' }, [
     'PROXY',
   ])
-  const mismatchBadge = el('div', { class: 'px-1.5 py-0.5 rounded bg-danger text-white text-xs hidden' }, [
+  // V1.6-⑤ V9：danger(#ef4444) 底白字 3.76 不达 AA，换 danger-hover(#dc2626) 深红底（4.83）
+  const mismatchBadge = el('div', { class: 'px-1.5 py-0.5 rounded bg-danger-hover text-white text-xs hidden' }, [
     '代理与源时长不一致 · 已禁用打点',
   ])
   const hintEl = el(

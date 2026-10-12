@@ -4,7 +4,7 @@
 // - 方案下拉 = 服务端 presetKey 枚举（05 §5.1，见 preset.ts 的决策说明）；
 // - 请求体 { presetKey, outputName, serverId?, force? }，响应 { taskId, status, serverId, output, totalMs, fastCopyAllowed }（03 §4.4）；
 // - 服务端幂等（checksum 命中进行中/成品仍在 → 复用同一 taskId）；force=true 跳过复用。
-import { el, svgIcon, toast, setupDialogAccessibility } from '../../ui'
+import { el, svgIcon, toast, setupDialogAccessibility, selectField } from '../../ui'
 import { api, ApiError } from '../../api'
 import { store } from '../../store'
 import type { RenderRequest, RenderSubmitResult } from '../../types'
@@ -66,7 +66,7 @@ export function openRenderDialog(opts: RenderDialogOptions): RenderDialogHandle 
   head.append(svgIcon('film', 16) as unknown as Node, titleEl, closeBtn)
 
   // ===== 渲染方案（presetKey，05 §5.1）=====
-  const presetSel = el('select', { class: 'input w-full' }) as HTMLSelectElement
+  const presetSel = selectField({ class: 'w-full' })
   for (const p of RENDER_PRESETS) {
     presetSel.append(el('option', { value: p.key, title: p.args }, [p.label]))
   }
@@ -88,7 +88,7 @@ export function openRenderDialog(opts: RenderDialogOptions): RenderDialogHandle 
   ])
 
   // ===== 渲染节点（06 §5.3：留空 = 由调度器选机）=====
-  const nodeSel = el('select', { class: 'input w-full' }) as HTMLSelectElement
+  const nodeSel = selectField({ class: 'w-full' })
   nodeSel.append(el('option', { value: '' }, ['自动选择（按调度策略）']))
   for (const s of store.servers || []) {
     nodeSel.append(
@@ -100,7 +100,7 @@ export function openRenderDialog(opts: RenderDialogOptions): RenderDialogHandle 
   ])
 
   // ===== force（跳过幂等复用）=====
-  const forceCb = el('input', { type: 'checkbox', class: 'rounded' }) as HTMLInputElement
+  const forceCb = el('input', { type: 'checkbox', class: 'checkbox' }) as HTMLInputElement
   const forceRow = el('label', { class: 'flex items-center gap-2 text-xs text-ink-muted cursor-pointer' }, [
     forceCb,
     el('span', {}, ['忽略幂等复用，强制新建任务（force）']),

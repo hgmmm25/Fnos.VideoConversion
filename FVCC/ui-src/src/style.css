@@ -6,9 +6,12 @@
 /* 颜色以 RGB 通道值定义，配合 Tailwind <alpha-value> 支持透明度 */
 /* 明亮主题（默认） */
 :root {
-  /* 主色 / 品牌 */
-  --c-primary: 59 130 246;           /* #3b82f6 */
-  --c-primary-hover: 37 99 235;      /* #2563eb */
+  /* V1.6-②：原生控件（select 弹层/滚动条/表单默认底）跟随亮色主题 */
+  color-scheme: light;
+
+  /* 主色 / 品牌（V1.6-① 方向A：主蓝降一档明度去刺眼，hover 同步下移） */
+  --c-primary: 37 99 235;            /* #2563eb */
+  --c-primary-hover: 29 78 216;      /* #1d4ed8 */
   --c-primary-soft: 219 234 254;     /* #dbeafe */
   --c-primary-soft-text: 29 78 216;  /* #1d4ed8 */
 
@@ -39,17 +42,18 @@
   --c-neutral-soft-text: 66 82 106;  /* #42526a */
 
   /* 表面 / 背景（P1-1：page 降一档明度、surface 纯白 —— 卡片以明度差而非描边/阴影区分） */
-  --c-page: 244 246 251;             /* #f4f6fb */
+  /* V1.6-① 方向A：page 冷灰加深一档、内嵌面/悬停面拉开间距，hover 面偏蓝灰 */
+  --c-page: 240 243 249;             /* #f0f3f9 */
   --c-surface: 255 255 255;          /* #ffffff */
-  --c-surface-hover: 240 245 250;    /* #f0f5fa */
-  --c-surface-alt: 249 250 252;      /* #f9fafc 内嵌面（明度介于 surface 与 page） */
-  --c-line: 222 230 242;             /* #dee6f2 */
-  --c-line-subtle: 240 245 250;      /* #f0f5fa */
+  --c-surface-hover: 236 242 250;    /* #ecf2fa */
+  --c-surface-alt: 248 250 253;      /* #f8fafd 内嵌面（明度介于 surface 与 page） */
+  --c-line: 215 224 238;             /* #d7e0ee */
+  --c-line-subtle: 236 242 250;      /* #ecf2fa */
 
   /* 文字（P1-1：ink 更深更蓝，muted 对比度 ≥4.5:1） */
   --c-ink: 23 37 58;                 /* #17253a */
   --c-ink-muted: 91 107 138;         /* #5b6b8a */
-  --c-ink-subtle: 140 158 184;       /* #8c9eb8 */
+  --c-ink-subtle: 100 116 139;       /* #64748b V1.6-⑤ V9: 2.73→4.76 达 AA（导航分组标签等 12px 文字） */
 
   /* P1-3：字体栈（IBM Plex 西文 + 系统中文字体回退） */
   --font-sans: 'IBM Plex Sans', -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
@@ -89,6 +93,9 @@
 
 /* 暗黑主题 */
 [data-theme="dark"] {
+  /* V1.6-②：select 弹层等原生 UI 跟随暗色主题 */
+  color-scheme: dark;
+
   --c-primary: 59 130 246;
   --c-primary-hover: 37 99 235;
   --c-primary-soft: 23 37 84;        /* #172554 */
@@ -115,16 +122,18 @@
   --c-neutral-soft: 49 63 82;        /* #313f52 */
   --c-neutral-soft-text: 196 208 222;/* #c4d0de */
 
-  --c-page: 15 23 42;                /* #0f172a */
-  --c-surface: 30 41 59;             /* #1e293b */
-  --c-surface-hover: 49 63 82;       /* #313f52 */
-  --c-surface-alt: 23 31 48;         /* #171f30（内嵌面略深） */
-  --c-line: 47 60 78;                /* #2f3c4e */
-  --c-line-subtle: 43 55 72;         /* #2b3748 */
+  /* V1.6-① 方向A：page 加深一档、surface 提亮，卡片与背景的明度层级拉开；内嵌面介于两者之间 */
+  --c-page: 11 17 32;                /* #0b1120 */
+  --c-surface: 32 44 66;             /* #202c42 */
+  --c-surface-hover: 44 58 82;       /* #2c3a52 */
+  --c-surface-alt: 26 36 54;         /* #1a2436（内嵌面略深于 surface） */
+  --c-line: 52 66 88;                /* #344258 */
+  --c-line-subtle: 45 58 79;         /* #2d3a4f */
 
   --c-ink: 244 248 252;              /* #f4f8fc */
   --c-ink-muted: 196 208 222;        /* #c4d0de */
-  --c-ink-subtle: 105 121 146;       /* #697992 */
+  /* V1.6-① 方向A：subtle 文字略提亮，深底上可达 ≥4.5:1 */
+  --c-ink-subtle: 138 152 176;       /* #8a98b0 V1.6-⑤ V9: 4.04→4.80 达 AA */
 
   /* P0-1：暗色下预览区保持深底，辅助文字沿用亮灰 */
   --c-preview-bg: 15 17 21;
@@ -193,6 +202,107 @@
   }
   .badge {
     @apply inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium;
+  }
+
+  /* ===== V1.6-② 控件层 ===== */
+  /* 按钮变体：ghost（无底弱操作）与 danger-ghost（行内破坏性操作，替代实心红块 V4）；
+     用普通 CSS 覆写 .btn 的 hover 底，避免 @apply 同类变体的层内排序不确定 */
+  .btn-ghost {
+    background-color: transparent;
+  }
+  .btn-ghost:hover {
+    background-color: rgb(var(--c-surface-hover));
+  }
+  .btn-danger-ghost {
+    background-color: transparent;
+    color: rgb(var(--c-danger));
+  }
+  .btn-danger-ghost:hover {
+    background-color: rgb(var(--c-danger-soft));
+    color: rgb(var(--c-danger-soft-text));
+  }
+  .btn-danger-ghost:active {
+    background-color: rgb(var(--c-danger-soft));
+    filter: brightness(0.96);
+  }
+
+  /* selectField：appearance-none 去原生箭头，chevron 覆盖层由 ui.ts selectField() 注入；
+     包装层默认占满父宽（utilities 层 w-* 类可覆盖） */
+  .select-field {
+    @apply relative flex min-w-0 align-middle;
+  }
+  .select {
+    @apply appearance-none cursor-pointer pr-8;
+  }
+  .select:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  .select-chevron {
+    @apply pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center text-ink-muted;
+  }
+
+  /* 自绘复选框：appearance-none + 令牌描边，勾选/半选画白色对勾与横杠（SVG 用 named color 免 hex） */
+  .checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    @apply inline-block align-middle shrink-0 cursor-pointer rounded;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid rgb(var(--c-line));
+    background-color: rgb(var(--c-surface));
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+  .checkbox:hover {
+    border-color: rgb(var(--c-primary));
+  }
+  .checkbox:checked,
+  .checkbox:indeterminate {
+    background-color: rgb(var(--c-primary));
+    border-color: rgb(var(--c-primary));
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+  .checkbox:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+    background-size: 0.75rem;
+  }
+  .checkbox:indeterminate {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round'%3E%3Cline x1='6' y1='12' x2='18' y2='12'/%3E%3C/svg%3E");
+    background-size: 0.7rem;
+  }
+  .checkbox:focus-visible {
+    @apply outline-none ring-2 ring-primary/40;
+  }
+  .checkbox:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  /* ===== V1.6-③ 外壳层 ===== */
+  /* 导航分组：分隔线 + 弱化小标签（中文不再套 uppercase） */
+  .nav-divider {
+    @apply mx-1 h-5 w-px shrink-0 bg-line;
+  }
+  .nav-group-label {
+    @apply select-none whitespace-nowrap px-1.5 text-xs font-medium tracking-wide text-ink-subtle;
+  }
+  /* 状态条徽标：圆角底 chip（状态点 + 文字） */
+  .status-chip {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-alt px-2 text-xs leading-6 text-ink-muted;
+  }
+  /* V1.6-⑤ V9：选中态蓝底白字统一收编（导航页签/全选/折叠开关）；
+     暗色主题 primary(#3b82f6) 上白字仅 3.68 不达 AA，改用 primary-hover(#2563eb, 5.17) 作底 */
+  .chip-active {
+    @apply bg-primary text-white;
+  }
+  [data-theme="dark"] .chip-active {
+    background-color: rgb(var(--c-primary-hover));
+  }
+  /* 与 .btn 组合时（如任务页全选态）：等权选择器置于 .btn 之后，稳定压过其 hover 底色 */
+  .btn.chip-active {
+    background-color: rgb(var(--c-primary));
+  }
+  [data-theme="dark"] .btn.chip-active {
+    background-color: rgb(var(--c-primary-hover));
   }
 }
 
@@ -347,6 +457,15 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* V1.6-④ V1：lightweight-charts 归属 logo 保留但移位降透明，不再压在左下零线上 */
+#tv-attr-logo {
+  left: auto !important;
+  bottom: auto !important;
+  top: 6px !important;
+  right: 52px !important;
+  opacity: 0.35;
 }
 
 /* 功能3（预览位）：预览窗口最大化（preview.ts 控制排按钮切换 / Esc 还原） */

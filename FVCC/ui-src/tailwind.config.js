@@ -68,7 +68,11 @@ export default {
         // P0-1：预览区恒定深底上的辅助文字（preview.ts 空状态等）
         preview: {
           ink: 'rgb(var(--c-preview-ink) / <alpha-value>)',
+          // V1.6-④ V8：预览区深底收编为工具类 bg-preview-bg（layout.ts）
+          bg: 'rgb(var(--c-preview-bg) / <alpha-value>)',
         },
+        // V1.6-④ V8：日志/参数预览底色（--c-log-bg 为完整色值令牌，直接透传）
+        'log-bg': 'var(--c-log-bg)',
         // P1-5：时间线 clip 数据色（类型承载语义，与列表页状态色 signal/success/danger 解耦）
         clip: {
           video: 'rgb(var(--c-clip-video) / <alpha-value>)',

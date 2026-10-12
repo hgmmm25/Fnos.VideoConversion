@@ -1,7 +1,7 @@
 // P2-2：表单 builder——生成 label+input 行、校验规则、取值/回填
 // 先服务 settings.ts / profiles.ts 两个表单最重页面
 // 无障碍（07 §3）：checkbox 以 label 包裹实现关联；普通字段 label 紧随 control，保持与页面原 field() 一致的语义层级
-import { el } from '../ui'
+import { el, selectField } from '../ui'
 
 export interface FieldDef<T> {
   key: keyof T & string
@@ -28,7 +28,7 @@ export function formBuilder<T extends Record<string, unknown>>(fields: FieldDef<
     if (fd.placeholder) baseAttrs.placeholder = fd.placeholder
 
     if (fd.type === 'checkbox') {
-      const cb = el('input', { type: 'checkbox' }) as HTMLInputElement
+      const cb = el('input', { type: 'checkbox', class: 'checkbox' }) as HTMLInputElement
       inputs.set(fd.key, cb)
       const rowEl = el('div', { class: 'mb-3' }, [
         el('label', { class: 'flex items-center gap-2 cursor-pointer' }, [cb, el('span', {}, [fd.label])]),
@@ -40,7 +40,7 @@ export function formBuilder<T extends Record<string, unknown>>(fields: FieldDef<
 
     let control: HTMLElement
     if (fd.type === 'select') {
-      const sel = el('select', baseAttrs) as HTMLSelectElement
+      const sel = selectField({ class: 'w-full' })
       for (const o of fd.options ?? []) {
         sel.appendChild(el('option', { value: o.value }, [o.label]))
       }

@@ -99,11 +99,12 @@ export function renderTasks(container: HTMLElement) {
   batchPause.onclick = () => batchOp('pause')
   batchResume.onclick = () => batchOp('resume')
   batchCancel.onclick = () => batchOp('cancel')
-  const stats = el('span', { class: 'ml-auto text-xs text-ink-muted' }, [])
+  const stats = el('span', { class: 'ml-auto shrink-0 pl-2 text-xs text-ink-muted tabular-nums' }, [])
   toolbar.append(selectAllBtn, refresh, batchPause, batchResume, batchCancel, stats)
 
   // B-阶段（7.3 tasks 行）：队列状态可视化 —— 状态占比堆叠条 + 计数摘要（自绘 CSS，零依赖）
-  const overview = el('div', { class: 'px-3 sm:px-4 py-2 border-b border-line bg-surface-alt hidden' })
+  // V1.6-④ V5 修复：overview 容器补 flex（此前缺省导致占比条独占一行，视觉上像一条伪小节分隔线）
+  const overview = el('div', { class: 'flex items-center gap-3 px-3 sm:px-4 py-2 border-b border-line bg-surface-alt hidden' })
   const listWrap = el('div', { class: 'flex-1 overflow-auto p-4' })
   wrap.append(toolbar, overview, listWrap)
   container.appendChild(wrap)
@@ -129,7 +130,7 @@ export function renderTasks(container: HTMLElement) {
     const total = tasks.length
 
     const bar = el('div', {
-      class: 'flex flex-1 min-w-[80px] h-1.5 rounded-full overflow-hidden bg-surface',
+      class: 'flex flex-1 min-w-[80px] max-w-[420px] h-2 rounded-full overflow-hidden bg-surface ring-1 ring-line-subtle',
       role: 'img',
     })
     const labels: string[] = []
@@ -160,20 +161,22 @@ export function renderTasks(container: HTMLElement) {
     updateOverview()
     const isAllSelected = tasks.length > 0 && tasks.every(t => selected.has(t.id))
     selectAllBtn.className = isAllSelected
-      ? 'btn btn-sm flex items-center gap-1.5 bg-primary text-white'
+      ? 'btn btn-sm flex items-center gap-1.5 chip-active'
       : 'btn btn-sm flex items-center gap-1.5'
 
     if (tasks.length === 0) {
       listWrap.innerHTML = ''
       cardMap.clear()
-      // P2-1：空状态承载"下一步动作"
+      // P2-1：空状态承载"下一步动作"；V1.6-④ V5：在剩余空间内垂直居中，不再贴顶
       listWrap.appendChild(
-        emptyState('暂无任务，请到「视频文件」页创建转码任务', 'list', {
-          label: '去视频文件页创建',
-          onClick: () => {
-            location.hash = '#/scanner'
-          },
-        })
+        el('div', { class: 'flex h-full min-h-[300px] w-full items-center justify-center' }, [
+          emptyState('暂无任务，请到「视频文件」页创建转码任务', 'list', {
+            label: '去视频文件页创建',
+            onClick: () => {
+              location.hash = '#/scanner'
+            },
+          }),
+        ])
       )
       return
     }
@@ -209,6 +212,9 @@ export function renderTasks(container: HTMLElement) {
         if (existing) {
           existing.card.replaceWith(entry.card)
         } else {
+          // V1.6-⑤：新任务卡首次入场淡入；动画结束即摘类，防止后续排序重挂时重放闪烁
+          entry.card.classList.add('animate-fade-in-up')
+          entry.card.addEventListener('animationend', () => entry.card.classList.remove('animate-fade-in-up'), { once: true })
           list.appendChild(entry.card)
         }
         cardMap.set(t.id, entry)
@@ -366,7 +372,7 @@ function buildCard(t: Task): CardEntry {
   })
 
   // 选择框
-  const cb = el('input', { type: 'checkbox', class: 'rounded' }) as HTMLInputElement
+  const cb = el('input', { type: 'checkbox', class: 'checkbox' }) as HTMLInputElement
   cb.checked = selected.has(t.id)
   cb.onchange = () => {
     if (cb.checked) selected.add(t.id)
@@ -450,7 +456,7 @@ function buildCard(t: Task): CardEntry {
     cancel.onclick = () => doCancel(t.id)
     actions.appendChild(cancel)
   } else {
-    const del = el('button', { class: 'btn btn-sm btn-danger' }, ['删除'])
+    const del = el('button', { class: 'btn btn-sm btn-danger-ghost' }, ['删除'])
     del.onclick = () => doDelete(t.id)
     actions.appendChild(del)
   }
