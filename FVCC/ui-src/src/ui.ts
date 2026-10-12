@@ -100,6 +100,11 @@ export function skeletonRows(n: number, h = '0.75rem'): HTMLElement[] {
   return rows
 }
 
+/** 列表骨架容器：skeletonRows 的标准铺法（p-4 间距 + 行距），供各列表页首屏复用 */
+export function listSkeleton(n = 5, h = '3rem'): HTMLElement {
+  return el('div', { class: 'p-4 space-y-3' }, skeletonRows(n, h))
+}
+
 /** 仅对读屏器可见的文本（颜色/图标之外的状态等价物） */
 export function srOnly(text: string): HTMLElement {
   return el('span', { class: 'sr-only' }, [text])

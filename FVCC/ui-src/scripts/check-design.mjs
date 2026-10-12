@@ -119,7 +119,9 @@ reg(
 )
 
 // R3 默认态阴影（shadow / shadow-sm / shadow-md；shadow-lg/xl 仅限弹层/抽屉等浮动层，允许）
-reg('R3-default-shadow', /\bshadow(?:-(?:sm|md))?(?!-|[\w])/g, '默认态无阴影（明度分层代替）；仅弹层/抽屉可保留 shadow-lg/shadow-xl')
+// 前缀排除 - 与 :：CSS 属性 box-shadow（如 .task-selected 选中态 inset 阴影，v1.6.1 方案 §2.3
+// 裁决不触 R3）不是 Tailwind 阴影类，不应命中
+reg('R3-default-shadow', /(?<![-:\w])shadow(?:-(?:sm|md))?(?!-|[\w])/g, '默认态无阴影（明度分层代替）；仅弹层/抽屉可保留 shadow-lg/shadow-xl')
 
 // R4 <12px 文字
 reg('R4-small-text', /text-\[(\d+(?:\.\d+)?)px\]/g, '禁止 <12px 文字：改 text-xs（12px）或更大的字阶')
