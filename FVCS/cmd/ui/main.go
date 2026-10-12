@@ -371,7 +371,7 @@ func (a *App) launchSettings() {
 		return
 	}
 	exeDir := filepath.Dir(exePath)
-	settingsExe := filepath.Join(exeDir, "FVCS_Settings.exe")
+	settingsExe := filepath.Join(exeDir, "fvcs-settings.exe")
 
 	logger.Info("main", "Launching settings: %s", settingsExe)
 	err = winapi.StartProcess(settingsExe)
