@@ -605,3 +605,5 @@ v1.5.11 部署后真机复验：FVCC 提交侧不再 `E_ASSET_MISSING`，任务�
 - 门禁：每批次 `tsc --noEmit` + `check-design --all`（33 文件）+ `npm run build` 全绿；
 - 临时产物清理：`ui-src/public/seed-theme.html`（走查主题播种页）与 `server/_walkthrough/`（走查素材）随本轮删除；`.gitignore` 补 `FVCC/server/_wve_cache/`、`backup/`、`data_version.json` 运行库；
 - README（根）版本行、可视化托盘管理章节（fynetheme 注记）、部署行（fvcs-ui/fvcs-settings + FVCS-UI 构建命令）同步。
+
+**状态（本轮收口，2026-10-12）**：批次①-⑥ + 版本收口全部经用户逐批验收通过后，拆三笔提交推送 `fork/baseline-snapshot`：`1e622f0` feat(ui) 批次①-⑤（16 文件）、`22035c6` feat(fvcs) v1.3.0 渲染节点 GUI 复活（含新增 `FVCS/pkg/fynetheme`）、`b1a0d93` chore(release) 版本收口 1.6.0/1.3.0 + 本台账 + gitignore 治理；注解 tag **v1.6.0** 落在 `b1a0d93` 并推送（配套 FVCS v1.3.0）。工作树干净，临时走查产物（seed-theme.html/_walkthrough）未混入提交。
