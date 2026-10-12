@@ -5,12 +5,13 @@
    Usage:
      .\build.ps1                          # FVCC + FVCS (default)
      .\build.ps1 -Target FVCS             # Only FVCS
+     .\build.ps1 -Target FVCS-UI          # Only FVCS desktop GUI (fvcs-ui.exe + fvcs-settings.exe, v1.3.0)
      .\build.ps1 -Target FVCC             # Only FVCC
      .\build.ps1 -Target FVCS -Clean      # Clean then build FVCS
      .\build.ps1 -Target FVCS -NoTest     # Build without tests
 #>
 param(
-    [ValidateSet('FVCC', 'FVCS', 'ALL')]
+    [ValidateSet('FVCC', 'FVCS', 'FVCS-UI', 'ALL')]
     [string]$Target = 'ALL',
     [switch]$Clean,
     [switch]$NoTest
@@ -67,6 +68,9 @@ $MINGW_GCC = "$MINGW_BIN\gcc.exe"
 # Output paths
 $FVCS_BINARY  = "$FVCS_DIR\fvcs-service.exe"
 $FVCS_OUTPUT  = "$FVCC_DIR\fvcs-service.exe"  # copy here for fnpack
+# v1.3.0 批次⑥：渲染节点桌面 GUI（Fyne 托盘主窗口 + 设置窗口），不进 fpk，随 Windows 侧交付
+$FVCS_UI_BINARY       = "$FVCS_DIR\fvcs-ui.exe"
+$FVCS_SETTINGS_BINARY = "$FVCS_DIR\fvcs-settings.exe"
 $GOCACHE_DIR  = "D:\GoCache"
 
 # fnpack (fnOS fpk packer). Switched from 1.2.1 (FVCC\fnpack-1.2.1.exe) to 1.2.3.
@@ -291,6 +295,39 @@ if ($Target -eq 'FVCS' -or $Target -eq 'ALL') {
     # already produced the fpk in ALL mode; the FVCS binary does not enter app.tgz
     # (only app/fvcc + app/ui do), so a second `fnpack build` was pure redundant work.
     # Run `.\build.ps1 -Target FVCC` (or ALL) to (re)create the fpk.
+}
+
+# --- Build FVCS desktop GUI (v1.3.0 批次⑥: Fyne tray UI + settings window) ---
+if ($Target -eq 'FVCS-UI') {
+    Write-Step "Building FVCS GUI (fvcs-ui / fvcs-settings)"
+    $guiStart = Get-Date
+    if ($Clean) {
+        Remove-Item $FVCS_UI_BINARY, $FVCS_SETTINGS_BINARY -Force -ErrorAction SilentlyContinue
+        Write-Ok "FVCS GUI binaries cleaned"
+    }
+    Push-Location $FVCS_DIR
+    $env:CGO_ENABLED = $FVCS_CGO
+    # -H windowsgui：托盘程序不弹控制台窗口（cmd/ui 内部另有 HideWindow 兜底）
+    & $GO_EXE build -trimpath -ldflags "-s -w -H windowsgui" -o "$FVCS_UI_BINARY" .\cmd\ui
+    $uiStatus = $LASTEXITCODE
+    if ($uiStatus -eq 0) {
+        & $GO_EXE build -trimpath -ldflags "-s -w -H windowsgui" -o "$FVCS_SETTINGS_BINARY" .\cmd\settings
+        $settingsStatus = $LASTEXITCODE
+    } else {
+        $settingsStatus = $uiStatus
+    }
+    $env:CGO_ENABLED = ""
+    Pop-Location
+    if ($uiStatus -ne 0) {
+        Write-Err "fvcs-ui build failed (exit code $uiStatus)"
+        exit 1
+    }
+    if ($settingsStatus -ne 0) {
+        Write-Err "fvcs-settings build failed (exit code $settingsStatus)"
+        exit 1
+    }
+    $guiDuration = ((Get-Date) - $guiStart).TotalSeconds
+    Write-Ok "FVCS GUI built in $([math]::Round($guiDuration, 1))s: $FVCS_UI_BINARY, $FVCS_SETTINGS_BINARY"
 }
 
 # --- Summary ---

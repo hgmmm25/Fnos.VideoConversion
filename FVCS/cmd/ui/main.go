@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"Fnos.VC_Service/pkg/config"
+	"Fnos.VC_Service/pkg/fynetheme"
 	"Fnos.VC_Service/pkg/ffmpeg"
 	"Fnos.VC_Service/pkg/ipc"
 	"Fnos.VC_Service/pkg/logger"
@@ -119,9 +120,12 @@ func main() {
 	a.iconData = iconIcoData
 	logger.Info("main", "App icon set from embedded FVCS.png (%d bytes), systray icon from FVCS.ico (%d bytes)", len(iconPngData), len(iconIcoData))
 
+	// v1.3.0 批次⑥：主题色贴近 FVCC 蓝调（pkg/fynetheme），明暗随系统
 	if winapi.IsDarkMode() {
-		myApp.Settings().SetTheme(theme.DarkTheme())
+		myApp.Settings().SetTheme(fynetheme.Dark())
 		logger.Info("main", "Dark theme applied")
+	} else {
+		myApp.Settings().SetTheme(fynetheme.Light())
 	}
 
 	logger.Info("main", "Initializing service components...")
