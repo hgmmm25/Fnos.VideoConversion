@@ -58,6 +58,14 @@ FVCC/server/fvcc.db-shm
 FVCC/server/fvcc.db-wal
 FVCC/server/secret.key
 
+# ---- 仓库根运行产物（FVCS GUI 在根目录启动时生成的 SQLite 库，2026-10-12 追加）----
+/task.db
+/task.db-shm
+/task.db-wal
+/credentials.db
+/credentials.db-shm
+/credentials.db-wal
+
 # ---- FVCC 后端编译产物与调试残留（2026-09-18 追加）----
 FVCC/server/fvcc.exe
 FVCC/server/build_err.txt
