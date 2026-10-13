@@ -46,7 +46,9 @@ motion:
 
 # FVCC Web UI — Design Contract
 
-> 复核：2026-10-12（对齐 FVCC v1.6.0）——令牌真源 `src/style.css`、门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）与 Named Rules 均与代码一致；P1-2 决策门定案（2026-10-11）后本契约维持零框架前端不变。
+> 复核：2026-10-13（对齐 **FVCC v1.6.5 / FVCS v1.3.0**，台账见仓库根 `docs/IMPROVEMENT_LOG.md` §二十 / 第二十八轮）——本轮 1.6.0（方向 A 令牌层重排 / 控件自绘 / 外壳 / 逐页修复 / 微交互+WCAG）与 1.6.4（任务页批次 A+B+C）都在本契约约束内落地，`npm run build` 链路仍先跑 `check:design` 再 `tsc -b` + `vite build`（2026-10-13 全绿）；**令牌真源 `src/style.css` 与门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）的位置与口径维持成立，但 frontmatter 的逐条取值与 R1-R10 的逐条文案本次未逐项复跑**，沿用上一轮结论。新形成的前端惯例（`listSkeleton` 组件、进度条合成层写法、签名守卫、骨架退出条件）补记于 R7 与「热路径与状态反馈惯例」节。
+>
+> 上一轮复核（保留为历史快照）：2026-10-12（对齐 FVCC v1.6.0）——令牌真源 `src/style.css`、门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）与 Named Rules 均与代码一致；P1-2 决策门定案（2026-10-11）后本契约维持零框架前端不变。
 
 ## 北极星
 
@@ -77,6 +79,10 @@ motion:
 - 空态：必须承载下一步动作按钮（如"暂无任务 → 去视频文件页创建"）；
 - 批量操作：逐项结果（成功 N、失败 M 及原因），不只报总数；
 - 低风险即时动作（选中、排序、静音切换）：乐观更新 + 失败回滚。
+- **骨架写法（2026-10-13 补记，v1.6.4 批次 A/C 形成）**：
+  - 长列表首屏骨架一律用 `ui.ts` 的泛化组件 `listSkeleton(n, h)`（v1.6.4 新增），不再各页自铺 `.skeleton` 块——**目前仅 tasks 页已切换**，其余页面尚未迁移，迁移时沿用下列退出条件；
+  - 骨架退出条件**必须**挂在"首次成功 render 即置 `loaded`"这一事件上，**禁止**写成 `items.length > 0`：v1.6.4 首版即因 `tasks.length>0` 导致空库时骨架常驻出不来，由用户真机实测抓出后改正，空列表应正常落到 `emptyState`；
+  - 骨架与空态互斥：只在首次拉取在途的窗口期铺骨架，此后刷新不再回落骨架。
 
 ### R8 · The Contrast Rule（对比度）
 正文与占位符 ≥ 4.5:1，大号/粗体 ≥ 3:1。`ink-muted` 用于正文与 hint；`ink-subtle` 只用于图标/分隔等非文本。进度条、badge 必须补 `role="progressbar"` / `aria-valuenow` 与文本等价，不单靠颜色表达状态。
@@ -92,6 +98,22 @@ motion:
 - 禁止 <12px 文字；
 - 禁止 `max-height` 过渡。
 门禁以增量文件为范围，存量告警不计入本次提交阻塞；新代码违反即失败。
+
+**门禁口径补记（2026-10-13，v1.6.4 批次过程修复）**：阴影检查（对应 R3）此前会把 CSS 属性 `box-shadow` 当内联样式误报——规则本意只查内联 `style`，已按前缀排除 `-` / `:`；**选中态的 inset 阴影**（`.task-selected`）按方案稿 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md` §2.3 裁决为**合法**，属活动态反馈而非 R3/R5 禁止的默认态浮动阴影。
+
+## 热路径与状态反馈惯例（2026-10-13 补记，v1.6.4 批次 A+B/C 形成）
+
+这些写法在 1.6.4 任务页改造中固化为前端惯例，后续列表/队列类页面改动同等适用：
+
+- **硬约束：视觉改进不得增加 WS tick 重绘**（方案稿立规，批次 B 落地）。任何以"好看"为名的改动若让 1s 级 WS 推送路径多做一次 layout / repaint，视为不通过。
+- **进度条走合成层**：只写自定义属性 `--p`，由 CSS 以 `transform: scaleX(var(--p))` 引用；**禁止**动画 `width`、禁止每次更新重挂 `transition`（批次 B1）。
+- **签名守卫（signature guard）**：渲染前比对上一次的签名，未变化即跳过 DOM 重建——
+  - `render`：id / 顺序签名，未变且卡数一致时跳过重排循环（批次 B2）；
+  - `updateOverview`：分组计数 + 总量签名，未变时不 `replaceChildren`；空态签名固定 `'0'`，重复空态不再动概览 DOM（批次 B3）。
+- **滚动位置按实例上下文保存/恢复**：`lib/scrollPos` 的 `saveScrollPos` / `restoreScrollPos`，主页与抽屉使用**独立 key 不互串**；DOM 重建前先存、重建后恢复，WS tick 不跳滚动（批次 B4）。
+- **状态反馈的层级优先**：错误信息独立成行并带 `title`（不与 `truncate` 行尾互相抵消）；`serverName` 等中性标签走低饱和标签、不与进度条撞 `signal` 色；活动卡以左侧 `signal` 静态指示线作锚点；零选中的批量按钮直接禁用 + 刷新期 pending；选中态用 `.task-selected` 即时高亮，**不走重渲染**（批次 A）。
+- **倍速等实时数据走 WS 合并**：`store.ts` 的 `applyTaskUpdate` 合并 `speed`（后端 `models.go` `speed,omitempty` + `TaskUpdateFullMsg`），文案后缀单独 `span` 更新，不因一个字段重建整卡。
+- **实验动画一律挂在 URL 开关后**：`#/tasks?fx=stripes` / `?fx=breathe` **默认全关**，仅供真实并发实测裁决；未经真机裁决不得进入默认路径（也不得写进本契约作为规范）。
 
 ## 反例清单（不要做）
 

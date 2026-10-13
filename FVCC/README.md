@@ -108,7 +108,7 @@ go test ./...
 | 1.5.11 | 渲染取根「有界单根」：`EDLClip.sourceRoot` 透传 + `resolveRenderRoots`；FVCS `makeSrcResolver` 对齐 `BuildSMBPath`（配套 FVCS v1.2.5） |
 | 1.5.12 | RENDER_EDL 终态轮询收口（`pollRenderTerminal`/`completeRenderTask`，修出片后卡「收尾·100%」）；`validateRootRelPath` 与 FVCS `ValidateRootPath` 严格同规则（配套 FVCS v1.2.6） |
 | 1.6.0 | 视觉打磨版（方向 A 精修冷灰）：令牌层重排 / selectField·checkbox·按钮变体 / 导航分组·搜索胶囊·状态栏 / V1 趋势图修复·V5-V8 逐页 / 微交互 + WCAG 对比度验收（配套 FVCS v1.3.0：Fyne 托盘 GUI 纳入构建 `-Target FVCS-UI`，主题贴近 FVCC 蓝调） |
-| 1.6.1 ~ 1.6.4 | 任务页视觉改进三批次（方案 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`，GLM5.3F / Step5P / Gemini-3.8F 三方评审整合）：A 层级修复+状态反馈（errorMsg 独立成行、首屏骨架 `listSkeleton`、批量键禁用/pending、选中即时高亮、ERROR 红条、去硬宽）；B 热路径性能（进度条 `transform: scaleX(--p)` 走合成层、render/updateOverview 签名守卫、scrollPos 主页/抽屉独立 key）；C 速率与实验项（WS 合并 `speed` + 倍速后缀实时展示、`#/tasks?fx=stripes\|breathe` 默认关）。含两处实测抓出的修复：空任务库骨架常驻（`loaded` 改由首次成功 render 置真）、`check-design` R3 误报 `box-shadow` |
+| 1.6.4 | 任务页视觉改进三批次（方案稿 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`，GLM5.3F / Step5P / Gemini-3.8F 三方评审整合；交付版本直接由 1.6.0 跳到 1.6.4，代码注释中的 `v1.6.1-A*` / `v1.6.2-B*/C*` / `v1.6.3 修复` 是批次开发期的本地中间 bump 编号，未入库未出包，登记见 `docs/TASK_REFERENCE.md` §3.8）：A 层级修复+状态反馈（errorMsg 独立成行、首屏骨架 `listSkeleton`、批量键禁用/pending、选中即时高亮、ERROR 红条、去硬宽）；B 热路径性能（进度条 `transform: scaleX(--p)` 走合成层、render/updateOverview 签名守卫、scrollPos 主页/抽屉独立 key）；C 速率与实验项（WS 合并 `speed` + 倍速后缀实时展示、`#/tasks?fx=stripes\|breathe` 默认关）。含两处实测抓出的修复：空任务库骨架常驻（`loaded` 改由首次成功 render 置真）、`check-design` R3 误报 `box-shadow` |
 | 1.6.5 | 版本真源漂移修复 + 校验加固：`internal/version/VERSION` 补齐至 1.6.5（1.6.4 出包漏改致「设置」页显示 1.6.0）；`version_test.go` 改为向上定位仓库根比对三真源、失败一律判红不再静默 SKIP（Windows 本机自此真跑），新增禁止硬编码版本字面量用例；`scripts/check-versions.ps1` 去硬编码盘符并支持 `-RepoRoot`（用户拍板发新补丁号而非强推重指 v1.6.4 tag） |
 
 逐轮明细见仓库根 `docs/IMPROVEMENT_LOG.md`（§十一~§二十）。
