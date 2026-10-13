@@ -8,7 +8,8 @@
 #>
 
 # --- FVCC (NAS调度端) ---
-# Go 1.25.3 for FVCC backend cross-compilation (Linux ELF)
+# FVCC 后端交叉编译（Linux ELF）用的 go 启动器；实际语言/工具链版本由
+# FVCC\server\go.mod 的 `go 1.27.1` 决定，配合下面的 GOTOOLCHAIN=auto 选取。
 $env:GOEXE_FVCC = "C:\Users\xx318\sdk\go1.25.3\go\bin\go.exe"
 
 # Cross-compile target for FVCC backend
@@ -16,9 +17,13 @@ $env:GOOS_FVCC   = "linux"
 $env:GOARCH_FVCC = "amd64"
 $env:CGO_ENABLED_FVCC = "0"
 
+# --- Go 工具链选择（FVCC 与 FVCS 共用）---
+# 两个模块的 go.mod 都声明 `go 1.27.1`，本机 PATH 上的 Go 亦为 1.27.1。
+# 必须用 auto：local 会把版本锁死在启动器自身，若机器上装的是更旧的 Go（例如历史上
+# 残留的 go1.24.6），FVCS 构建即报 `go.mod requires go >= 1.27.1`。
+$env:GOTOOLCHAIN = "auto"
+
 # --- FVCS (Windows渲染端) ---
-# Go toolchain: use module-level go1.24.6 via GOTOOLCHAIN=local
-$env:GOTOOLCHAIN  = "local"
 $env:CGO_ENABLED_FVCS = "1"
 
 # MSYS2 MinGW-w64 for CGO (gcc/ld)
@@ -38,7 +43,7 @@ $env:GOCACHE = "D:\GoCache"
 # --- Verify Setup ---
 Write-Host "[ENV] FVCC Go: $($env:GOEXE_FVCC)" -ForegroundColor Cyan
 Write-Host "[ENV] FVCC target: $($env:GOOS_FVCC)/$($env:GOARCH_FVCC) CGO=$($env:CGO_ENABLED_FVCC)" -ForegroundColor Cyan
-Write-Host "[ENV] FVCS GOTOOLCHAIN: $($env:GOTOOLCHAIN) CGO=$($env:CGO_ENABLED_FVCS)" -ForegroundColor Cyan
+Write-Host "[ENV] GOTOOLCHAIN: $($env:GOTOOLCHAIN)  FVCS CGO=$($env:CGO_ENABLED_FVCS)" -ForegroundColor Cyan
 Write-Host "[ENV] GCC: $env:MSYS2_MINGW64_BIN\gcc.exe" -ForegroundColor Cyan
 Write-Host "[ENV] GOCACHE: $env:GOCACHE" -ForegroundColor Cyan
 

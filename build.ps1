@@ -29,7 +29,6 @@ $APP_DIR  = "$FVCC_DIR\app"          # FVCC app bundle directory
 # Go toolchain — pick from known SDK locations
 $SDK_PATHS = @(
     "C:\Users\xx318\sdk\go1.25.3\go\bin\go.exe",
-    "C:\Users\xx318\sdk\go1.24.6\go\bin\go.exe",
     "C:\Program Files\Go\bin\go.exe",
     "go"
 )
