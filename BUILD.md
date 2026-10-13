@@ -78,13 +78,14 @@ cd D:\Fnos.VideoConversion
 
 | 文件 | 当前值 |
 |------|--------|
-| `FVCC\manifest`（`version` 字段） | 1.6.7 |
-| `FVCC\ui-src\package.json`（`version` 字段） | 1.6.7 |
-| `FVCC\server\internal\version\VERSION` | 1.6.7 |
+| `FVCC\manifest`（`version` 字段） | 1.6.8 |
+| `FVCC\ui-src\package.json`（`version` 字段） | 1.6.8 |
+| `FVCC\server\internal\version\VERSION` | 1.6.8 |
 
 > 版本号不一致会导致 fpk 内 manifest 声明与实际产品版本不符，部署后难以排查。
 > **三处缺一不可**：`VERSION` 是 `go:embed` 进二进制的真源，决定 `/api/info` 与「设置」页显示值；历史缺陷 v1.6.4 只改了 manifest + package.json，导致已推送包显示 1.6.0。
 > 收口必跑 `scripts\check-versions.ps1`（仓库根按脚本位置推导，可用 `-RepoRoot` 覆盖）；在 `FVCC\server` 下 `go test ./internal/version` 现已在 Windows 本机真跑并在漂移时判红（不再静默 SKIP）。
+> 另：`ui-src\package-lock.json` 的根 `version` 字段随 `package.json` 手工 bump 时**不会自动跟进**（校验脚本也不覆盖它，v1.6.8 实测漂留在 1.6.7），改完 `package.json` 版本后跑一次 `npm install --package-lock-only`（只刷锁文件元数据，不动 `node_modules`）即可同步。
 
 ### FVCS 版本号同步清单（两处，第二处最容易漏）
 
@@ -192,7 +193,7 @@ go test ./pkg/... ./cmd/service -count=1 -v
   - 推荐：在 `build-env.ps1` 中已配置 `GOCACHE` 到 `D:\GoCache`。
   - 手动设置：`$env:GOCACHE = "D:\GoCache"`
 
-### 工具链与依赖版本基线（2026-10-13 审计复核）
+### 工具链与依赖版本基线（2026-10-13 审计复核，2026-10-14 v1.6.8 Tailwind 4 专项后复跑）
 
 | 项 | 本仓库声明/锁定值 | 上游最新 | 处置 |
 |----|----|----|----|
@@ -200,14 +201,23 @@ go test ./pkg/... ./cmd/service -count=1 -v
 | CI Go | `.github/workflows/fvcc-ci.yml` → `actions/setup-go@v5` + `1.27.x` | — | 与 go.mod 一致，无需改 |
 | Node 运行时 | 本机 v26.11.1（系统级 MSI，`C:\Program Files\nodejs`；`AppData\Local\hermes\node` 有一份残留副本，PATH 排在系统目录之后故不生效） | 26.11.1（Current 线） | **已升级**（2026-10-13，从 v25.9.0——v25 是已 EOL 的奇数 Current 线）。注意 26 仍是 Current 而非 LTS（active LTS 为 24 Krypton），下次抬 LTS 时同步 CI 与 `engines` |
 | CI Node | `.github/workflows/fvcc-ci.yml` → `actions/setup-node@v4` + `node-version: '26'` | 26.x | **与本机运行时、`engines.node`、`@types/node` 四处对齐** |
-| FVCC 前端 | vite 8.3.4、TypeScript 7.0.2、postcss 8.5.30、autoprefixer 10.6.1、lightweight-charts 5.2.1、@fontsource 5.3.0 | 全部当前 | 已随 v1.6.6 刷新；2026-10-14 `npm outdated` 复跑仅剩下行 tailwindcss 一项 |
+| FVCC 前端 | vite 8.3.4、TypeScript 7.0.2、postcss 8.5.30、tailwindcss 4.3.3 + `@tailwindcss/postcss` 4.3.3、lightweight-charts 5.2.1、@fontsource 5.3.0 | 全部当前 | 已随 v1.6.6 刷新；2026-10-14（v1.6.8）Tailwind 4 专项落地后 `npm outdated` 归零。**`autoprefixer` 已随 v4 移除**，浏览器前缀由 v4 内建 Lightning CSS 负责 |
 | `@types/node` | ^26（锁 26.6.5） | 26.6.5 | **已随 Node 26 运行时同批刷新**（2026-10-13） |
-| `tailwindcss` | ^3.4.17（锁 3.4.19） | 4.3.3 | **刻意推迟**：v4 为 CSS-first 配置重写，属专项工程 |
+| `tailwindcss` | ^4.3.3（锁 4.3.3） | 4.3.3 | **已升级**（2026-10-14 专项，v3.4.19→v4.3.3）：CSS-first 配置重写，`tailwind.config.js` 删除、token 映射迁入 `src/style.css` 的 `@theme inline`；同时清掉 tailwind 3 传递链带来的 7 项 `npm audit` 告警（2 moderate / 5 high）。细节见下节「Tailwind 4 样式链接线」 |
 | FVCC Go 依赖 | gin v1.12.0、gorilla/websocket v1.5.3 | 均为当前 | 无落后项 |
 | `modernc.org/sqlite` | v1.60.1（go.mod 直接依赖；驱动自身要求 `go 1.26.0`，仍低于本仓库 1.27.1 下限，无需抬） | v1.60.1 | **已升级**（2026-10-13 专项批次，v1.14.0→v1.60.1 跨 46 个 minor）：老驱动生成的 fvcc.db 由新驱动读取/迁移/回写实测通过，WAL、`schema_version`、AUTOINCREMENT 续号均保持；副作用是依赖面收窄（删 cc/v3、ccgo/v3、x/mod、x/tools 等 10 项，go.sum −109 行），代价是二进制 +565 KB（fpk +2.4%） |
 | FVCS Go 依赖 | fyne v2.8.2、`fyne.io/systray` 伪版本 v1.12.3-0.20260810…、mattn/go-sqlite3 v1.14.52、golang.org/x/sys v0.49.0 | 均为当前 | systray 伪版本是 fyne 2.8.x go.mod 的 MVS 结果（覆盖不掉），本批已确认可接受 |
 
 > 刷新纪律：补丁/次版本级"落后即可顺手升"，大版本与跨多 minor 的项一律另立专项；同主题多批次做完再统一 bump 版本、写台账。
+
+### Tailwind 4 样式链接线（v1.6.8 起）
+
+v3 → v4 是构建链层面的改动，手动构建或排障时需要注意四点：
+
+- **PostCSS 插件换包**：`postcss.config.js` 只挂 `@tailwindcss/postcss`（v4 把 PostCSS 插件拆成独立包），不再写 `tailwindcss` 与 `autoprefixer` 两个插件名。
+- **配置载体从 JS 迁到 CSS**：仓库内**已无 `tailwind.config.js`**。token（`--color-*`）、暗色变体（`@custom-variant dark`）、扫描面（`@import "tailwindcss" source(none)` + `@source`）全部声明在 `FVCC/ui-src/src/style.css` 头部；`--c-*` 是完整 `rgb()` 颜色而非裸 RGB 通道，`/NN` 透明度由编译期 `color-mix()` 生成。任何"沿用 v3 写法"（`<alpha-value>`、`rgb(var(--c-*))`）会被 `npm run check:design` 的 `TW4-token-form` 规则拦下。
+- **扫描面必须显式锁定**：v4 默认的自动源探测会读入 `scripts/*.mjs`、`vite.config.ts` 等配置文件里的类名字样并编进产物（实测多出一个 `.shadow-sm`），所以用 `source(none)` 关掉自动、只喂 `index.html` 与 `src/**/*.{ts,js,html}`。新增源码目录时记得同步 `@source`。
+- **构建入口不变**：`npm run build` 仍是 `check:design:diff` → `tsc -b` → `vite build`；CI（`.github/workflows/fvcc-ci.yml`）在 `FVCC/ui-src` 里 `npm ci` + build，无需改动。产物体积：CSS 原始 49,956 B（v3 为 42,782 B），**gzip 9.78 kB（v3 为 10.00 kB，反而变小）**。
 
 ### MSYS2 MinGW-w64
 
@@ -222,7 +232,7 @@ FVCS 的 CGO 构建依赖 MSYS2 MinGW-w64 的 gcc。确保 `C:\msys64\mingw64\bi
 ### fnOS 部署
 
 - FVCC 的 `fnpack` 需要 `app/fvcc`（Linux ELF）和 `app/ui/` 目录同时存在。
-- 当前版本 `1.6.7`（配套渲染节点 FVCS `1.3.1`），在 manifest、package.json、server/internal/version/VERSION 中均已同步（升级版本必须三处同步，见上表）。
+- 当前版本 `1.6.8`（配套渲染节点 FVCS `1.3.1`），在 manifest、package.json、server/internal/version/VERSION 中均已同步（升级版本必须三处同步，见上表）。
 - fnpack 工具：`D:\Fnos.VideoConversion\fnpack-1.2.3-windows-amd64.exe`（1.2.3 可无缝替换 1.2.1，用法一致；旧版已归档至 `archive\tools\fnpack-1.2.1.exe` 仅留存）。
 - 版本一致性校验：发布前运行 `.\scripts\check-versions.ps1`（P0-1 新增），校验 manifest / package.json / server/VERSION 三方对齐及 go.mod 工具链声明。
 - 打包必须在干净 stage 目录 `FVCC\temp\fpk_stage` 内执行（build.ps1 自动完成），避免 fnpack 递归扫描真实目录导致耗时 ~14s。

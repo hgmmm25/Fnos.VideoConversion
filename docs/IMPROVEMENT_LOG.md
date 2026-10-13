@@ -1,9 +1,10 @@
-# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-14 更新至 v1.6.7）
+# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-14 更新至 v1.6.8）
 
-> **现状快照（2026-10-14 第三十二~三十三轮，依赖/工具链专项批次）**：当前版本 **FVCC v1.6.7 / FVCS v1.3.1**。
+> **现状快照（2026-10-14 第三十四轮，Tailwind CSS 4 大版本专项）**：当前版本 **FVCC v1.6.8 / FVCS v1.3.1**（FVCS 零改动）。本轮还清第三十二~三十三轮点名的**依赖刷新主题唯一余项**——`tailwindcss` **3.4.19 → 4.3.3**：`tailwind.config.js` 整文件删除，token 映射迁入 `ui-src/src/style.css` 的 `@theme inline`；38 个 `--c-*` 令牌（明暗两套共 76 条定义）由裸 RGB 通道改为完整 `rgb()` 颜色（v4 不替换 `<alpha-value>`，`/NN` 透明度改编译期 `color-mix(in oklab, …)`）；暗色改 `@custom-variant dark`；PostCSS 插件换 `@tailwindcss/postcss` 并删 `autoprefixer`（前缀由 v4 内建 Lightning CSS 负责）；改名与语义漂移逐项对齐（`shadow-sm`→`shadow-xs`、`shadow`→`shadow-sm`、`outline-none`→`outline-hidden`）；扫描面 `source(none)` + 显式 `@source` 锁定。收益：`npm audit` 现存 **7 条告警（2 moderate / 5 high）全部清零**、`npm outdated` 归零、CSS gzip 10.00 → **9.78 kB**。**依赖刷新主题至此完整收口，无余项。** 随批产品裁决（用户）：接受 v4 移除 `button { cursor: pointer }` 的新默认。按出包纪律 bump **1.6.7 → 1.6.8** 并重打 fpk（11,013,500 B），NAS 真机视觉对照由用户执行中。详见 §二十五。
+> **现状快照（2026-10-14 第三十二~三十三轮，依赖/工具链专项批次）**：**当时版本 FVCC v1.6.7 / FVCS v1.3.1**（现已被 v1.6.8 取代，见上一段快照）。
 > 第三十二轮还清了第三十一轮点名的唯一实质落后项——`modernc.org/sqlite` **v1.14.0 → v1.60.1**（跨 46 个 minor）：先把 store 层对驱动的接触面量清楚（`sql.Open` 无 DSN 参数、三条 PRAGMA 走 Exec、无驱动 API、SQL 为纯 SQLite 子集），再用**老驱动真实产出的 fvcc.db** 由新驱动经实际 store 路径 Open→migrate→写回→二次 Load 验证（WAL 保持、`schema_version` 不误重置、AUTOINCREMENT 续号、立即落盘可见）；副作用是依赖面收窄（删 cc/ccgo/opt/strutil/token/uint128/x-mod/x-sync/x-tools/shellquote 十项，`go.sum` 净减 109 行），代价是二进制 +565 KB、fpk +2.4%（10,752,127 → 11,011,826 B）。按出包纪律 bump **1.6.6 → 1.6.7** 并重打 fpk，真机复验由用户在 .106 执行。详见 §二十三。
 > 第三十三轮把 Node 运行时从**已 EOL 的奇数 Current 线 v25.9.0** 升到 **v26.11.1**（系统级 MSI，SHA256 与官方逐字符核对，另存 v25.9.0 回滚包）；装前查进程确认全机唯一 node 是 Qoder 自身辅助进程、无项目任务在跑。升级点四处一起对齐：本机运行时、`package.json` 新增 `engines.node >=26.0.0`、CI `setup-node` `22`→`26`、`@types/node` `^22`→`^26`（解析 26.6.5）。`npm ci` + `npm run build` 绿且 **asset 内容哈希逐项不变**，故判定无需重打包、不再 bump。详见 §二十四。
-> **依赖刷新主题至此收口，余项只有 `tailwindcss` 3.4.19 → 4.3.3 专项**（同时是 `npm audit` 现存 7 条告警的唯一修复路径，全部源自 tailwindcss 3 的传递链，Node 26 升级零新增告警）。规模与覆盖率在新驱动+新运行时下**亲跑复测**：internal 12 包 / 110 个 .go（58 实现 17,197 + 52 测试 9,183）/ TS 33 文件 11,474 行 / 覆盖率 **60.7%**，与第二十九轮逐项一致。9 份叙述性长台账本轮一并回写至 1.6.7 / 1.3.1 基线（第三十一轮挂账还清）。
+> **依赖刷新主题至此收口，余项只有 `tailwindcss` 3.4.19 → 4.3.3 专项**（同时是 `npm audit` 现存 7 条告警的唯一修复路径，全部源自 tailwindcss 3 的传递链，Node 26 升级零新增告警）。**（该专项已于同日第三十四轮以 v1.6.8 落地，7 条告警清零，见上段快照与 §二十五。）**规模与覆盖率在新驱动+新运行时下**亲跑复测**：internal 12 包 / 110 个 .go（58 实现 17,197 + 52 测试 9,183）/ TS 33 文件 11,474 行 / 覆盖率 **60.7%**，与第二十九轮逐项一致。9 份叙述性长台账本轮一并回写至 1.6.7 / 1.3.1 基线（第三十一轮挂账还清）。
 > **现状快照（2026-10-13 第三十一轮，工具链口径收口）**：**当时版本 FVCC v1.6.6 / FVCS v1.3.1**（现已被 v1.6.7 取代，见上一段快照；第三十轮依赖刷新批次已随 `1dcb774` 推送并打 tag **v1.6.6**，本轮补记其台账）。本轮零代码改动，收的是**工具链与依赖版本的叙述口径**：`BUILD.md` / `build-env.ps1` / `build.ps1` 里"FVCS 用 go1.24.6 + `GOTOOLCHAIN=local`"的遗留写法全部作废，双端统一 **go.mod `go 1.27.1` 下限 + `GOTOOLCHAIN=auto`**（本机 `sdk\go1.24.6` 目录实际已不存在）；新增 BUILD.md「工具链与依赖版本基线」表登记 2026-10-13 审计结论——npm 侧除刻意推迟的 `@types/node`(^22→26.6.5) 与 `tailwindcss`(3.4.19→4.3.3) 外无落后项，Go 侧除 `modernc.org/sqlite`(v1.14.0→v1.60.1，待专项) 外全部为当前版本，上游 Go 已到 go1.27.2 但 `go` 指令是下限而非 pin 故不抬。文档版本引用（根 README / FVCC README / BUILD / API_CONTRACT）同步至 1.6.6 / 1.3.1。详见 §二十二。
 >
 > **现状快照（2026-10-13 第二十九轮，文档对齐）**：**无代码/版本变更**，当时当前版本 **v1.6.5**（现已被 v1.6.6 取代）。第二十八轮交付后 1.6.0/1.6.4/1.6.5 三版未回写叙述性长台账，本轮把 9 份文档基线统一至 **FVCC v1.6.5 / FVCS v1.3.0**：`项目现状与开发步骤`、`混乱度评价报告`（**第十一版，2.4→2.3**，九维度维持、仅两条硬证据下调）、`项目分析与改进方向`（**第八次回写**）、`UI设计优化方向`（新增 §7.7 记 1.6.x 视觉线）、`TASK_REFERENCE`（**第十版**，登记批次编号族与"1.6.1~1.6.3 未入库"最高易错点）、根/FVCC 两份 `SECURITY`（口径无漂移，仅追加复核并区分"版本治理 ≠ 数据面安全"）、`DESIGN.md`（新增热路径与状态反馈惯例）、`STORE_PERSISTENCE_ROADMAP`（前端入口仍未完成）。规模实测：internal 12 包 / Go 110 个 .go（58 实现 17,197 + 52 测试 9,183）/ TS 33 文件 11,474 行；覆盖率本轮未重跑（沿用第二十六轮 60.7%）。附带纠正：`FVCC/README.md` 曾把该批次写成"1.6.1 ~ 1.6.4 版本线"，实为交付 **1.6.4**（代码注释里的 `v1.6.1-A*`/`v1.6.2-B*/C*`/`v1.6.3 修复` 是开发期本地中间 bump 编号，从未入库）。详见 §二十一。
@@ -59,10 +60,10 @@
 
 ## 四、关键验证结果（最新基线）
 
-1. `cd FVCC\server && go build ./...` / `go vet ./...` / `go test ./...` —— ✅ 通过（**最新基线 1.6.7 全量复绿**，2026-10-13 第三十二轮 sqlite 专项后于 2026-10-14 复跑，宿主 14 包全绿 + Linux 交叉编译；历史口径：1.6.6/1.6.5 第二十八~三十轮、1.5.12 全量复绿（第二十四轮）、1.5.3 批次 go vet / go test 11 包全绿）
+1. `cd FVCC\server && go build ./...` / `go vet ./...` / `go test ./...` —— ✅ 通过（**最新基线 1.6.8 全量复绿**，2026-10-14 第三十四轮 Tailwind 4 专项复跑——该轮零后端改动，`go build`/`go vet` 干净、`go test ./... -count=1` 14 包全绿；历史口径：1.6.7 sqlite 专项后于 2026-10-14 复绿、1.6.6/1.6.5 第二十八~三十轮、1.5.12 全量复绿（第二十四轮）、1.5.3 批次 go vet / go test 11 包全绿）
 2. 覆盖率门禁：全包口径 56.7% → 59.0% → **60.7%**（check-coverage.ps1 口径修复 `'.'`→`'./...'` 后实测；阈值演进 55%→**60%**，2026-10-12 第二十六轮 P3-7 关闭，60.7% ≥ 60% PASS。**第二十八/二十九两轮未重跑覆盖率**，引用值均为第二十六轮实测）
-3. 前端：`tsc --noEmit` / `npm run build`（tsc + check:design + vite）—— ✅ 通过（2026-10-13 第二十八轮 `npm run build` 全绿，48 模块，产物 `FVCC/app/ui/`）
-4. 版本校验：`scripts\check-versions.ps1` —— ✅ 退出码 0（manifest / package.json / VERSION 三处一致 = **1.6.7**，2026-10-13 第三十二轮 bump 后实测、第三十三轮（Node 26 批次，未再 bump）复跑确认；配套 FVCS v1.3.1，其两处真源（`pkg/version/VERSION` + `version_test.go` 断言字面量）已由 `go test ./pkg/version` 校绿。脚本仓库根由 `$PSScriptRoot` 推导、支持 `-RepoRoot` 覆盖；`internal/version/version_test.go` 在 Windows 本机真跑，反例改坏 manifest 即判红。历史：1.6.5 / 1.5.12 / FVCS v1.2.6 口径见第二十四~二十八轮）
+3. 前端：`tsc --noEmit` / `npm run build`（tsc + check:design + vite）—— ✅ 通过（**最新基线 1.6.8**，2026-10-14 第三十四轮 Tailwind 4 迁移后复跑：`check:design` 33 文件无违规 → `tsc -b` → `vite build` 48 模块 / 908 ms，产物 `../app/ui/assets/index-By6Fdeqj.css` 49.95 kB（gzip 9.78 kB）；配套 `npm audit` **found 0 vulnerabilities**、`npm outdated` 空输出。历史：1.6.5 及以前 CSS 为 42.78 kB / gzip 10.00 kB）
+4. 版本校验：`scripts\check-versions.ps1` —— ✅ 退出码 0（manifest / package.json / VERSION 三处一致 = **1.6.8**，2026-10-14 第三十四轮 bump 后实测；另注意 `ui-src/package-lock.json` 的根 `version` 不随手工 bump 跟进、也不在校验范围内，需 `npm install --package-lock-only` 同步，已写入 BUILD.md 版本同步清单注释。配套 FVCS v1.3.1，其两处真源（`pkg/version/VERSION` + `version_test.go` 断言字面量）已由 `go test ./pkg/version` 校绿。脚本仓库根由 `$PSScriptRoot` 推导、支持 `-RepoRoot` 覆盖；`internal/version/version_test.go` 在 Windows 本机真跑，反例改坏 manifest 即判红。历史：1.6.7 / 1.6.5 / 1.5.12 / FVCS v1.2.6 口径见第二十四~三十三轮）
 5. 早期轮次专项验证（WSS 双端单测、trace ID 注入、回收站/审计单测、并发/fuzz）见 §五 对应轮次摘要
 
 ## 五、历史轮次摘要（原 §六~§十四 压缩）
@@ -803,3 +804,95 @@ Node 26 升级是第三十轮挂账的"刻意推迟项"。本轮做它是因为*
 **入库与发布后记（2026-10-14）**：第三十一~三十三轮的改动按四个逻辑批次提交并推送 `fork/baseline-snapshot`——`923a8b3` build(toolchain)（GOTOOLCHAIN 统一 auto + 删失效探测项）/ `3bb1772` chore(deps)（sqlite v1.60.1 + Node 26 四处口径 + 三真源 bump 1.6.7）/ `246e905` docs(alignment)（§二十三/§二十四 + 13 份文档基线）/ `4154d31` docs(ledger)（三处长台账"未提交"表述随入库修正）。提交前复跑门禁：`go vet` 干净、`go test ./...` 14 包全绿、覆盖率 60.7%（阈值 60）PASS、`GOOS=linux CGO_ENABLED=0` 出 ELF、`npm ci` + `npm run build` 绿、`check-versions.ps1` 四方一致。经用户批准在 `4154d31` 打**注解 tag `v1.6.7`**（tag 对象 `fd5b04e`）并推送。
 
 两笔如实记下的未验证面：① `baseline-snapshot` 的推送**不触发 CI**（`.github/workflows/fvcc-ci.yml` 仅对 `main` 的 push/PR 生效），所以本轮改的 `node-version: '26'` 与 `-race` 覆盖率门禁要到向 `main` 提 PR 时才第一次真跑；② `-race` 本机跑不了（需 CGO），故新 SQLite 驱动的并发行为（`database is locked`、WAL 下读写并发）目前只有单测与非 race 全量绿作为依据。另：`FVCC/.commandcode/` 仍未处置（未入库也未 ignore），v1.6.7 真机 6 点清单的逐项结果待回收。
+
+---
+
+## 二十五、第三十四轮（2026-10-14）：Tailwind CSS 4 大版本专项（3.4.19 → 4.3.3）+ v1.6.8 出包
+
+### 25.1 背景与决策
+
+这是 2026-10 依赖刷新主题的**最后一个余项**，也是 `npm audit` 那 7 条告警（2 moderate / 5 high，全部挂在 tailwindcss 3 的传递链上）的唯一修复路径。第三十二~三十三轮把它单列出来是因为它不是"改个版本号"：v4 是 **CSS-first 配置**，`tailwind.config.js` 的 token 映射、暗色策略、扫描面、`@apply` 语义、透明度写法全都变，直接触碰 `FVCC/docs/DESIGN.md` 契约的令牌层，属专项工程。
+
+执行前与用户对齐了**五道门禁**（①依赖+postcss 接线 ②config token 迁 CSS-first + 暗色变体 + 透明度修饰符 ③改名/语义漂移工具类对齐 + check-design 同步 + @source 边界 ④构建全绿 + 真机视觉对照 ⑤文档令牌映射回写 + bump + 出包），并约定按"同主题批次最后统一入库"的习惯走：**逐门禁不提交**，全部做完再一次性收口台账、bump、打包。用户随后判定"直接走 5 打包新版 FPK，我在 NAS 上实测"，故门禁④的清单起草并入交付环节，真机对照由用户执行。
+
+### 25.2 门禁①：依赖与 PostCSS 接线
+
+- `package.json`：`tailwindcss` `^3.4.17` → **`^4.3.3`**；新增 **`@tailwindcss/postcss: ^4.3.3`**（v4 把 PostCSS 插件拆成独立包）；**删除 `autoprefixer`**（v4 内建 Lightning CSS 负责加前缀）。
+- `postcss.config.js` 重写为只挂 `@tailwindcss/postcss` 一个插件。
+- 探路时踩到 v4 的第一处结构变化：`npx tailwindcss` 报"could not determine executable"——v4 的 CLI 是另一个包 `@tailwindcss/cli`，本项目走 Vite/PostCSS 路径不需要它；改用小范围 PostCSS API 探针直接跑编译来验证接线。
+
+### 25.3 门禁②：CSS-first token 迁移（`<alpha-value>` 是本轮最大的坑）
+
+初版迁移保留 v3 的映射形状 `--color-x: rgb(var(--c-x) / <alpha-value>)`，编译产物里出现 **`rgb(var(--c-preview-bg) / <alpha-value>)` 字面量泄漏**——v4 不做 `<alpha-value>` 占位替换，它原样进 CSS。根因是 v4 的机制变了：注册色必须是**完整颜色**，`/NN` 透明度由编译期展开成 `color-mix(in oklab, X N%, transparent)`（并包一层 `@supports (color: color-mix(…))`，不支持时回落满不透明）。
+
+因此：
+
+- `tailwind.config.js` **整文件删除**（`git rm`），token 映射迁到 `src/style.css` 头部的 `@theme inline` 块，共 **38 条 `--color-*`** 注册（`inline` 让工具类直接引用 `--c-*`，运行时主题覆写照常穿透）。
+- `:root` 与 `[data-theme="dark"]` 两套共 **76 条 `--c-*` 定义**（38 个令牌名）：其中 74 条由裸 RGB 通道（`37 99 235`）改为完整颜色（`rgb(37 99 235)`），另 `--c-log-bg` 明暗各一条本就是 rgba 完整色、直接透传。
+- 手写 CSS 侧同步 `rgb(var(--c-x))` → `var(--c-x)`；需要透明度的用 `color-mix()`，例如 `.task-selected` 的选中内描边改为 `color-mix(in oklab, var(--c-primary) 55%, transparent)`。`src/ui.ts` 里一处内联样式标题色同样去 `rgb(var(...))` 包装。
+- 暗色机制：`@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *))`，`theme.ts` 的 `data-theme` 切换逻辑零改动。
+- 曾试过 `@config` 桥接 v3 配置文件，被否——它只是把债务往后推，且 v4 的 `@apply`/变体语义仍会变；一次性迁到 CSS-first 才是契约里认的形态。
+
+### 25.4 门禁③：改名与语义漂移对齐、门禁脚本同步、扫描面锁定
+
+逐项核查 v4 的破坏性变更清单，判定"暴露 / 不暴露"后再动手：
+
+| v4 变更 | 本项目暴露情况 | 处置 |
+|---|---|---|
+| `shadow-sm` → `shadow-xs`、`shadow` → `shadow-sm` | 暴露（存在 `shadow-sm` 用法） | 类名改 `shadow-xs`；`check-design` 的 R3 正则同步扩到 `xs\|sm\|md` |
+| `outline-none` 语义变为真去描边，v3 行为改名 `outline-hidden` | 暴露（**4 处**焦点环：`.btn` / `.input` / `.checkbox` / 编辑器页签） | 4 处改 `focus:-outline-hidden`，保留 forced-colors 下的 2px 透明描边，无障碍行为不变 |
+| 裸 `ring` 由 3px 变、默认色变 currentColor | 不暴露（全仓 `ring-*` 均带显式宽度与颜色） | 不动 |
+| `space-y-*` / `divide-y-*` 移入 `:where()` 零特异性 + `margin-block` | 不暴露（无依赖特异性的覆写） | 不动 |
+| `transition-transform` 展开为 `transform,translate,scale,rotate` | 无行为差异 | 不动 |
+| preflight 移除 `button,[role=button]{cursor:pointer}` | **暴露**（94 处按钮） | 见 25.5 产品裁决 |
+| `hover:` 变体包进 `@media (hover:hover)` | 暴露（触屏不再残留悬停态） | 接受 |
+| 默认边框色 / placeholder 色改 currentColor 系 | 不暴露（用法均带显式 token 类） | 不动 |
+| `--spacing: .25rem` 基准，间距数值与 v3 一致 | 无差异 | 不动（实测对齐） |
+
+门禁脚本 `scripts/check-design.mjs` 三处改动：
+
+1. **修复一个真实缺陷**：`stripComments` 原来把多行块注释整体压成一行，导致行号错位——`--ansi-*` 豁免是按行索引判断的，v1.6.8 里 `style.css` 头部注释变多后暴露（v3 期注释是单行所以潜伏未发）。改为把注释字符替换成同数量空格并保留 `\n`。
+2. R1 的修复提示文案改为"style.css `@theme` 注册的 token 类"。
+3. **新增 `TW4-token-form` 规则**：命中 `<alpha-value>` 或 `rgb(var(--c-` 即失败，防止 v3 令牌写法回潮。命名刻意不叫 `R6-…`——契约的 Named Rule R6 是 Dialog Semantics，避免两个 R6 撞名。
+
+扫描面：v4 默认自动源探测把 `scripts/check-design.mjs` 注释里的 `shadow-sm` 字样当真用法编进了产物（多出一条 `.shadow-sm` 规则）。改为 `@import "tailwindcss" source(none)` + 显式 `@source "../index.html"` 与 `@source "./**/*.{ts,js,html}"`，等价于 v3 的 `content` 域。
+
+### 25.5 一处产品裁决：按钮的 `cursor: pointer`
+
+v4 preflight 不再给 `button` / `[role=button]` 加 `cursor: pointer`，意味着 FVCC 94 处按钮悬停不再变手型。这是"改一行 `@layer base` 就能恢复"的事，但属产品观感决策，故提请用户裁决——**用户判定"接受 v4 新默认"**，不做覆写。该裁决同时写进 `DESIGN.md` 的 v1.6.8 复核条目与本轮真机核对清单，避免后续被当成迁移漏洞"顺手修回来"。
+
+### 25.6 门禁④：迁移保真校验（构建产物层面）
+
+方法是**拿 v3 基线 CSS 产物与 v4 产物做规则级比对**，而不是只看构建是否绿：
+
+- 抽出两边全部类 token 共 **388** 个逐项对齐：**v3 有 / v4 无 = 0**（收紧 `@source` 之前曾出现真实缺失，定位即扫描面 scope creep）。
+- **22** 个不同的 `/NN` 透明度修饰符类在 v4 产物中全部存在（含带前缀变体形式），`color-mix` 出现 **52** 处，`<alpha-value>` 泄漏 **0** 处，`forced-colors` 规则 **4** 处。
+- 体积：CSS 原始 **42,782 → 49,956 B**（v4 展开 `@supports` 兜底与 `color-mix` 包裹），**gzip 10.00 → 9.78 kB**（Lightning CSS 压缩更狠，净变小）。
+- 过程中若干次"疑似回归"逐一证伪：`@types/node` 探针的"22 个淡色类缺失"是 JSON 双反斜杠与变体选择器（`.active\:brightness-90`、`:where(.group)`）显示造成的误读；`.select` 的 `@apply appearance-none` 被内联；两次比对用 `matchAll` 取代 `t.match`。
+
+### 25.7 门禁⑤：文档回写、版本 bump 与出包
+
+- 三真源 bump **1.6.7 → 1.6.8**（`FVCC/manifest` / `ui-src/package.json` / `server/internal/version/VERSION`），`scripts/check-versions.ps1` 绿。
+- **新发现的一处漂移**：`ui-src/package-lock.json` 的根 `version` 字段手工 bump `package.json` 时不会跟进，实测漂留在 1.6.7，且 `check-versions.ps1` 不覆盖它。用 `npm install --package-lock-only`（只刷元数据、不动 `node_modules`）同步，并把这条写进 BUILD.md 的版本同步清单注释，作为第四处提醒。
+- 文档回写 **9 份**：`FVCC/docs/DESIGN.md`（frontmatter `colors:` 块改 v4 形态 + 新增 v1.6.8 复核条目 + R1/R10 文案 + `TW4` 门禁口径）、根 `BUILD.md`（依赖基线表两行 + 新增「Tailwind 4 样式链接线」小节 + 版本同步清单）、根 `README.md` 与 `FVCC/README.md`（版本指针 + 1.6.8 版本线行）、`docs/IMPROVEMENT_LOG.md`（本节 + 现状快照）、`docs/FVCC_UI设计优化方向.md`（五复核 + §1.1/§1.2 令牌载体口径）、`docs/FVCC_项目现状与开发步骤.md`（v1.6.8 基线段 + 目录树删 `tailwind.config.js` + 技术栈样式行 + 证据索引复核记录）、`docs/FVCC_混乱度评价报告_细化版.md`（**第十三版**，评分维持 2.3）、`docs/项目分析与改进方向.md`（**第十次回写**）、`docs/SECURITY.md` / `docs/TASK_REFERENCE.md` / `FVCC/docs/API_CONTRACT.md` / `WebVideoEditor_Design/02-前端架构与时间线编辑器设计.md`（版本指针与"未引入新任务编号 / 无新依赖来源"口径）。
+- `build.ps1 -Target FVCC` 输出 **Packing successfully**，`FVCC/fvcc.fpk` = **11,013,500 B**（v1.6.7 为 11,011,826 B，+1,674 B）。解包核验：包内 manifest `1.6.8`、`manifest.checksum == md5(app.tgz)`、包内 `ui/assets/index-By6Fdeqj.css` 49,956 B 且 banner `tailwindcss v4.3.3`、无 `<alpha-value>` 残留、无 `.shadow-sm`；二进制 `app/fvcc` 27,414,688 B 与 v1.6.7 **逐字节同尺寸**（零后端改动），内含版本串 `1.6.8`×1、`1.6.4/1.6.5/1.6.6/1.6.7`×0。
+
+### 25.8 验证（本轮亲跑，非沿用）
+
+- `npm run build` 绿：`check:design`（33 文件，无违规）→ `tsc -b` → `vite build`（48 模块，908 ms），产物 `index-By6Fdeqj.css` 49.95 kB / gzip 9.78 kB、`index-CIDB_L2E.js` 205.82 kB。
+- **`npm audit`：`found 0 vulnerabilities`**——第三十三轮登记的 7 条告警（2 moderate / 5 high）随 tailwindcss 3 传递链整体移除而清零。
+- **`npm outdated`：空输出**——依赖刷新主题无落后项。
+- `cd FVCC/server`：`go build ./...` 与 `go vet ./...` 干净；`go test ./... -count=1` **14 包全绿**（api / edl / media / node / pathutil / protocol / remote / scheduler / security / store / store/model / version / logger / smbshare，`fvcc` 与 `internal/ws` 无测试文件），store 包 21.955 s 最长。
+- `scripts/check-versions.ps1` 绿：三方 1.6.8 一致 + go.mod `go 1.27.1`。
+
+### 25.9 本轮已知未做与未验证面（如实登记）
+
+- **未验证面（关键）**：NAS 真机视觉对照。构建产物层面的保真已逐项核验，但**渲染观感必须真机**——① 低透明度 `color-mix(in oklab)` 淡色（`bg-primary/5`、`/15`、进度条纹）与 v3 sRGB 插值的色差；② 94 处按钮失去 `cursor: pointer` 的可点感（已裁决接受，但需确认不影响操作直觉）；③ `hover:` 受 `@media (hover:hover)` 门控后触屏不再有悬停态；④ forced-colors 模式下焦点环可见性（`outline-hidden` 的透明描边）；⑤ 明/暗两套主题整体走查、时间线 clip 数据色、拖拽落点线、滚动条、ANSI 日志面板。核对清单随批交付，**用户实测中**。
+- 零后端改动，故代码规模与覆盖率沿用 2026-10-14 复测口径（Go 110 个 .go / TS 33 文件 11,474 行 / 60.7%）不变，本轮未重跑覆盖率。
+- 渲染 Failed→ERROR / Cancelled→CANCELLED 终态分支仍无自然复现，沿用"遇真实失败顺带验证"口径。
+- 与本轮无关的既有挂账不变：`FVCC/.commandcode/` 处置（仍未入库也未 ignore）、store 备份/恢复前端入口、任务页 Filter Chips 与 `?fx=` 实验动画、其余页面骨架迁 `listSkeleton`、e2e B 档 #7/#9、P3-6/P3-8。
+- `baseline-snapshot` 推送不触发 CI 这条限制依旧成立：v4 的构建路径要到向 `main` 提 PR 时才第一次在 CI 上真跑（本机 `npm ci` + `npm run build` 已绿作为替代证据）。
+
+### 25.10 入库与发布后记
+
+（待用户批准提交/push/tag 后回填。）

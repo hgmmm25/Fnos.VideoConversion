@@ -5,9 +5,10 @@
  * 规则：
  *  R1 禁止硬编码 hex（src/style.css 的 --ansi-* 声明为登记豁免）
  *  R2 禁止 Tailwind 原色板（slate/blue/red/... 带数字色阶）
- *  R3 禁止默认态阴影（shadow-sm/md/lg/shadow；shadow-xl 仅限弹层，允许）
+ *  R3 禁止默认态阴影（shadow-xs/sm/md/shadow；shadow-xl 仅限弹层，允许）
  *  R4 禁止 <12px 文字（text-[Npx]，N<12）
  *  R5 禁止 max-height 过渡（transition/animation/keyframes 使用 max-height）
+ *  TW4 禁止 v3 遗留令牌写法（<alpha-value> / rgb(var(--c-*))，详见规则内注释）
  *
  * 范围（增量优先，避免存量一次性大量告警）：
  *  --all                全量扫描 src/ 下全部 .ts/.tsx/.css/.html
@@ -93,13 +94,15 @@ function gitChanged() {
   }
 }
 
-/** 剥离注释：// 、/* *​/ （CSS/TS）、<!-- --> （HTML）。返回行 -> 去注释后文本 */
+/** 剥离注释：// 、/* *​/ （CSS/TS）、<!-- --> （HTML）。返回行 -> 去注释后文本。
+ *  注意：替换时保留注释内的换行，否则行号与原始文件错位，
+ *  会破坏依赖行号对齐的豁免逻辑（如 style.css 的 --ansi-* 登记豁免）。 */
 function stripComments(text) {
   // 块注释（CSS/TS/HTML）与行注释（//，忽略 http:// 等）
   return text
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|[^:"'`])\/\/[^\n]*/g, '$1')
+    .replace(/<!--[\s\S]*?-->/g, (c) => c.replace(/[^\n]/g, ' '))
+    .replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:"'`\n])\/\/[^\n]*/g, '$1')
 }
 
 const rules = []
@@ -109,7 +112,7 @@ function reg(name, re, fix) {
 }
 
 // R1 hex（.css 中 --ansi- 声明行豁免；ID 选择器形态 #letter... 豁免）
-reg('R1-hex', /#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])/g, '改用 --c-* 令牌 / tailwind token 类；日志 ANSI 语义色仅允许在 style.css 的 --ansi-* 声明中登记')
+reg('R1-hex', /#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])/g, '改用 --c-* 令牌 / style.css @theme 注册的 token 类；日志 ANSI 语义色仅允许在 style.css 的 --ansi-* 声明中登记')
 
 // R2 Tailwind 原色板（token 色 primary/accent/danger/... 不在列表中；bg-black/white 中性允许）
 reg(
@@ -118,16 +121,23 @@ reg(
   '改用 --c-* 令牌映射类（primary/signal/success/danger/warning/neutral/ink/...）'
 )
 
-// R3 默认态阴影（shadow / shadow-sm / shadow-md；shadow-lg/xl 仅限弹层/抽屉等浮动层，允许）
+// R3 默认态阴影（shadow / shadow-xs / shadow-sm / shadow-md；shadow-lg/xl 仅限弹层/抽屉等浮动层，允许）
+// Tailwind 4 色阶改名：v3 的 shadow-sm → v4 的 shadow-xs，v3 的 shadow → v4 的 shadow-sm，
+// 两代名字都要拦住，否则改名后同一份"默认态阴影"会漏网。
 // 前缀排除 - 与 :：CSS 属性 box-shadow（如 .task-selected 选中态 inset 阴影，v1.6.1 方案 §2.3
 // 裁决不触 R3）不是 Tailwind 阴影类，不应命中
-reg('R3-default-shadow', /(?<![-:\w])shadow(?:-(?:sm|md))?(?!-|[\w])/g, '默认态无阴影（明度分层代替）；仅弹层/抽屉可保留 shadow-lg/shadow-xl')
+reg('R3-default-shadow', /(?<![-:\w])shadow(?:-(?:xs|sm|md))?(?!-|[\w])/g, '默认态无阴影（明度分层代替）；仅弹层/抽屉可保留 shadow-lg/shadow-xl')
 
 // R4 <12px 文字
 reg('R4-small-text', /text-\[(\d+(?:\.\d+)?)px\]/g, '禁止 <12px 文字：改 text-xs（12px）或更大的字阶')
 
 // R5 max-height 过渡（transition/animation 使用 max-height；keyframes 内 max-height）
 reg('R5-maxheight-transition', /(?:transition|animation)\s*:[^;}]{0,80}max-height|max-height[^;}]{0,80}(?:transition|animation)|@keyframes[^{}]*\{[^{}]*max-height[^{}]*\}/g, '动画只动 transform/opacity；展开收起用 grid-template-rows 0fr→1fr 或 transform')
+
+// TW4 令牌写法回退防护：--c-* 是完整颜色（rgb(...)），用法只能是 var(--c-*)。
+//  v3 时代的裸通道写法在 v4 下会静默失效：<alpha-value> 占位符不再被替换（原样泄漏进产物），
+//  rgb(var(--c-*) / N) 则因 rgb() 不接受颜色值而整条声明作废（透明度需交给 /NN 修饰符）。
+reg('TW4-token-form', /<alpha-value>|rgb\(\s*var\(--c-/g, 'Tailwind 4 口径：令牌为完整颜色，用 var(--c-*)；透明度交给类名 /NN 修饰符（编译期 color-mix），不要写 <alpha-value> 或 rgb(var(--c-*))')
 
 const isCss = (p) => p.endsWith('.css')
 

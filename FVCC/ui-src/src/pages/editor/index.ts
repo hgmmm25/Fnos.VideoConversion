@@ -113,7 +113,7 @@ export async function renderProjectPicker(root: HTMLElement) {
       class:
         'h-9 w-32 focus:w-72 max-w-[60vw] px-3 text-sm rounded border border-line ' +
         'bg-surface text-ink placeholder-ink-muted ' +
-        'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary ' +
+        'focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:border-primary ' +
         'transition-[width] duration-300 ease-out-strong',
       placeholder: '新项目名称',
       maxlength: '64',

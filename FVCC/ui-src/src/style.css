@@ -1,59 +1,130 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* 扫描面显式锁定（v3 tailwind.config content 同域）：v4 默认的自动源探测会把
+   scripts/*.mjs、vite.config.ts 里的类名字样当用法编进产物（实测多出 .shadow-sm），
+   故关自动 + 只喂 index.html 与 src 下的源文件。 */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "./**/*.{ts,js,html}";
+
+/* Tailwind 4 CSS-first token 注册（自 v3 tailwind.config.js 迁移）：
+   CSS 变量（--c-* 等）仍是单一真源，本块仅声明「变量 → 工具类」映射。
+   inline 使工具类直接引用 --c-*，运行时主题覆写照常穿透；
+   --c-* 为完整 rgb() 颜色，/NN 透明度修饰符由 v4 编译期 color-mix 处理。
+   暗色机制 = documentElement 上的 data-theme="dark" 属性（见 src/theme.ts）。 */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-primary: var(--c-primary);
+  --color-primary-hover: var(--c-primary-hover);
+  --color-primary-soft: var(--c-primary-soft);
+  --color-primary-soft-text: var(--c-primary-soft-text);
+
+  --color-success: var(--c-success);
+  --color-success-soft: var(--c-success-soft);
+  --color-success-soft-text: var(--c-success-soft-text);
+
+  --color-danger: var(--c-danger);
+  --color-danger-hover: var(--c-danger-hover);
+  --color-danger-soft: var(--c-danger-soft);
+  --color-danger-soft-text: var(--c-danger-soft-text);
+
+  --color-warning: var(--c-warning);
+  --color-warning-soft: var(--c-warning-soft);
+  --color-warning-soft-text: var(--c-warning-soft-text);
+
+  --color-signal: var(--c-signal);
+  --color-signal-soft: var(--c-signal-soft);
+  --color-signal-soft-text: var(--c-signal-soft-text);
+
+  --color-neutral: var(--c-neutral);
+  --color-neutral-soft: var(--c-neutral-soft);
+  --color-neutral-soft-text: var(--c-neutral-soft-text);
+
+  --color-page: var(--c-page);
+  --color-surface: var(--c-surface);
+  --color-surface-hover: var(--c-surface-hover);
+  --color-surface-alt: var(--c-surface-alt);
+  --color-line: var(--c-line);
+  --color-line-subtle: var(--c-line-subtle);
+
+  --color-ink: var(--c-ink);
+  --color-ink-muted: var(--c-ink-muted);
+  --color-ink-subtle: var(--c-ink-subtle);
+
+  --color-drop-line: var(--c-drop-line);
+
+  --color-preview-ink: var(--c-preview-ink);
+  --color-preview-bg: var(--c-preview-bg);
+
+  /* --c-log-bg 为完整色值令牌（rgba 叠色），直接透传 */
+  --color-log-bg: var(--c-log-bg);
+
+  --color-clip-video: var(--c-clip-video);
+  --color-clip-audio: var(--c-clip-audio);
+  --color-clip-image: var(--c-clip-image);
+  --color-clip-text: var(--c-clip-text);
+  --color-clip-marker: var(--c-clip-marker);
+
+  --border-width-drop: var(--drop-line-width);
+
+  /* 缓动/字体：变量名与 :root 运行时定义同名，inline 下工具类值直接落为 var(--x) */
+  --ease-out-strong: var(--ease-out-strong);
+  --ease-in-out-strong: var(--ease-in-out-strong);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
 
 /* ===== 主题颜色变量（集中管理，便于未来扩展） ===== */
-/* 颜色以 RGB 通道值定义，配合 Tailwind <alpha-value> 支持透明度 */
+/* 颜色以完整 rgb() 值定义（v4 透明度修饰符经编译期 color-mix 处理） */
 /* 明亮主题（默认） */
 :root {
   /* V1.6-②：原生控件（select 弹层/滚动条/表单默认底）跟随亮色主题 */
   color-scheme: light;
 
   /* 主色 / 品牌（V1.6-① 方向A：主蓝降一档明度去刺眼，hover 同步下移） */
-  --c-primary: 37 99 235;            /* #2563eb */
-  --c-primary-hover: 29 78 216;      /* #1d4ed8 */
-  --c-primary-soft: 219 234 254;     /* #dbeafe */
-  --c-primary-soft-text: 29 78 216;  /* #1d4ed8 */
+  --c-primary: rgb(37 99 235);            /* #2563eb */
+  --c-primary-hover: rgb(29 78 216);      /* #1d4ed8 */
+  --c-primary-soft: rgb(219 234 254);     /* #dbeafe */
+  --c-primary-soft-text: rgb(29 78 216);  /* #1d4ed8 */
 
   /* 成功 */
-  --c-success: 34 197 94;            /* #22c55e */
-  --c-success-soft: 220 252 231;     /* #dcfce7 */
-  --c-success-soft-text: 21 128 61;  /* #15803d */
+  --c-success: rgb(34 197 94);            /* #22c55e */
+  --c-success-soft: rgb(220 252 231);     /* #dcfce7 */
+  --c-success-soft-text: rgb(21 128 61);  /* #15803d */
 
   /* 危险 */
-  --c-danger: 239 68 68;             /* #ef4444 */
-  --c-danger-hover: 220 38 38;       /* #dc2626 */
-  --c-danger-soft: 254 226 226;      /* #fee2e2 */
-  --c-danger-soft-text: 185 28 28;   /* #b91c1c */
+  --c-danger: rgb(239 68 68);             /* #ef4444 */
+  --c-danger-hover: rgb(220 38 38);       /* #dc2626 */
+  --c-danger-soft: rgb(254 226 226);      /* #fee2e2 */
+  --c-danger-soft-text: rgb(185 28 28);   /* #b91c1c */
 
   /* 警告 */
-  --c-warning: 245 158 11;           /* #f59e0b */
-  --c-warning-soft: 254 243 199;     /* #fef3c7 */
-  --c-warning-soft-text: 180 83 9;   /* #b45309 */
+  --c-warning: rgb(245 158 11);           /* #f59e0b */
+  --c-warning-soft: rgb(254 243 199);     /* #fef3c7 */
+  --c-warning-soft-text: rgb(180 83 9);   /* #b45309 */
 
   /* P1-1：信号色（进行中/活动态统一单一信号色） */
-  --c-signal: 99 102 241;            /* #6366f1 */
-  --c-signal-soft: 224 231 255;      /* #e0e7ff */
-  --c-signal-soft-text: 67 56 202;   /* #4338ca */
+  --c-signal: rgb(99 102 241);            /* #6366f1 */
+  --c-signal-soft: rgb(224 231 255);      /* #e0e7ff */
+  --c-signal-soft-text: rgb(67 56 202);   /* #4338ca */
 
   /* 中性状态（排队 / 暂停 / 取消）；P1-1：色相偏移至蓝灰 */
-  --c-neutral: 143 159 184;          /* #8f9fb8 */
-  --c-neutral-soft: 222 230 242;     /* #dee6f2 */
-  --c-neutral-soft-text: 66 82 106;  /* #42526a */
+  --c-neutral: rgb(143 159 184);          /* #8f9fb8 */
+  --c-neutral-soft: rgb(222 230 242);     /* #dee6f2 */
+  --c-neutral-soft-text: rgb(66 82 106);  /* #42526a */
 
   /* 表面 / 背景（P1-1：page 降一档明度、surface 纯白 —— 卡片以明度差而非描边/阴影区分） */
   /* V1.6-① 方向A：page 冷灰加深一档、内嵌面/悬停面拉开间距，hover 面偏蓝灰 */
-  --c-page: 240 243 249;             /* #f0f3f9 */
-  --c-surface: 255 255 255;          /* #ffffff */
-  --c-surface-hover: 236 242 250;    /* #ecf2fa */
-  --c-surface-alt: 248 250 253;      /* #f8fafd 内嵌面（明度介于 surface 与 page） */
-  --c-line: 215 224 238;             /* #d7e0ee */
-  --c-line-subtle: 236 242 250;      /* #ecf2fa */
+  --c-page: rgb(240 243 249);             /* #f0f3f9 */
+  --c-surface: rgb(255 255 255);          /* #ffffff */
+  --c-surface-hover: rgb(236 242 250);    /* #ecf2fa */
+  --c-surface-alt: rgb(248 250 253);      /* #f8fafd 内嵌面（明度介于 surface 与 page） */
+  --c-line: rgb(215 224 238);             /* #d7e0ee */
+  --c-line-subtle: rgb(236 242 250);      /* #ecf2fa */
 
   /* 文字（P1-1：ink 更深更蓝，muted 对比度 ≥4.5:1） */
-  --c-ink: 23 37 58;                 /* #17253a */
-  --c-ink-muted: 91 107 138;         /* #5b6b8a */
-  --c-ink-subtle: 100 116 139;       /* #64748b V1.6-⑤ V9: 2.73→4.76 达 AA（导航分组标签等 12px 文字） */
+  --c-ink: rgb(23 37 58);                 /* #17253a */
+  --c-ink-muted: rgb(91 107 138);         /* #5b6b8a */
+  --c-ink-subtle: rgb(100 116 139);       /* #64748b V1.6-⑤ V9: 2.73→4.76 达 AA（导航分组标签等 12px 文字） */
 
   /* P1-3：字体栈（IBM Plex 西文 + 系统中文字体回退） */
   --font-sans: 'IBM Plex Sans', -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
@@ -61,21 +132,21 @@
 
   /* P0-1：预览区恒定深底（亮/暗主题下保持一致，收敛为令牌，替代 layout.ts 硬编码 #000） */
   /* P1-5：预览底由纯黑 #0a0b0d 提为中位深阶 #0f1115，避免纯黑与整体层级割裂，仍保持恒定深色基调 */
-  --c-preview-bg: 15 17 21;          /* #0f1115 */
+  --c-preview-bg: rgb(15 17 21);          /* #0f1115 */
   /* P0-1：预览区深底上的辅助文字（preview.ts 空状态等） */
-  --c-preview-ink: 203 213 225;      /* #cbd5e1 */
+  --c-preview-ink: rgb(203 213 225);      /* #cbd5e1 */
 
   /* P1-5：时间线 clip 数据色（类型承载语义；与列表页状态色 signal/success/danger 彻底解耦） */
-  --c-clip-video: 66 133 244;        /* #4285f4 视频 */
-  --c-clip-audio: 38 166 91;         /* #26a65b 音频 */
-  --c-clip-image: 245 158 11;        /* #f59e0b 图像 */
-  --c-clip-text: 139 92 246;         /* #8b5cf6 文字 */
-  --c-clip-marker: 236 72 88;        /* #ec4858 标记 */
+  --c-clip-video: rgb(66 133 244);        /* #4285f4 视频 */
+  --c-clip-audio: rgb(38 166 91);         /* #26a65b 音频 */
+  --c-clip-image: rgb(245 158 11);        /* #f59e0b 图像 */
+  --c-clip-text: rgb(139 92 246);         /* #8b5cf6 文字 */
+  --c-clip-marker: rgb(236 72 88);        /* #ec4858 标记 */
 
   /* P0-1：日志面板背景（settings.ts 硬编码 rgba(0,0,0,0.03) 收敛） */
   --c-log-bg: rgba(0, 0, 0, 0.03);
   /* P0-1：拖拽落点指示线（tasks.ts border-t-2 硬编码 primary 收敛；线宽见 --drop-line-width） */
-  --c-drop-line: 37 99 235;          /* #2563eb */
+  --c-drop-line: rgb(37 99 235);          /* #2563eb */
 
   /* P0-3：缓动 token（动画类统一引用） */
   --ease-out-strong: cubic-bezier(0.16, 1, 0.3, 1);
@@ -96,60 +167,60 @@
   /* V1.6-②：select 弹层等原生 UI 跟随暗色主题 */
   color-scheme: dark;
 
-  --c-primary: 59 130 246;
-  --c-primary-hover: 37 99 235;
-  --c-primary-soft: 23 37 84;        /* #172554 */
-  --c-primary-soft-text: 147 197 253;/* #93c5fd */
+  --c-primary: rgb(59 130 246);
+  --c-primary-hover: rgb(37 99 235);
+  --c-primary-soft: rgb(23 37 84);        /* #172554 */
+  --c-primary-soft-text: rgb(147 197 253);/* #93c5fd */
 
-  --c-success: 34 197 94;
-  --c-success-soft: 20 83 45;        /* #14532d */
-  --c-success-soft-text: 134 239 172;/* #86efac */
+  --c-success: rgb(34 197 94);
+  --c-success-soft: rgb(20 83 45);        /* #14532d */
+  --c-success-soft-text: rgb(134 239 172);/* #86efac */
 
-  --c-danger: 239 68 68;
-  --c-danger-hover: 220 38 38;
-  --c-danger-soft: 69 10 10;         /* #450a0a */
-  --c-danger-soft-text: 252 165 165; /* #fca5a5 */
+  --c-danger: rgb(239 68 68);
+  --c-danger-hover: rgb(220 38 38);
+  --c-danger-soft: rgb(69 10 10);         /* #450a0a */
+  --c-danger-soft-text: rgb(252 165 165); /* #fca5a5 */
 
-  --c-warning: 245 158 11;
-  --c-warning-soft: 69 26 3;         /* #451a03 */
-  --c-warning-soft-text: 252 211 77; /* #fcd34d */
+  --c-warning: rgb(245 158 11);
+  --c-warning-soft: rgb(69 26 3);         /* #451a03 */
+  --c-warning-soft-text: rgb(252 211 77); /* #fcd34d */
 
-  --c-signal: 99 102 241;
-  --c-signal-soft: 49 46 129;        /* #312e81 */
-  --c-signal-soft-text: 165 180 252; /* #a5b4fc */
+  --c-signal: rgb(99 102 241);
+  --c-signal-soft: rgb(49 46 129);        /* #312e81 */
+  --c-signal-soft-text: rgb(165 180 252); /* #a5b4fc */
 
-  --c-neutral: 103 119 143;          /* #67778f */
-  --c-neutral-soft: 49 63 82;        /* #313f52 */
-  --c-neutral-soft-text: 196 208 222;/* #c4d0de */
+  --c-neutral: rgb(103 119 143);          /* #67778f */
+  --c-neutral-soft: rgb(49 63 82);        /* #313f52 */
+  --c-neutral-soft-text: rgb(196 208 222);/* #c4d0de */
 
   /* V1.6-① 方向A：page 加深一档、surface 提亮，卡片与背景的明度层级拉开；内嵌面介于两者之间 */
-  --c-page: 11 17 32;                /* #0b1120 */
-  --c-surface: 32 44 66;             /* #202c42 */
-  --c-surface-hover: 44 58 82;       /* #2c3a52 */
-  --c-surface-alt: 26 36 54;         /* #1a2436（内嵌面略深于 surface） */
-  --c-line: 52 66 88;                /* #344258 */
-  --c-line-subtle: 45 58 79;         /* #2d3a4f */
+  --c-page: rgb(11 17 32);                /* #0b1120 */
+  --c-surface: rgb(32 44 66);             /* #202c42 */
+  --c-surface-hover: rgb(44 58 82);       /* #2c3a52 */
+  --c-surface-alt: rgb(26 36 54);         /* #1a2436（内嵌面略深于 surface） */
+  --c-line: rgb(52 66 88);                /* #344258 */
+  --c-line-subtle: rgb(45 58 79);         /* #2d3a4f */
 
-  --c-ink: 244 248 252;              /* #f4f8fc */
-  --c-ink-muted: 196 208 222;        /* #c4d0de */
+  --c-ink: rgb(244 248 252);              /* #f4f8fc */
+  --c-ink-muted: rgb(196 208 222);        /* #c4d0de */
   /* V1.6-① 方向A：subtle 文字略提亮，深底上可达 ≥4.5:1 */
-  --c-ink-subtle: 138 152 176;       /* #8a98b0 V1.6-⑤ V9: 4.04→4.80 达 AA */
+  --c-ink-subtle: rgb(138 152 176);       /* #8a98b0 V1.6-⑤ V9: 4.04→4.80 达 AA */
 
   /* P0-1：暗色下预览区保持深底，辅助文字沿用亮灰 */
-  --c-preview-bg: 15 17 21;
-  --c-preview-ink: 203 213 225;
+  --c-preview-bg: rgb(15 17 21);
+  --c-preview-ink: rgb(203 213 225);
 
   /* P1-5：暗色下 clip 数据色提亮（深底对比 ≥3:1），色相与亮色一致 */
-  --c-clip-video: 96 165 250;        /* #60a5fa 视频 */
-  --c-clip-audio: 74 222 128;        /* #4ade80 音频 */
-  --c-clip-image: 251 191 36;        /* #fbbf24 图像 */
-  --c-clip-text: 167 139 250;        /* #a78bfa 文字 */
-  --c-clip-marker: 251 113 133;      /* #fb7185 标记 */
+  --c-clip-video: rgb(96 165 250);        /* #60a5fa 视频 */
+  --c-clip-audio: rgb(74 222 128);        /* #4ade80 音频 */
+  --c-clip-image: rgb(251 191 36);        /* #fbbf24 图像 */
+  --c-clip-text: rgb(167 139 250);        /* #a78bfa 文字 */
+  --c-clip-marker: rgb(251 113 133);      /* #fb7185 标记 */
 
   /* P0-1：暗色下日志面板底色改为白色低透明度叠加 */
   --c-log-bg: rgba(255, 255, 255, 0.04);
   /* P0-1：暗色下拖拽落点线用亮蓝，保证在深色面板上可见 */
-  --c-drop-line: 96 165 250;         /* #60a5fa */
+  --c-drop-line: rgb(96 165 250);         /* #60a5fa */
 
   /* P0-1：暗色下 ANSI 语义色柔和化（黑/白及高亮色避免刺眼且保持可读） */
   --ansi-fg-30: #94a3b8;  --ansi-fg-31: #f87171;  --ansi-fg-32: #4ade80;
@@ -173,7 +244,7 @@
            bg-surface-hover hover:bg-neutral-soft active:bg-neutral
            text-ink-muted hover:text-ink
            transition-colors
-           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface
+           focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-surface
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
@@ -194,7 +265,7 @@
   .input {
     @apply w-full px-3 py-1.5 text-sm rounded border border-line
            bg-surface text-ink placeholder-ink-muted
-           focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
+           focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:border-primary;
   }
   /* P1-2：卡片以明度分层（page→surface）代替描边+阴影；浮动层（弹窗/抽屉）才保留阴影 */
   .card {
@@ -203,8 +274,8 @@
   /* v1.6.1-A4：任务卡选中态 —— inset ring + 左侧 3px primary 指示线（仅选中态，
      非默认态阴影，不触 R3）；线色覆写见下方非分层规则 */
   .task-selected {
-    box-shadow: inset 0 0 0 1px rgb(var(--c-primary) / 0.55),
-      inset 3px 0 0 0 rgb(var(--c-primary));
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c-primary) 55%, transparent),
+      inset 3px 0 0 0 var(--c-primary);
   }
   .badge {
     @apply inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium;
@@ -217,18 +288,18 @@
     background-color: transparent;
   }
   .btn-ghost:hover {
-    background-color: rgb(var(--c-surface-hover));
+    background-color: var(--c-surface-hover);
   }
   .btn-danger-ghost {
     background-color: transparent;
-    color: rgb(var(--c-danger));
+    color: var(--c-danger);
   }
   .btn-danger-ghost:hover {
-    background-color: rgb(var(--c-danger-soft));
-    color: rgb(var(--c-danger-soft-text));
+    background-color: var(--c-danger-soft);
+    color: var(--c-danger-soft-text);
   }
   .btn-danger-ghost:active {
-    background-color: rgb(var(--c-danger-soft));
+    background-color: var(--c-danger-soft);
     filter: brightness(0.96);
   }
 
@@ -254,17 +325,17 @@
     @apply inline-block align-middle shrink-0 cursor-pointer rounded;
     width: 1rem;
     height: 1rem;
-    border: 1px solid rgb(var(--c-line));
-    background-color: rgb(var(--c-surface));
+    border: 1px solid var(--c-line);
+    background-color: var(--c-surface);
     transition: background-color 0.15s, border-color 0.15s;
   }
   .checkbox:hover {
-    border-color: rgb(var(--c-primary));
+    border-color: var(--c-primary);
   }
   .checkbox:checked,
   .checkbox:indeterminate {
-    background-color: rgb(var(--c-primary));
-    border-color: rgb(var(--c-primary));
+    background-color: var(--c-primary);
+    border-color: var(--c-primary);
     background-repeat: no-repeat;
     background-position: center;
   }
@@ -277,7 +348,7 @@
     background-size: 0.7rem;
   }
   .checkbox:focus-visible {
-    @apply outline-none ring-2 ring-primary/40;
+    @apply outline-hidden ring-2 ring-primary/40;
   }
   .checkbox:disabled {
     @apply opacity-50 cursor-not-allowed;
@@ -301,14 +372,14 @@
     @apply bg-primary text-white;
   }
   [data-theme="dark"] .chip-active {
-    background-color: rgb(var(--c-primary-hover));
+    background-color: var(--c-primary-hover);
   }
   /* 与 .btn 组合时（如任务页全选态）：等权选择器置于 .btn 之后，稳定压过其 hover 底色 */
   .btn.chip-active {
-    background-color: rgb(var(--c-primary));
+    background-color: var(--c-primary);
   }
   [data-theme="dark"] .btn.chip-active {
-    background-color: rgb(var(--c-primary-hover));
+    background-color: var(--c-primary-hover);
   }
 }
 
@@ -388,7 +459,7 @@
 /* v1.6.1-A5：活动卡左线默认走 border-l-signal 工具类；选中时左线让位 primary
    选中指示线（本规则在 Tailwind 分层之后，同色特指更高，覆写 utility 色） */
 .card.task-selected {
-  border-left-color: rgb(var(--c-primary));
+  border-left-color: var(--c-primary);
 }
 
 .animate-slide-down {
@@ -485,6 +556,6 @@
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: rgb(var(--c-surface));
+  background: var(--c-surface);
   padding: 12px;
 }

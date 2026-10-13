@@ -302,7 +302,7 @@ export function confirmDialog(message: string, title = '确认操作', danger = 
     })
     const modal = el('div', { class: 'card w-80 p-5 shadow-xl' })
     // P1-2：危险态不再用 2px 彩色描边，改由标题红字 + 危险按钮表达风险级别
-    const titleColor = danger ? 'rgb(var(--c-danger-hover))' : ''
+    const titleColor = danger ? 'var(--c-danger-hover)' : ''
     const titleEl = el('h3', { class: 'font-semibold text-base mb-2' }, [title])
     if (titleColor) titleEl.style.color = titleColor
     const msgEl = el('p', { class: 'text-sm text-ink-muted mb-4' }, [message])

@@ -14,6 +14,7 @@ FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 W
 
 【2026-10-13 更新·当前版本基线】以上为 v1.5.12 历史记载（保留作当时状态快照）。**当前版本 FVCC v1.6.5 / FVCS v1.3.0**——三真源一致（`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION` 2026-10-13 实测均为 `1.6.5`；FVCS `pkg/version/VERSION` = 1.3.0）。1.6.x 版本线（git 核验，manifest 版本序列为 `1.6.0 → 1.6.4 → 1.6.5`）：**1.6.0**（tag `v1.6.0` → `b1a0d93`，含 `1e622f0` 批次①-⑤ / `22035c6` FVCS GUI 复活）视觉打磨版——方向 A「精修冷灰」令牌层重排 / 控件层自绘（`selectField`、`.checkbox`、按钮变体）/ 外壳导航分组·搜索胶囊·状态栏 / 逐页修复 V1 趋势图·V5-V8 / 微交互 + WCAG 对比度（V9）验收；同批 FVCS 1.2.6→1.3.0（Fyne 托盘 + 设置窗口纳入构建 `build.ps1 -Target FVCS-UI`，新增 `FVCS/pkg/fynetheme`）。**1.6.4**（tag `v1.6.4` → `b007a3d`，含 `fe06e52` 代码）任务页视觉改进三批次 A+B+C，方案稿 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`（GLM5.3F / Step5P / Gemini-3.8F 三方外部模型评审整合）。**1.6.5**（tag `v1.6.5` → `5166cbe`，含 `ceeb1b2` 代码）VERSION 第三真源漂移修复 + 版本一致性校验加固。交付物 `FVCC/fvcc.fpk` 已重打并解包核验，真机 2026-10-13 确认 NAS「设置」页显示 **1.6.5**。**易错点**：`1.6.1` / `1.6.2` / `1.6.3` 只是批次开发过程中的本地中间 bump，**从未进入 git 历史、未出包、未打 tag**；方案文档文件名里的 "v1.6.1" 是**方案稿编号**、不是交付版本号——不可写成"1.6.1~1.6.4 版本线"，应写"**1.6.4**（方案稿 v1.6.1 的落地批次）"。
 【2026-10-14 更新·当前版本基线】以上 1.6.5 记载保留为当时快照。当前基线 **FVCC v1.6.7 / FVCS v1.3.1**（三真源 2026-10-14 实测一致，`scripts/check-versions.ps1` 绿）。1.6.x 后半段为**依赖与工具链专项**：v1.6.6（tag `v1.6.6` → `1dcb774`，第三十轮）低风险刷新 + 配套 FVCS 1.3.1；v1.6.7（第三十二轮）`modernc.org/sqlite` **v1.14.0 → v1.60.1** 跨 46 个 minor 专项——升级前审干 store 层对驱动的接触面（`sql.Open` 无 DSN 参数、三条 PRAGMA 走 `db.Exec`、无驱动私有 API、SQL 为纯 SQLite 子集），升级后用老驱动真实产出的 fvcc.db 由新驱动经实际 store 路径 Open→migrate→写回→二次 Load 验证（WAL 保持、`schema_version` 不误重置、`AUTOINCREMENT` 续号、立即落盘可见），`go test ./...` 14 包全绿、依赖面净删 10 项、`go.sum` 净减 109 行，二进制 +565 KB / fpk +2.4%；第三十三轮 Node 运行时由**已 EOL 的奇数 Current 线 v25.9.0** 升到 **v26.11.1**（系统级 MSI，SHA256 与官方核对，另存 v25.9.0 回滚包），四处口径一起对齐：本机运行时、`engines.node >=26.0.0`（新增）、CI `setup-node` 22→26、`@types/node` ^22→^26；`npm ci` + `npm run build` 绿且 **asset 内容哈希逐项不变**，故该轮不再 bump、不重打包。规模与覆盖率**本轮亲跑复测（非沿用）**：后端 internal **12 包** / **110 个 .go**（58 实现 17,197 行 + 52 测试 9,183 行）、前端 TS **33 文件 11,474 行**、覆盖率 **60.7%**（`check-coverage.ps1 -Threshold 60` PASS）——与第二十九轮逐项一致，无漂移。**依赖刷新主题余项只剩 `tailwindcss` 3.4.19 → 4.3.3 专项**（CSS-first 重写 + `tailwind.config.js` 令牌迁移，同时也是 `npm audit` 现存 7 条告警的唯一修复路径——7 条全部源自 tailwindcss 3 的传递链 braces/chokidar/micromatch/postcss-selector-parser，Node 26 升级零新增告警）。台账轮次：`docs/IMPROVEMENT_LOG.md` §二十三（第三十二轮）/ §二十四（第三十三轮）。**提交状态**：v1.6.7 批次已按三段入库 `fork/baseline-snapshot`（`923a8b3` 工具链脚本 / `3bb1772` 依赖与版本 bump / `246e905` 文档对齐），**注解 tag `v1.6.7` 已打并推送**（tag 对象 `fd5b04e` → commit `4154d31`）。
+【2026-10-14 二次更新·当前版本基线】以上 1.6.7 记载保留为当时快照。当前基线 **FVCC v1.6.8**（FVCS 保持 v1.3.1，本轮零渲染端改动）——三真源一致（`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION` 均为 `1.6.8`）。**v1.6.8 即上条所述唯一余项的收口批次：`tailwindcss` 3.4.19 → 4.3.3 大版本专项**，走五道门禁——① 依赖与 PostCSS 接线（`@tailwindcss/postcss` 独立包，删 `autoprefixer`，前缀改由 v4 内建 Lightning CSS）；② `tailwind.config.js` **整文件删除**、token 映射迁入 `src/style.css` 的 `@theme inline`，暗色改 `@custom-variant dark`，`--c-*` 38 个令牌（明暗两套共 76 条定义）由裸 RGB 通道改为完整 `rgb()` 颜色（v4 不替换 `<alpha-value>`，`/NN` 透明度改编译期 `color-mix(in oklab, …)`）；③ 改名与语义漂移逐项对齐（`shadow-sm`→`shadow-xs`、`shadow`→`shadow-sm`、`outline-none`→`outline-hidden` 三处焦点环），扫描面用 `source(none)` + 显式 `@source` 锁定（v4 自动探测会把 `scripts/*.mjs` 注释里的类名编进产物），`check-design.mjs` 同步 R3 口径并新增 `TW4-token-form` 规则拦截 v3 遗留写法，顺带修复 `stripComments` 折叠多行块注释导致的行号错位；④ 构建与迁移保真校验（388 个类 token 与 v3 产物逐项比对，v3 有 / v4 无 = 0；22 个 `/NN` 淡色类全部存在、`<alpha-value>` 泄漏 0；CSS 原始 42,782→49,956 B、**gzip 10.00→9.78 kB**）；⑤ 文档回写（`FVCC/docs/DESIGN.md` 令牌映射机制 + BUILD.md 依赖基线 + 本份台账）与版本 bump、fpk 重打（`FVCC/fvcc.fpk` 11,013,500 B，解包核验 manifest 1.6.8 / `checksum` == `md5(app.tgz)` / banner `tailwindcss v4.3.3`）。`npm audit` **7 条告警全清零**，`npm outdated` **归零**——**依赖刷新主题至此完整收口，无余项**。一处产品裁决随批落地：接受 v4 移除 `button { cursor: pointer }` 的新默认（94 处按钮不再举手型），另两处 v4 新默认（`hover:` 受 `@media (hover:hover)` 门控、淡色走 oklab 插值）一并接受。**未验证面**：NAS 真机视觉对照（淡色、悬停/焦点、触屏、forced-colors）由用户实测中；渲染 Failed/Cancelled 终态分支仍无自然复现。台账轮次：`docs/IMPROVEMENT_LOG.md` 第三十四轮。
 
 
 治理进展：P0-2 SQLite 迁移已落地（2026-09-21，提交 a72b8ff / 9e122d5 / 5dd373e）；P1 组（P1-1 ~ P1-5）全部落地或部分落地（P1-1 事件驱动调度已落地，提交 eab7688）；P2 组（P2-1 ~ P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。**2026-10-12 文档全面对齐轮**：FVCC/README.md、FVCC/docs/ 7 份、根 BUILD.md/README.md 与根 docs/ 台账统一对齐 v1.5.12（helper 真源路径、SQLite 主载体口径、/api/store/* 接口段登记、SECURITY.md AIGC 残留清除、P2-2 决策门定案回写、README 设计规格链接修复）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。**2026-10-13 叙述性长台账对齐轮**（IMPROVEMENT_LOG §二十 第二十八轮的文档对齐部分）：本份 `docs/FVCC_项目现状与开发步骤.md` 回写至 **FVCC v1.6.5 / FVCS v1.3.0** 基线（1.6.0 视觉打磨版 + FVCS GUI 复活、1.6.4 任务页视觉改进批次 A+B+C、1.6.5 VERSION 三真源漂移修复 + 版本一致性校验加固），数据来源为 2026-10-13 代码规模实测与 git 提交/tag 核验；本轮仅改本份长台账，其余文档口径见 §6.3。
@@ -31,7 +32,7 @@ FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 W
 
 ### 1.2 构建产物与运行形态
 
-- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.6.5，2026-10-13 实测）。实测修正：根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
+- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.6.8，2026-10-14 实测）。实测修正：根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
 - 运行时数据（2026-09-21 复核，按禁删原则保留原位）：`config.enc.json`（加密配置）、`master.key` / `secret.key`（凭据密钥）、`credentials.db`（凭据库 SQLite，含 -shm/-wal）、`tasks.json` / `history_tasks.json`（任务存储）、`locks.json`（锁表）。实测修正：根目录**无** `task.db`（仅 `archive/` 下存 12KB 备份）。
 - `config/`：fnOS 应用配置目录（privilege / resource）。
 - `logs/`：运行时日志（按日期 + app_*.log）。
@@ -77,7 +78,7 @@ D:\Fnos.VideoConversion\FVCC\
 │   │       └── editor/        # 剪辑编辑器 14 个 TS 模块（见 §4.2）
 │   ├── scripts/               # check-design.mjs、check-versions.ps1 等门禁脚本
 │   ├── public/                # config + images（vite 构建时复制回 app/ui，禁止误删）
-│   └── package.json / vite.config.ts / tailwind.config.js / postcss.config.js / tsconfig.json
+│   └── package.json / vite.config.ts / postcss.config.js / tsconfig.json   # v1.6.8 起无 tailwind.config.js（Tailwind 4 CSS-first，token 映射在 src/style.css 的 @theme inline）
 ├── cmd/                       # fnOS 应用生命周期脚本（install / upgrade / uninstall / config，各含 init/callback）
 ├── config/                    # fnOS 应用配置（privilege / resource）
 ├── app/                       # 前端构建产物（git 忽略，vite outDir）
@@ -91,7 +92,7 @@ D:\Fnos.VideoConversion\FVCC\
 │   └── STORE_PERSISTENCE_ROADMAP.md  # 持久化方案评审稿（SQLite 迁移已落地，剩余定时备份/快照回滚方案见 §8 步骤 4）
 ├── logs/                      # 运行时日志（git 忽略）
 ├── temp/                      # 打包 stage 目录（2026-09-21 已清理 15 个 fpk_stage* 与 fvcc-win-debug.exe，现仅剩 logs/，git 忽略）
-├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.6.7）
+├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.6.8）
 ├── config.enc.json            # 加密配置（凭据相关）
 ├── credentials.db / -shm / -wal   # 凭据库（SQLite）
 ├── master.key / secret.key    # 凭据密钥
@@ -124,7 +125,7 @@ D:\Fnos.VideoConversion\FVCC\
 |---|---|
 | 构建 | Vite 8.3（`base='/app/fvcc/'`，`outDir='../app/ui'`，`emptyOutDir: true`） |
 | 语言 | TypeScript 7.0 |
-| 样式 | TailwindCSS 3.4 + PostCSS；设计令牌真源 `src/style.css`（`--c-*` / `--ease-*`） |
+| 样式 | TailwindCSS 4.3（CSS-first，`@tailwindcss/postcss`，无 `tailwind.config.js`）；设计令牌真源 `src/style.css`（`--c-*` 为完整 `rgb()` 颜色，`@theme inline` 注册 token 类，`/NN` 透明度编译期 `color-mix`） |
 | UI 范式 | 零框架，`el()` 手工 DOM（`src/ui.ts`）；hash 路由（`#/editor/:id`） |
 | 图表 | lightweight-charts（指标/图表） |
 | 字体 | @fontsource/ibm-plex-mono / ibm-plex-sans（latin 子集，已瘦身） |
@@ -362,6 +363,7 @@ D:\Fnos.VideoConversion\FVCC\
 - 代码规模：Go 110 文件 / 26,380 行（非测试 58 / 17,197 + 测试 52 / 9,183）；TS 33 文件 / 11,474 行（2026-10-13 实测；历史快照 2026-09-21：Go 96 文件 / 21,071 行、TS 33 / 10,315；2026-10-12 复测：Go 107 文件 / 26,032 行（58 / 17,191 + 49 / 8,841）、TS 33 / 11,257）
 - 版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = **1.6.5**（2026-10-13 实测；FVCS `pkg/version/VERSION` = 1.3.0）；1.6.x 均已打 tag——`v1.6.0`→`b1a0d93`、`v1.6.4`→`b007a3d`、`v1.6.5`→`5166cbe`，推送链 `1e622f0` → `22035c6` → `b1a0d93` → `6f80233` → `2f5c4e7` → `649d079` → `fe06e52` → `b007a3d` → `ceeb1b2` → `5166cbe`（目标 `fork` = hgmmm25/Fnos.VideoConversion，分支 `baseline-snapshot`；另有 `origin` = zdongno01/... 非推送目标）。历史核验记载（2026-10-12 时点）：三处一致 = 1.5.12；1.5.4 已提交 080754c，1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7；1.5.8 为 P3-5 store 备份/迁移/回滚收口版本并打 tag v1.5.8；1.5.9~1.5.12 为步骤 8 e2e 缺陷修复与 #8 渲染全链路收口，已推送 fork/baseline-snapshot，v1.5.12 已于 2026-10-12 第二十六轮打注解 tag 并推送
 - 复核记录：**2026-10-13 · 叙述性长台账对齐轮**（IMPROVEMENT_LOG §二十 第二十八轮的文档对齐部分）——本份 `docs/FVCC_项目现状与开发步骤.md` 由 v1.5.12 基线回写至 FVCC v1.6.5 / FVCS v1.3.0；数据来源为 2026-10-13 代码规模实测 + git 提交/tag 核验（本轮未重跑覆盖率，引用为第二十六轮实测 60.7%）；历史叙述（2026-09-20 调查日期、各步骤当时结论、旧的"工作区未提交"类记载）一律保留原样，仅在其后追加更新说明
+- 复核记录：**2026-10-14 · Tailwind 4 专项轮**（IMPROVEMENT_LOG 第三十四轮）——本份回写至 **FVCC v1.6.8 / FVCS v1.3.1**：§1 追加 v1.6.8 基线段（依赖刷新主题完整收口）、§2 目录树删 `tailwind.config.js`、`manifest` version 与「技术栈」样式行改 Tailwind 4 口径。版本核验：`manifest` / `ui-src/package.json` / `server/internal/version/VERSION` 三处一致 = **1.6.8**（2026-10-14 实测，`check-versions.ps1` 绿）；v1.6.8 尚未提交、未打 tag（本批次按「同主题收口统一入库」执行）。零后端改动，故代码规模与覆盖率沿用 2026-10-14 复测口径（Go 110 / TS 33 文件 11,474 行、60.7%）不变
 - TODO 扫描：`server/`、`ui-src/src/`、`cmd/` 全量关键词扫描（TODO/FIXME/未完成/占位/stub）；2026-10-13 复核——本轮 1.6.x 遗留项（Filter Chips / `?fx=` 实验动画 / 其余页面骨架 `listSkeleton` / store 备份前端入口）均为**刻意未做或待裁决**，非新增代码级 TODO 扫描发现
 - 关键文件：`server/main.go`、`server/internal/api/router.go`、`server/internal/scheduler/scheduler.go`、`server/internal/store/store.go`、`ui-src/src/main.ts`、`ui-src/src/store.ts`、`ui-src/src/api.ts`、`ui-src/src/pages/editor/*.ts`
 - 文档：`FVCC/README.md`、`FVCC/docs/*.md`、`D:\Fnos.VideoConversion\docs\*`

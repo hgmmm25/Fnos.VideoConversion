@@ -7,11 +7,22 @@
 > - 优化对象：`FVCC\ui-src\`（当前 NAS 上运行的版本）
 > - 已排除：`FVCC_official_unpack\`（备份的源安装包，已迭代，不作为设计依据）
 >
-> 证据来源：`FVCC\ui-src\src\style.css`、`tailwind.config.js`、`theme.ts`、`ui.ts`、`main.ts`、`index.html`、`pages\{tasks,settings,scanner,history,servers,profiles}.ts`、`pages\editor\{layout,preset,dialog,taskDrawer}.ts`、`lib\useListPage.ts`、`scripts\check-design.mjs`、`docs\DESIGN.md`；`freecut\DESIGN.md`、`freecut\PRODUCT.md`、`freecut\src\index.css`。
+> 证据来源：`FVCC\ui-src\src\style.css`、`theme.ts`、`ui.ts`、`main.ts`、`index.html`、`pages\{tasks,settings,scanner,history,servers,profiles}.ts`、`pages\editor\{layout,preset,dialog,taskDrawer}.ts`、`lib\useListPage.ts`、`scripts\check-design.mjs`、`docs\DESIGN.md`；`freecut\DESIGN.md`、`freecut\PRODUCT.md`、`freecut\src\index.css`。（v1.6.8 起 token 映射的载体是 `style.css` 内的 `@theme inline` 块，`tailwind.config.js` 已随 Tailwind 4 迁移删除。）
 >
 > 状态（2026-09-22 复核，**2026-10-12 对齐 v1.5.12 再复核，2026-10-13 对齐 FVCC v1.6.5 / FVCS v1.3.0 三复核**）：P0 / P1-1~P1-5 / P2-2 无障碍 / P2-3 门禁 与 §7 美化图示化阶段 A-D 均已落地（当前版本 **1.5.12** 三处一致；1.5.3 已打 tag v1.5.3、1.5.4 已提交 080754c、1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7、1.5.8 已打 tag v1.5.8、1.5.9~1.5.12 已提交推送 fork/baseline-snapshot 并已于 2026-10-12 打 tag v1.5.12；UI 侧 1.5.9~1.5.12 仅剪辑页 sourceRoot 透传与代理回填等增量，本文档结论不变）；1.5.x 编辑器交互增强已实现（播放头随播放联动 / 时间轴缩放 / 预览最大化 / 变速播放 J-K-L，见 §1.1）；后端 P0-2 SQLite 迁移与 P1-1 事件驱动调度已落地，与本文档方向无冲突；剩余收尾见 §5.2 / §7.6；**定案（2026-10-11）**：§7.2 框架决策"维持零框架"转正，项目分析清单 P1-2（freecut 双轨）据此关闭。
 >
-> 2026-10-14 四复核补充（对齐 **FVCC v1.6.7 / FVCS v1.3.1**，IMPROVEMENT_LOG §二十三 / §二十四）：v1.6.7 批次为 `modernc.org/sqlite` v1.14.0→v1.60.1 驱动专项与 Node.js 运行时 v25.9.0→v26.11.1 工具链批次，**零 ui-src 改动**（`npm run build` 的 asset 内容哈希逐项不变即为证），本文视觉结论维持不变。工具链侧的新增纪律与本设计契约的交集只有一条：`engines.node` 已写入 `ui-src/package.json`（>=26.0.0），`check:design` 门禁脚本 `scripts/check-design.mjs` 在 Node 26 下行为一致，无需调整。余项仅 `tailwindcss` 3.4.19→4.3.3 专项——它落地时**会直接触碰本文的令牌层与 `tailwind.config.js` 映射口径**，属需要重开设计对齐的大工程，已在 §7.7 之外的待办中登记。
+> 2026-10-14 五复核补充（对齐 **FVCC v1.6.8**，IMPROVEMENT_LOG 第三十四轮）：**Tailwind CSS 3.4.19 → 4.3.3 专项落地**，这是本文档 §0 结论 1（令牌两套真源 / darkMode 策略）与 §1.2 设计令牌小节所依赖的"映射载体"的一次更换，**结论本身不变**：
+>
+> - 令牌真源仍是 `style.css` 的 `--c-*` 一套，只是变量值从裸 RGB 通道（`37 99 235`）改为完整颜色（`rgb(37 99 235)`）——v4 不再替换 `<alpha-value>`，注册色必须是完整颜色，`/NN` 透明度改由编译期 `color-mix(in oklab, X N%, transparent)` 落地。
+> - `tailwind.config.js` **已删除**，token → 工具类的映射迁入 `style.css` 的 `@theme inline`；暗色机制由 v3 的 `darkMode: ['selector', '[data-theme="dark"]']` 改为 `@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *))`，`theme.ts` 的切换逻辑与三选项（`auto / light / dark`）零改动。
+> - 扫描面由 v3 的 `content` 数组改为 `@import "tailwindcss" source(none)` + 显式 `@source`（v4 自动探测会把 `scripts/*.mjs`、`vite.config.ts` 注释里的类名编进产物）。
+> - 已接受的 v4 新默认（2026-10-14 用户裁决）：preflight 不再给 `button / [role=button]` 加 `cursor: pointer`；`hover:` 变体包进 `@media (hover: hover)`；低透明度淡色走 oklab 插值，色感与 v3 的 sRGB 略有差异。焦点环三处 `outline-none` 改为 v4 的 `outline-hidden`（等价 v3 行为，保留 forced-colors 下的透明描边），R6/R9 无障碍结论不变。
+> - 命名漂移清扫：`shadow-sm`→`shadow-xs`、`shadow`→`shadow-sm`（R3 门禁口径同步扩到 `shadow-xs/sm/md`）；388 个类 token 与 v3 产物逐项比对，真实丢失 0 项。
+> - 依赖面：`autoprefixer` 移除（v4 内建 Lightning CSS），新增 `@tailwindcss/postcss`；tailwind 3 传递链带来的 7 条 `npm audit` 告警（2 moderate / 5 high）全部清零。**依赖刷新主题至此无余项。**
+> - 构建链与 §5.2 门禁结论不变：`npm run build` 仍 `check:design` → `tsc -b` → `vite build`；新增 `TW4-token-form` 规则拦截 v3 遗留写法回潮。CSS 产物原始 42,782→49,956 B、gzip 10.00→9.78 kB。
+> - **未验证面（待真机）**：低透明度淡色（`bg-primary/5`、`/15`、进度条纹）、悬停与焦点观感、触屏无悬停态、forced-colors 模式。
+
+> 2026-10-14 四复核补充（对齐 **FVCC v1.6.7 / FVCS v1.3.1**，IMPROVEMENT_LOG §二十三 / §二十四）：v1.6.7 批次为 `modernc.org/sqlite` v1.14.0→v1.60.1 驱动专项与 Node.js 运行时 v25.9.0→v26.11.1 工具链批次，**零 ui-src 改动**（`npm run build` 的 asset 内容哈希逐项不变即为证），本文视觉结论维持不变。工具链侧的新增纪律与本设计契约的交集只有一条：`engines.node` 已写入 `ui-src/package.json`（>=26.0.0），`check:design` 门禁脚本 `scripts/check-design.mjs` 在 Node 26 下行为一致，无需调整。余项仅 `tailwindcss` 3.4.19→4.3.3 专项——它落地时**会直接触碰本文的令牌层与 `tailwind.config.js` 映射口径**，属需要重开设计对齐的大工程，已在 §7.7 之外的待办中登记。**（该项已于 v1.6.8 落地，见上条五复核。）**
 
 > 2026-10-13 三复核补充：1.6.x 视觉线已全部落地并打 tag——1.6.0（方向 A「精修冷灰」令牌层 + 控件自绘 + 外壳 + 逐页修复 + 微交互/WCAG，同批 FVCS 1.2.6→1.3.0 Fyne GUI 复活）、1.6.4（任务页视觉改进批次 A+B+C，方案稿 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`）、1.6.5（版本三真源漂移修复与一致性校验加固）。本文 §2 差距对照与 §3 方向结论**均维持不变**（1.6.x 是在已收敛的令牌语言上做精修与热路径治理，未推翻任何方向）；设计侧落实明细与新增的未完成项见 §7.7，规模实测见 §1.1。台账轮次：第二十八轮 / `docs/IMPROVEMENT_LOG.md` §二十。
 
@@ -21,7 +32,7 @@
 
 | # | 结论（原始判断） | 当前状态（2026-09-21 源码复核） |
 |---|------|------|
-| 1 | 设计令牌两套真源、darkMode 策略不一致 | ✅ 已收敛：body 改 `bg-page text-ink`，预览底改 `--c-preview-bg`，darkMode 改 `['selector','[data-theme="dark"]']` |
+| 1 | 设计令牌两套真源、darkMode 策略不一致 | ✅ 已收敛：body 改 `bg-page text-ink`，预览底改 `--c-preview-bg`，darkMode 改 `['selector','[data-theme="dark"]']`（v1.6.8 起该策略由 `style.css` 的 `@custom-variant dark` 承载，语义不变） |
 | 2 | 通用后台面板色彩语言 vs 专业工具语言 | ✅ 已升级：引入 `--c-signal` 单一信号色，语义色收敛为 success/danger/warning |
 | 3 | 无障碍与交互状态硬缺陷 | ✅ 已修：.btn 五态 + 2px 焦点环、移动端可点 ≥44px、动画去 max-height 且尊重 reduced-motion |
 | 4 | 编辑器页比列表页更专业（机会点） | ✅ 已固化：clip 数据色 token、导航分组、全局状态条、命令面板（Ctrl+K）、工作区布局预设（default/compact/preview） |
@@ -33,8 +44,8 @@
 
 ### 1.1 技术底座与结构
 
-- 版本：ui-src `package.json` / 服务端 `VERSION` / `manifest` 三处一致——2026-09-22 工作区实测 **1.5.7**，**2026-10-12 实测 1.5.12**（1.5.3 已提交打 tag v1.5.3，1.5.4 已提交 080754c，1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7；1.5.8 打 tag v1.5.8；1.5.9~1.5.12 为 e2e A 档修复与 #8 渲染收口批次，已推送 fork/baseline-snapshot、v1.5.12 已于 2026-10-12 打 tag；1.5.0~1.5.3 为编辑器交互增强 + SQLite 迁移，1.5.4~1.5.7 为变速播放 + 按钮图标化 + Windows 路径边界修复，1.5.8 为 P3-5 持久化收口，1.5.9~1.5.12 为渲染/代理链路收口）；**2026-10-13 实测 1.6.5 三处一致**（`FVCC/manifest` / `FVCC/ui-src/package.json` / `FVCC/server/internal/version/VERSION`；渲染节点端当前基线 FVCS **v1.3.0**，随 1.6.0 同批由 1.2.6 升上来；真机验收：用户 2026-10-13 确认 NAS「设置」页显示 1.6.5）。1.6.x 版本线 git 事实：tag `v1.6.0` → `b1a0d93`（含 `1e622f0` 批次①-⑤、`22035c6` FVCS GUI 复活）、tag `v1.6.4` → `b007a3d`（代码 `fe06e52`，任务页视觉改进三批次）、tag `v1.6.5` → `5166cbe`（代码 `ceeb1b2`，版本一致性收口）。**易错点**：manifest 版本序列实测为 `1.6.0 → 1.6.4 → 1.6.5`，`1.6.1/1.6.2/1.6.3` 只是批次开发过程中的本地中间 bump，从未进 git 历史、未出包、未打 tag；方案文档文件名里的 "v1.6.1" 是**方案稿编号**不是交付版本号，应写"**1.6.4**（方案稿 v1.6.1 的落地批次）"。
-- Vite + TypeScript + Tailwind，**零框架**。依赖 `@fontsource/ibm-plex-sans` / `@fontsource/ibm-plex-mono`（^5.3.0）、`lightweight-charts`（^5.2.1，异步 chunk 仅 history 页签加载）与 vite（^8.3.0）/ typescript（^7.0.2）/ tailwindcss（^3.4.17）工具链；**无 React/Vue/Preact、无路由库、无状态库、无 UI 组件库**。DOM 由 `src/ui.ts` 的 `el(tag, attrs, children)` 手工构造，图标为内联 SVG 路径表（`ICON_PATHS`，统一 `stroke-width: 2`）。
+- 版本：ui-src `package.json` / 服务端 `VERSION` / `manifest` 三处一致——2026-09-22 工作区实测 **1.5.7**，**2026-10-12 实测 1.5.12**（1.5.3 已提交打 tag v1.5.3，1.5.4 已提交 080754c，1.5.5~1.5.7 已提交 68ebdec 并打 tag v1.5.7；1.5.8 打 tag v1.5.8；1.5.9~1.5.12 为 e2e A 档修复与 #8 渲染收口批次，已推送 fork/baseline-snapshot、v1.5.12 已于 2026-10-12 打 tag；1.5.0~1.5.3 为编辑器交互增强 + SQLite 迁移，1.5.4~1.5.7 为变速播放 + 按钮图标化 + Windows 路径边界修复，1.5.8 为 P3-5 持久化收口，1.5.9~1.5.12 为渲染/代理链路收口）；**2026-10-13 实测 1.6.5 三处一致**（`FVCC/manifest` / `FVCC/ui-src/package.json` / `FVCC/server/internal/version/VERSION`；渲染节点端当前基线 FVCS **v1.3.0**，随 1.6.0 同批由 1.2.6 升上来；真机验收：用户 2026-10-13 确认 NAS「设置」页显示 1.6.5）。**2026-10-14 复跑：1.6.6 / 1.6.7 / 1.6.8 三处真源均一致**（1.6.8 为 Tailwind 4 专项版本，fpk 已出、NAS 真机视觉核对由用户进行中）。1.6.x 版本线 git 事实：tag `v1.6.0` → `b1a0d93`（含 `1e622f0` 批次①-⑤、`22035c6` FVCS GUI 复活）、tag `v1.6.4` → `b007a3d`（代码 `fe06e52`，任务页视觉改进三批次）、tag `v1.6.5` → `5166cbe`（代码 `ceeb1b2`，版本一致性收口）。**易错点**：manifest 版本序列实测为 `1.6.0 → 1.6.4 → 1.6.5`，`1.6.1/1.6.2/1.6.3` 只是批次开发过程中的本地中间 bump，从未进 git 历史、未出包、未打 tag；方案文档文件名里的 "v1.6.1" 是**方案稿编号**不是交付版本号，应写"**1.6.4**（方案稿 v1.6.1 的落地批次）"。
+- Vite + TypeScript + Tailwind，**零框架**。依赖 `@fontsource/ibm-plex-sans` / `@fontsource/ibm-plex-mono`（^5.3.0）、`lightweight-charts`（^5.2.1，异步 chunk 仅 history 页签加载）与 vite（^8.3.0）/ typescript（^7.0.2）/ tailwindcss（^4.3.3，v1.6.8 起；此前 ^3.4.17）工具链；**无 React/Vue/Preact、无路由库、无状态库、无 UI 组件库**。DOM 由 `src/ui.ts` 的 `el(tag, attrs, children)` 手工构造，图标为内联 SVG 路径表（`ICON_PATHS`，统一 `stroke-width: 2`）。
 - 规模：`src/` 共 **33 个 .ts 文件、约 10,315 行**（2026-09-21 实测；2026-10-12 复测 33 文件 / **11,257 行**，增量为 1.5.9~1.5.12 剪辑页 sourceRoot 透传与代理回填等；**2026-10-13 复测 33 文件 / 11,474 行**（较上一记载 +217 行，增量来自 1.6.4 任务页批次，含 `ui.ts` 新增的 `listSkeleton` 泛化组件））；7 个页签页 + editor 子模块 14 个文件（timeline 599 / assets 606 / preview 533 / index 556 行）；最大单文件 scanner.ts（1,332 行）、profiles.ts（1,168 行）。相对上一版复核：scanner/profiles 因分页与重构精简，tasks（523 行）因队列可视化增大；新增 `lib\` 公共层（`useListPage` 列表流程 / `formBuilder` / `crudActions` / `scrollPos`）与 editor 的 dialog / editorStore / preset / ruler / shortcuts / taskDrawer / taskView 等拆分文件。editor 子模块行数与最大单文件为 2026-09-21~2026-10-12 期实测，本轮（2026-10-13）只复核了文件数与总行数两项，未逐项重测。
 - 构建产物（`vite` `outDir: '../app/ui'`）：主 chunk `index-*.js` **192.6 KB（无代码分割）**、CSS 36.3 KB、字体 192.2 KB、lightweight-charts/standalone 异步 chunk 189.6 KB（仅 history 页签动态加载），约 13 个核心产物文件（2026-09-20 实测）。后端 Go(gin) 托管，网关前缀 `/app/fvcc`。
 - 路由：`main.ts` 中的 hash 路由，7 个平级页签——`剪辑(editor) / 任务清单(tasks) / 视频文件(scanner) / 转码服务器(servers) / 转码方案(profiles) / 历史任务(history) / 设置(settings)`；`editor` 支持 `#/editor/:projectId` 子路由与 `renderProjectPicker`。
@@ -44,8 +55,8 @@
 
 ### 1.2 设计令牌
 
-- `style.css`：`:root`（明亮主题）与 `[data-theme="dark"]` 两套 **RGB 通道变量**，命名体系为 `--c-primary / --c-accent / --c-signal / --c-danger / --c-warning / --c-success / --c-download / --c-neutral / --c-surface / --c-line / --c-ink(-muted/-subtle)`，每类色另带 `-soft` 与 `-soft-text` 变体；另有 `--c-preview-bg`（编辑器预览底）、`--c-drop-line` + `--drop-line-width`（拖拽落点指示线）、`--ansi-*`（日志 ANSI 语义色登记豁免，随主题明暗切换）。
-- `tailwind.config.js`：将上述变量映射为 token（`rgb(var(--c-x) / <alpha-value>)`）。
+- `style.css`：`:root`（明亮主题）与 `[data-theme="dark"]` 两套变量，命名体系为 `--c-primary / --c-accent / --c-signal / --c-danger / --c-warning / --c-success / --c-download / --c-neutral / --c-surface / --c-line / --c-ink(-muted/-subtle)`，每类色另带 `-soft` 与 `-soft-text` 变体；另有 `--c-preview-bg`（编辑器预览底）、`--c-drop-line` + `--drop-line-width`（拖拽落点指示线）、`--ansi-*`（日志 ANSI 语义色登记豁免，随主题明暗切换）。**v1.6.8 起变量值为完整 `rgb()` 颜色**（此前为裸 RGB 通道 `37 99 235`，配 `rgb(var(--c-x) / <alpha-value>)` 使用）。
+- token 映射载体：**v1.6.8 起为 `style.css` 内的 `@theme inline` 块**（`--color-x: var(--c-x)` → 生成 `bg-x / text-x / border-x` 等 token 类）；此前的 `tailwind.config.js` 已删除。透明度用类名 `/NN` 修饰符，v4 编译期落为 `color-mix(in oklab, …)`；手写 CSS 侧用 `var(--c-x)`，半透明用 `color-mix()`。
 - `theme.ts`：三选项主题 `auto / light / dark`，`localStorage` 键 `fvcc-theme`，并兼容 fnOS 桌面下发的 `fnos-theme-mode`。
 - 组件类（`@layer components`）：`.btn` / `.btn-accent` / `.btn-danger` / `.btn-sm` / `.input` / `.card` / `.badge`。
   - `.card` = `bg-surface rounded-lg`（已去默认阴影）
