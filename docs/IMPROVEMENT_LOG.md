@@ -1,6 +1,12 @@
-# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-13 更新至 v1.6.5）
+# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-14 更新至 v1.6.7）
 
-> **现状快照（2026-10-13 第二十九轮，文档对齐）**：**无代码/版本变更**，当前仍 **v1.6.5**。第二十八轮交付后 1.6.0/1.6.4/1.6.5 三版未回写叙述性长台账，本轮把 9 份文档基线统一至 **FVCC v1.6.5 / FVCS v1.3.0**：`项目现状与开发步骤`、`混乱度评价报告`（**第十一版，2.4→2.3**，九维度维持、仅两条硬证据下调）、`项目分析与改进方向`（**第八次回写**）、`UI设计优化方向`（新增 §7.7 记 1.6.x 视觉线）、`TASK_REFERENCE`（**第十版**，登记批次编号族与"1.6.1~1.6.3 未入库"最高易错点）、根/FVCC 两份 `SECURITY`（口径无漂移，仅追加复核并区分"版本治理 ≠ 数据面安全"）、`DESIGN.md`（新增热路径与状态反馈惯例）、`STORE_PERSISTENCE_ROADMAP`（前端入口仍未完成）。规模实测：internal 12 包 / Go 110 个 .go（58 实现 17,197 + 52 测试 9,183）/ TS 33 文件 11,474 行；覆盖率本轮未重跑（沿用第二十六轮 60.7%）。附带纠正：`FVCC/README.md` 曾把该批次写成"1.6.1 ~ 1.6.4 版本线"，实为交付 **1.6.4**（代码注释里的 `v1.6.1-A*`/`v1.6.2-B*/C*`/`v1.6.3 修复` 是开发期本地中间 bump 编号，从未入库）。详见 §二十一。
+> **现状快照（2026-10-14 第三十二~三十三轮，依赖/工具链专项批次）**：当前版本 **FVCC v1.6.7 / FVCS v1.3.1**。
+> 第三十二轮还清了第三十一轮点名的唯一实质落后项——`modernc.org/sqlite` **v1.14.0 → v1.60.1**（跨 46 个 minor）：先把 store 层对驱动的接触面量清楚（`sql.Open` 无 DSN 参数、三条 PRAGMA 走 Exec、无驱动 API、SQL 为纯 SQLite 子集），再用**老驱动真实产出的 fvcc.db** 由新驱动经实际 store 路径 Open→migrate→写回→二次 Load 验证（WAL 保持、`schema_version` 不误重置、AUTOINCREMENT 续号、立即落盘可见）；副作用是依赖面收窄（删 cc/ccgo/opt/strutil/token/uint128/x-mod/x-sync/x-tools/shellquote 十项，`go.sum` 净减 109 行），代价是二进制 +565 KB、fpk +2.4%（10,752,127 → 11,011,826 B）。按出包纪律 bump **1.6.6 → 1.6.7** 并重打 fpk，真机复验由用户在 .106 执行。详见 §二十三。
+> 第三十三轮把 Node 运行时从**已 EOL 的奇数 Current 线 v25.9.0** 升到 **v26.11.1**（系统级 MSI，SHA256 与官方逐字符核对，另存 v25.9.0 回滚包）；装前查进程确认全机唯一 node 是 Qoder 自身辅助进程、无项目任务在跑。升级点四处一起对齐：本机运行时、`package.json` 新增 `engines.node >=26.0.0`、CI `setup-node` `22`→`26`、`@types/node` `^22`→`^26`（解析 26.6.5）。`npm ci` + `npm run build` 绿且 **asset 内容哈希逐项不变**，故判定无需重打包、不再 bump。详见 §二十四。
+> **依赖刷新主题至此收口，余项只有 `tailwindcss` 3.4.19 → 4.3.3 专项**（同时是 `npm audit` 现存 7 条告警的唯一修复路径，全部源自 tailwindcss 3 的传递链，Node 26 升级零新增告警）。规模与覆盖率在新驱动+新运行时下**亲跑复测**：internal 12 包 / 110 个 .go（58 实现 17,197 + 52 测试 9,183）/ TS 33 文件 11,474 行 / 覆盖率 **60.7%**，与第二十九轮逐项一致。9 份叙述性长台账本轮一并回写至 1.6.7 / 1.3.1 基线（第三十一轮挂账还清）。
+> **现状快照（2026-10-13 第三十一轮，工具链口径收口）**：**当时版本 FVCC v1.6.6 / FVCS v1.3.1**（现已被 v1.6.7 取代，见上一段快照；第三十轮依赖刷新批次已随 `1dcb774` 推送并打 tag **v1.6.6**，本轮补记其台账）。本轮零代码改动，收的是**工具链与依赖版本的叙述口径**：`BUILD.md` / `build-env.ps1` / `build.ps1` 里"FVCS 用 go1.24.6 + `GOTOOLCHAIN=local`"的遗留写法全部作废，双端统一 **go.mod `go 1.27.1` 下限 + `GOTOOLCHAIN=auto`**（本机 `sdk\go1.24.6` 目录实际已不存在）；新增 BUILD.md「工具链与依赖版本基线」表登记 2026-10-13 审计结论——npm 侧除刻意推迟的 `@types/node`(^22→26.6.5) 与 `tailwindcss`(3.4.19→4.3.3) 外无落后项，Go 侧除 `modernc.org/sqlite`(v1.14.0→v1.60.1，待专项) 外全部为当前版本，上游 Go 已到 go1.27.2 但 `go` 指令是下限而非 pin 故不抬。文档版本引用（根 README / FVCC README / BUILD / API_CONTRACT）同步至 1.6.6 / 1.3.1。详见 §二十二。
+>
+> **现状快照（2026-10-13 第二十九轮，文档对齐）**：**无代码/版本变更**，当时当前版本 **v1.6.5**（现已被 v1.6.6 取代）。第二十八轮交付后 1.6.0/1.6.4/1.6.5 三版未回写叙述性长台账，本轮把 9 份文档基线统一至 **FVCC v1.6.5 / FVCS v1.3.0**：`项目现状与开发步骤`、`混乱度评价报告`（**第十一版，2.4→2.3**，九维度维持、仅两条硬证据下调）、`项目分析与改进方向`（**第八次回写**）、`UI设计优化方向`（新增 §7.7 记 1.6.x 视觉线）、`TASK_REFERENCE`（**第十版**，登记批次编号族与"1.6.1~1.6.3 未入库"最高易错点）、根/FVCC 两份 `SECURITY`（口径无漂移，仅追加复核并区分"版本治理 ≠ 数据面安全"）、`DESIGN.md`（新增热路径与状态反馈惯例）、`STORE_PERSISTENCE_ROADMAP`（前端入口仍未完成）。规模实测：internal 12 包 / Go 110 个 .go（58 实现 17,197 + 52 测试 9,183）/ TS 33 文件 11,474 行；覆盖率本轮未重跑（沿用第二十六轮 60.7%）。附带纠正：`FVCC/README.md` 曾把该批次写成"1.6.1 ~ 1.6.4 版本线"，实为交付 **1.6.4**（代码注释里的 `v1.6.1-A*`/`v1.6.2-B*/C*`/`v1.6.3 修复` 是开发期本地中间 bump 编号，从未入库）。详见 §二十一。
 >
 > **现状快照（2026-10-13 第二十八轮，本次落地）**：当前版本 **v1.6.5**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，`check-versions.ps1` 实跑通过）。本轮两段：上半段收口**任务页视觉改进批次 A+B+C**（方案 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md` + 三方外部模型评审，已随 `fe06e52` 以 **v1.6.4** 推送并打 tag）；下半段修 **VERSION 第三真源漂移**——v1.6.4 出包只 bump 了 manifest + package.json，漏了 `internal/version/VERSION`（仍 1.6.0），已推送的包「设置」页经 `/api/info` 显示 1.6.0；并把 **版本一致性校验从"Windows 静默 SKIP"改为真跑**（旧 `version_test.go` 相对路径写成 `../../manifest`、解析到不存在的 `FVCC/server/manifest`，读取失败又走 `t.Skipf`，故本机 `go test ./...` 长期"绿而无效"，漂移只在 Linux CI 才暴露）。用户拍板走 **发 v1.6.5** 而非强推重指 v1.6.4 tag（tag 历史干净）。详见 §二十。
 
@@ -53,10 +59,10 @@
 
 ## 四、关键验证结果（最新基线）
 
-1. `cd FVCC\server && go build ./...` / `go vet ./...` / `go test ./...` —— ✅ 通过（**最新基线 1.6.5 全量复绿**，2026-10-13 第二十八轮；历史口径：1.5.12 全量复绿（第二十四轮）、1.5.3 批次 go vet / go test 11 包全绿）
+1. `cd FVCC\server && go build ./...` / `go vet ./...` / `go test ./...` —— ✅ 通过（**最新基线 1.6.7 全量复绿**，2026-10-13 第三十二轮 sqlite 专项后于 2026-10-14 复跑，宿主 14 包全绿 + Linux 交叉编译；历史口径：1.6.6/1.6.5 第二十八~三十轮、1.5.12 全量复绿（第二十四轮）、1.5.3 批次 go vet / go test 11 包全绿）
 2. 覆盖率门禁：全包口径 56.7% → 59.0% → **60.7%**（check-coverage.ps1 口径修复 `'.'`→`'./...'` 后实测；阈值演进 55%→**60%**，2026-10-12 第二十六轮 P3-7 关闭，60.7% ≥ 60% PASS。**第二十八/二十九两轮未重跑覆盖率**，引用值均为第二十六轮实测）
 3. 前端：`tsc --noEmit` / `npm run build`（tsc + check:design + vite）—— ✅ 通过（2026-10-13 第二十八轮 `npm run build` 全绿，48 模块，产物 `FVCC/app/ui/`）
-4. 版本校验：`scripts\check-versions.ps1` —— ✅ 退出码 0（manifest / package.json / VERSION 三处一致 = **1.6.5**，2026-10-13 实测；配套 FVCS v1.3.0。本轮起脚本仓库根由 `$PSScriptRoot` 推导、支持 `-RepoRoot` 覆盖；同轮 `internal/version/version_test.go` 在 Windows 本机真跑，反例改坏 manifest 即判红。历史：1.5.12 / FVCS v1.2.6 口径见第二十四~二十六轮）
+4. 版本校验：`scripts\check-versions.ps1` —— ✅ 退出码 0（manifest / package.json / VERSION 三处一致 = **1.6.7**，2026-10-13 第三十二轮 bump 后实测、第三十三轮（Node 26 批次，未再 bump）复跑确认；配套 FVCS v1.3.1，其两处真源（`pkg/version/VERSION` + `version_test.go` 断言字面量）已由 `go test ./pkg/version` 校绿。脚本仓库根由 `$PSScriptRoot` 推导、支持 `-RepoRoot` 覆盖；`internal/version/version_test.go` 在 Windows 本机真跑，反例改坏 manifest 即判红。历史：1.6.5 / 1.5.12 / FVCS v1.2.6 口径见第二十四~二十八轮）
 5. 早期轮次专项验证（WSS 双端单测、trace ID 注入、回收站/审计单测、并发/fuzz）见 §五 对应轮次摘要
 
 ## 五、历史轮次摘要（原 §六~§十四 压缩）
@@ -682,3 +688,114 @@ v1.5.11 部署后真机复验：FVCC 提交侧不再 `E_ASSET_MISSING`，任务�
 - 本轮为纯文档回写：未改代码、未跑构建、未重新出包（`fvcc.fpk` 仍为上轮核验过的 1.6.5 产物）；版本三真源与 `check-versions.ps1` 不受影响。
 
 **状态（本轮，2026-10-13）**：9 份文档 + `FVCC/README.md` 版本线纠正一并收口。仍未对齐到底稿口径的只剩历史方案稿（`FVCC_视觉更新方案_v1.6.0.md` / `FVCC_任务页视觉改进整合方案_v1.6.1.md`，属当时点方案文件，按纪律不回写）。
+
+## 二十二、第三十一轮（2026-10-13）：工具链与依赖版本口径收口 + 第三十轮依赖批次台账补记
+
+### 22.1 背景
+
+第三十轮（依赖审计 + 低风险刷新批次）在提交说明里明确挂了两笔欠账：**台账未写**、**`BUILD.md` 的 go1.24.6 工具链文档漂移留下一轮统一处理**。本轮就是还这两笔：零代码改动，只把"工具链与依赖版本"的**声明面（脚本/CI）与叙述面（文档）**对齐到事实，并顺带把文档里的版本引用从 1.6.5 推到 1.6.6。
+
+### 22.2 补记第三十轮（已随 `1dcb774` 推送，注解 tag **v1.6.6** → tag 对象 `a321308`，落 `fork/baseline-snapshot`）
+
+基线 FVCC v1.6.5 / FVCS v1.3.0，批次口径"只升落后但可顺手升的补丁级项，大版本项另立专项"，无功能/界面改动故双端 patch bump：
+
+- **FVCC 1.6.5 → 1.6.6**：vite 8.3.0→8.3.4、postcss 8.5.28→8.5.30、autoprefixer 10.5.2→10.6.1、@types/node 22.20.1→22.20.5（仍在 `^22` 区间内，`package.json` 依赖区间未动）、间接 golang.org/x/sys v0.41.0→v0.49.0。
+- **FVCS 1.3.0 → 1.3.1**：golang.org/x/sys v0.30.0→v0.49.0（直接依赖，仅 `pkg/winapi` 的 DPAPI 调用使用）、mattn/go-sqlite3 v1.14.48→v1.14.52、fyne v2.8.0→v2.8.2（连带 go-text/typesetting v0.3.5、go-gl/glfw v0.1.0-pre.2、fyne-io/oksvg 伪版本）。
+- **易漏点**：FVCS 的 `pkg/version/version_test.go` 把期望值写成硬编码字面量，只 bump `pkg/version/VERSION` 会让 `go test ./pkg/version` 判红——两处必须同改（现已登记进 `BUILD.md`「FVCS 版本号同步清单」）。
+- **用户拍板（2026-10-13）**：fyne v2.8.2 的 go.mod 使 `fyne.io/systray` 由发布版 v1.12.2 变为伪版本 `v1.12.3-0.20260810170012-af4e8e793ec4`（MVS 覆盖不掉，属 fyne 2.8.x 既有做法）→ **接受**，随该批提交。
+- **刻意推迟**：Tailwind 3.4.19→4.3.3（v4 CSS-first 重写，专项工程）；Node 运行时 25.9.0→26.x + @types/node 26（与下次大版本批次同做）；modernc.org/sqlite v1.14.0→v1.60.1（该批审计发现的最实质落后项）；FVCS 的 x/net v0.35.0、x/text v0.22.0、x/image v0.24.0 偏旧但代码无直接引用（纯 fyne 间接，fyne 2.8.2 也未抬高）→ 忽略。
+- 真机复验：用户在 .104 渲染机复验通过后该批才 bump、复跑全绿、提交出 tag。
+
+### 22.3 工具链口径收口（本轮改动，4 文件）
+
+审计前的事实核对（本轮实测，非采信历史记载）：双端 go.mod 均为 `go 1.27.1` 且无 `toolchain` 行；本机 PATH 上的 Go 是 **1.27.1**（`C:\Program Files\Go`），`sdk\` 下只剩 `go1.25.3`（**`go1.24.6` 目录已不存在**）；模块缓存 `D:\go\gomodcache` 已含 `golang.org/toolchain@v0.0.1-go1.27.1.windows-amd64`；上游最新补丁版 **go1.27.2**（1.26 线为 1.26.9）；CI `actions/setup-go@v5 → 1.27.x`、`actions/setup-node@v4 → 22`。
+
+- `build-env.ps1`：`GOTOOLCHAIN` 由 `local` 改 **`auto`**，并把它从"FVCS 专属"提为**双端共用**段落（旧注释"使用模块级 go1.24.6"是错的：`local` 会把版本锁死在启动器自身，任何机器上启动器低于 1.27.1 时 FVCS 立刻构建失败）；`GOEXE_FVCC` 注释改为说明"启动器版本 ≠ 语言版本，实际由 go.mod + auto 决定"；`[ENV]` 输出行标签同步。
+- `build.ps1`：SDK 探测表删去失效的 `C:\Users\xx318\sdk\go1.24.6\go\bin\go.exe`（顺序保持 `sdk\go1.25.3` → `Program Files\Go` → PATH `go`，命中任一由 auto 升到 go.mod 要求版本）。
+- `BUILD.md`：FVCC 前置条件表（Go / Node 两行，写明 Node 本机 v25.9.0 与 CI 22 的差异及 `@types/node` 钉 `^22` 的因果）、FVCS 环境要求表与环境变量块（`local`→`auto`）、「注意事项 · Go 工具链」重写（双端统一 auto + `go` 指令是**下限不是 pin**，故不抬到 1.27.2）、故障排查两行（`internal/stringslite` 缺失改为"换完整安装的 Go 并用 auto"；`go.mod requires go >= 1.27.1` 的原因/解法去掉"FVCS 才是 local"的过时指引）；**新增两节**：「FVCS 版本号同步清单」（两处真源）与「工具链与依赖版本基线（2026-10-13 审计复核）」表——逐项列本仓库声明值 / 上游最新 / 处置（保持、刻意推迟、待专项），并写明刷新纪律。
+- 文档版本引用对齐至 **FVCC v1.6.6 / FVCS v1.3.1**：根 `README.md`（首段当前版本、版本单一来源段）、`FVCC/README.md`（三真源表、配套 FVCS 行、版本线摘要新增 1.6.6 行、P1-4 复核值）、`BUILD.md`（三真源表 + 部署段当前版本）、`FVCC/docs/API_CONTRACT.md`（头版本，接口/路由表无变更）。
+
+### 22.4 依赖新鲜度复跑（本轮亲自复跑，非沿用上批自述）
+
+- **npm**（`FVCC/ui-src`，registry.npmjs.org）：`npm outdated` 仅两项落后——`@types/node` 22.20.5 → 26.6.5、`tailwindcss` 3.4.19 → 4.3.3，两者均为上批**刻意推迟项**；vite 8.3.4、TypeScript 7.0.2、postcss 8.5.30、autoprefixer 10.6.1、lightweight-charts 5.2.1、@fontsource 5.3.0 逐项比对 latest **全部为当前版本**，本批无可刷项。
+- **Go**（GOPROXY=goproxy.cn）：FVCC 侧 gin v1.12.0、gorilla/websocket v1.5.3 均为最新；FVCS 侧 fyne v2.8.2、go-sqlite3 v1.14.52、x/sys v0.49.0 均为最新；唯一实质落后仍是 `modernc.org/sqlite` **v1.14.0 → v1.60.1**（跨 46 个 minor，FVCC 唯一 SQLite 依赖、纯 Go 驱动、`sql.Open("sqlite", path)` + WAL/busy_timeout PRAGMA）。
+- 结论：**当前没有"低风险可顺手升"的余项**，下一批依赖工作即 sqlite 专项（需单独验证交叉编译 linux/amd64、WAL 与 busy_timeout 行为、以及 P3-5 备份/迁移链在新驱动上的回归）。
+
+### 22.5 验证
+
+- `PSParser` 语法检查 `build-env.ps1` / `build.ps1`：均无解析错误。
+- 源入新 `build-env.ps1` 后：`go env GOTOOLCHAIN` = **auto**、`GOVERSION` = **go1.27.1**；FVCS `go build ./pkg/... ./cmd/service`（CGO=1 + mingw64 在 PATH）**exit 0**；FVCC `GOOS=linux CGO_ENABLED=0 go build`**exit 0** 且产物头 4 字节为 `\177ELF`（auto + 1.25.3 启动器的交叉编译链路未受影响）。
+- `scripts/check-versions.ps1`：exit 0，`manifest=1.6.6 package.json=1.6.6 VERSION=1.6.6 => 一致`、`go.mod 工具链声明 go 1.27.1`。
+- 版本用例真跑：FVCC `go test ./internal/version -count=1 -v` 三条 **PASS 无 SKIP**（`AppVer=1.6.6`）；FVCS `go test ./pkg/version -count=1` **ok**（1.3.1 断言一致）。
+- 本轮未改代码与依赖清单，故 **不出包、不 bump 版本**：最新交付版本仍是 FVCC v1.6.6 / FVCS v1.3.1（`FVCC/fvcc.fpk` 为该版本产物）。
+
+**状态（本轮，2026-10-13）**：工具链口径与依赖叙述收口，改动 7 文件（`build-env.ps1`、`build.ps1`、`BUILD.md`、根 `README.md`、`FVCC/README.md`、`FVCC/docs/API_CONTRACT.md`、本台账）。
+
+**本轮已知未做（如实登记）**：第二十九轮对齐过的 9 份**叙述性长台账**（`项目现状与开发步骤`、`混乱度评价报告`、`项目分析与改进方向`、`UI设计优化方向`、`TASK_REFERENCE`、两份 `SECURITY`、`DESIGN.md`、`STORE_PERSISTENCE_ROADMAP`）仍写 **v1.6.5 / FVCS v1.3.0** 基线——1.6.6 是纯依赖批次，未重跑规模实测与覆盖率，若按第二十九轮纪律做整批回写需先补测；本轮只动"当前版本指针"类文档。另：`FVCC/.commandcode/` 仍未处置（未入库也未 ignore），依赖刷新遗留项 sqlite/Tailwind4/Node26 待专项。
+
+## 二十三、第三十二轮（2026-10-13）：modernc.org/sqlite 专项批次（v1.14.0 → v1.60.1，跨 46 个 minor）+ v1.6.7 出包
+
+### 23.1 背景
+
+第三十一轮把依赖新鲜度复跑收口为一句结论：**当前没有"低风险可顺手升"的余项**，唯一实质落后项就是 `FVCC/server` 的 `modernc.org/sqlite` v1.14.0 → v1.60.1。本轮即该专项批次。选它做纯 Go 驱动的硬约束在 `store/sqlite.go` 头部注释里写死：FVCC 交叉编译 linux/amd64 且 `CGO_ENABLED=0`，`mattn/go-sqlite3` 在 CGO=0 下 stub 报错不可用。
+
+### 23.2 用法面审计（先量风险再动手）
+
+升级前把 store 层对驱动的**接触面**逐项摸清（`internal/store/sqlite.go` 为唯一入口）：
+
+- `sql.Open("sqlite", path)` —— **无 DSN 参数串**（journal/synchronous/busy_timeout 全部走 `db.Exec` 的 PRAGMA 而非 DSN 查询参数），故 v1.14→v1.60 之间驱动 DSN 解析的语义变化打不到我们。
+- `db.SetMaxOpenConns(1)` 单连接串行写，与内存 `RWMutex` 的串行写语义一致；不依赖驱动的连接池行为差异。
+- 三条 PRAGMA：`journal_mode=WAL` / `synchronous=NORMAL` / `busy_timeout=5000`，均为标准 SQLite 语句，非驱动私有扩展。
+- 业务 SQL 只有 `CREATE TABLE` / `INSERT` / `UPDATE` / `DELETE` / 简单 `SELECT`（单列 JSON 存储，无列级查询、无 FTS、无虚拟表、无扩展函数注册、无 `sql.Named`/驱动 API 类型断言）。
+- 迁移链 `schema_version`（结构）与 `data_version`（数据）双链均在应用层事务内实现，不依赖驱动版本。
+
+结论：驱动 API 面为零、SQL 面为纯 SQLite 子集，风险集中在**文件格式兼容**与**行为漂移**两点，需用真数据验证而非只跑单测。
+
+### 23.3 升级与老库兼容性实测
+
+- `go get modernc.org/sqlite@v1.60.1` + `go mod tidy`。依赖面**收窄**为副作用收益：dropped `modernc.org/cc/v3`、`ccgo/v3`、`opt`、`strutil`、`token`、`lukechampine.com/uint128`、`golang.org/x/mod`、`x/sync`、`x/tools`、`kballard/go-shellquote`（老驱动内置 cgo 转译工具链，新驱动已不依赖）；added `github.com/ncruces/go-strftime v1.0.0`、`github.com/dustin/go-humanize v1.0.1`；bumped `google/uuid` 1.3.0→1.6.0、`mattn/go-isatty` →v0.0.24、`golang.org/x/crypto` →v0.57.0、`x/net` →v0.59.0、`x/text` →v0.42.0、`modernc.org/libc` v1.11.70→v1.77.1、`mathutil` →v1.7.1、`memory` →v1.12.1。`go.sum` 66 增 175 删（净减 109 行）。
+- 驱动自身 `go.mod` 要求 `go 1.26.0`，**仍低于**本仓库 `go 1.27.1` 下限，故无需抬 go.mod（第三十一轮"`go` 指令是下限不是 pin"的口径继续成立）。
+- **老库实测**（单测覆盖不到的部分）：用 v1.14.0 驱动在 `temp/olddata/fvcc.db` 生成一份 102,400 B 的真实老版本库（含 12 张表数据 + `schema_version`），再由升级后的新驱动经**真实 store 代码路径**执行 Open→migrate→读→写回→二次 Load。验证结果：WAL 模式保持、`schema_version` 未被误重置、`node_health_samples`/`audit_log` 的 `AUTOINCREMENT` 在老 seq 基础上续号、`UpsertServer` 的立即落盘在第二次 Load 可见。一处自我纠正记入纪律：断言 `audit_log` 行数时先写 6 后改 7 —— `Store.Load()` 的崩溃恢复路径（`recover task tk-1 DONE -> QUEUE`）本身会追加一条审计，**这是应用语义而非驱动行为**，第一次断言错是因为没把恢复路径算进去。
+- 临时探针 `internal/store/zz_tmp_olddriver_compat_test.go` 与老驱动生成器 `temp/olddrv/`、备份 `temp/sqlite_upgrade_gomod.bak`/`_gosum.bak` 均在 `temp/`（已 ignore），探针**未提交、已删除**。
+
+### 23.4 验证与出包
+
+- `go vet ./...` 通过；`go test ./...`（宿主，已 `unset GOOS`）**14 个包全绿**；`-race` 在宿主不可用（"requires cgo"），按既有分工留给 Linux CI。
+- 覆盖率不变：**60.7%**（`scripts/check-coverage.ps1 -Threshold 60` PASS），与第二十六轮 P3-7 上调门禁后的基线一致。
+- 交叉编译 `GOOS=linux CGO_ENABLED=0 go build` 通过；产物体积 **+565 KB**，`fvcc.fpk` 由 10,752,127 B → **11,011,826 B（+2.4%）**，属纯 Go 驱动转译代码体量增长的自然代价。
+- 版本按"出包前必 bump"纪律 **1.6.6 → 1.6.7**（manifest / `ui-src/package.json` / `internal/version/VERSION` 三处同改，`check-versions.ps1` 绿）；新包完整性核验：包内 manifest=1.6.7、`manifest.checksum == md5(app.tgz)`、二进制内版本串 `1.6.7`×1 且 `1.6.4/1.6.5/1.6.6`×0。
+- 真机复验由用户在 NAS .106 执行（交付 6 点核验清单：设置页版本号、任务列表/历史读取、服务端与模板持久化、重启后数据不丢、日志无 SQLite 报错、快照备份/恢复）。
+
+## 二十四、第三十三轮（2026-10-14）：Node.js 运行时升级到 v26.11.1（系统级 MSI）+ 四处口径对齐
+
+### 24.1 背景与决策
+
+Node 26 升级是第三十轮挂账的"刻意推迟项"。本轮做它是因为**升级点有三处必须一起对齐**，单改任何一处都会留下叙述面漂移：本机运行时、CI `setup-node`、`@types/node` 类型区间。此前本机是 **v25.9.0**——v25 是**已 EOL 的奇数 Current 线**，属实际的坏基线。
+
+用户拍板两项：**直接装系统级 MSI**（不引版本管理器）、**追 26 Current**（不回落 24 Krypton LTS）。26.11.1 确认为当前 **Current、非 LTS**（active LTS = 24.21.0 Krypton，maintenance LTS = 22.23.3 Jod）。
+
+### 24.2 安装过程
+
+1. 下载 `node-v26.11.1-x64.msi`（36,880,384 B），`Get-FileHash -Algorithm SHA256` = `5001c8e78d39593864339fb1a8c94c1ae19809bffde71e64b473d56f1f9726d3`，与官方 `SHASUMS256.txt` 逐字符一致。
+2. **装前查进程**（用户要求的步骤）：全机唯一 node 进程是 PID 17244 = Qoder 自身的 computer-use MCP 启动器（`D:/Qoder CN/resources/extensions/qoder.computer-control/.../computerUseClientLauncher.cjs mcp`），**没有任何项目 dev server / vite / 构建任务在跑**；它占用的正是 `C:\Program Files\nodejs\node.exe`。PATH 首位为系统目录，`AppData\Local\hermes\node\node.exe` 是排在其后的残留副本。
+3. 先取回滚包：`node-v25.9.0-x64.msi`（33,411,072 B），SHA256 `e469104e5d0c99f9185fbf17179fbb1d732261e6f9d281b6b2308a0126fb6d`，与官方校验一致，存 `temp/`。
+4. `msiexec /i ... /qb REBOOT=ReallySuppress /l*v` 提权安装，**退出码 0**；Restart Manager 按设计关闭了那台 Qoder 辅助进程（会话内 computer-use 工具如需使用会自动重启）。装后 `node -v` = **v26.11.1**，`npm -v` 11.12.1 → **11.20.0**。
+
+### 24.3 仓库侧改动（四处对齐）
+
+- `FVCC/ui-src/package.json`：`@types/node` `^22.10.0` → **`^26.0.0`**（实际解析 26.6.5）；新增 **`engines.node: ">=26.0.0"`**，把"本机运行时 = CI 运行时"的契约写进包声明，避免再出现"CI 跑 22、本机跑 25 奇数线"的三不管状态。
+- `.github/workflows/fvcc-ci.yml`：`actions/setup-node@v4` 的 `node-version: '22'` → **`'26'`**。
+- `package-lock.json`：随 `npm install` 更新（`node_modules/@types/node` resolved 22.20.5 → 26.6.5）。CI 用 `npm ci`，本轮专门复跑过 `npm ci` 确认 lockfile 一致。
+- `BUILD.md`：FVCC 前置条件表 Node 行改为 v26.11.1 事实（含 hermes 残留副本的 PATH 说明）；「工具链与依赖版本基线」表拆出 **Node 运行时** 行（并写明 26 是 Current 不是 LTS、active LTS 为 24 Krypton，下次抬 LTS 时 CI 与 `engines` 需同步），CI Node 行改 '26'，`@types/node` 行由"刻意推迟"改为"已随 Node 26 同批刷新"。
+
+### 24.4 验证
+
+- `npm ci` 干净安装 99 包；`npm run build`（`check:design` + `tsc -b` + `vite build`）绿，48 模块转换、1.72 s。
+- **构建产物逐字节未变**：asset 内容哈希与升级前一致（`index-T2MOet9Q.js` 205.83 kB、`index-BrgkBbXh.css` 42.78 kB、lightweight-charts `DRrAN9MZ`）。据此判定本轮**不需要重打包、不需要再 bump**——交付版本仍是 FVCC v1.6.7，`engines`/CI/类型区间属开发者与 CI 侧契约。
+- `scripts/check-versions.ps1` 绿：三方 1.6.7 一致 + go.mod `go 1.27.1`。
+- **`npm audit` 复跑**：7 条告警（2 moderate / 5 high）**全部来自 tailwindcss 3 的传递依赖链**（braces ← micromatch/fast-glob ← tailwindcss；chokidar ← tailwindcss；postcss-selector-parser ← postcss-nested ← tailwindcss），唯一修复路径是 `npm audit fix --force → tailwindcss@4.3.3`，即刻意推迟的 Tailwind 4 专项。**Node 26 升级本身零新增告警**。
+- `npm outdated` 复跑：当前**只剩 `tailwindcss` 3.4.19 → 4.3.3 一项**。
+
+**状态（两轮合计，2026-10-14）**：第三十二轮改动 `FVCC/server/go.mod`、`go.sum` + 版本三真源（1.6.7）；第三十三轮改动 `FVCC/ui-src/package.json`、`package-lock.json`、`.github/workflows/fvcc-ci.yml`、`BUILD.md`。两轮均为**依赖/工具链批次，零功能与界面改动**；FVCS 侧本轮无变更（仍 v1.3.1）。规模与覆盖率复测（2026-10-14，新驱动 + 新运行时下亲跑）：后端 internal **12 包** / **110 个 .go**（58 实现 17,197 行 + 52 测试 9,183 行）、前端 TS **33 文件 11,474 行**、覆盖率 **60.7%** —— 与第二十九轮实测逐项一致，无漂移。
+
+**本轮已知未做（如实登记）**：依赖刷新主题的**唯一余项是 Tailwind 4 专项**（3.4.19 → 4.3.3，CSS-first 配置重写 + 全套 `tailwind.config.js` 令牌迁移 + 暗色模式与 `@apply` 语义变更，且它同时是 7 条 npm 告警的唯一修复路径，属大工程需另立批次）。其余挂账与本主题无关：`FVCC/.commandcode/` 处置、store 备份/恢复前端入口、任务页 Filter Chips 与 fx 动画、其余页面骨架屏、e2e B 档 #7/#9、渲染 Failed/Cancelled 分支。另：`FVCS` 的 x/net v0.35.0、x/text v0.22.0、x/image v0.24.0 偏旧但无直接引用（纯 fyne 间接），维持"忽略"口径。

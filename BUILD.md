@@ -69,8 +69,8 @@ cd D:\Fnos.VideoConversion
 
 | 工具 | 版本 | 路径 |
 |------|------|------|
-| Go (FVCC 后端) | 1.25.3 + GOTOOLCHAIN=auto（自动匹配 go.mod 要求，缓存已含 go1.27.1） | `C:\Users\xx318\sdk\go1.25.3\go\bin\go.exe` |
-| Node.js | ≥ 18（实测 v25.9.0） | 系统 PATH |
+| Go (FVCC 后端) | go.mod 声明 `go 1.27.1` + `GOTOOLCHAIN=auto`（本机 PATH 上 Go 实测 1.27.1，模块缓存已含 `golang.org/toolchain@v0.0.1-go1.27.1`） | 启动器 `C:\Users\xx318\sdk\go1.25.3\go\bin\go.exe` 或 `C:\Program Files\Go\bin\go.exe`（build.ps1 按此顺序探测） |
+| Node.js | v26.11.1（系统级 MSI，2026-10-13 由 v25.9.0 升级；CI 同为 26，`@types/node` 已抬至 ^26，`package.json` 声明 `engines.node >= 26.0.0`） | `C:\Program Files\nodejs\node.exe`（系统 PATH 首位） |
 | npm | 内置 | 系统 PATH |
 | fnpack | 1.2.3（打包工具） | `D:\Fnos.VideoConversion\fnpack-1.2.3-windows-amd64.exe` |
 
@@ -78,13 +78,22 @@ cd D:\Fnos.VideoConversion
 
 | 文件 | 当前值 |
 |------|--------|
-| `FVCC\manifest`（`version` 字段） | 1.6.5 |
-| `FVCC\ui-src\package.json`（`version` 字段） | 1.6.5 |
-| `FVCC\server\internal\version\VERSION` | 1.6.5 |
+| `FVCC\manifest`（`version` 字段） | 1.6.7 |
+| `FVCC\ui-src\package.json`（`version` 字段） | 1.6.7 |
+| `FVCC\server\internal\version\VERSION` | 1.6.7 |
 
 > 版本号不一致会导致 fpk 内 manifest 声明与实际产品版本不符，部署后难以排查。
 > **三处缺一不可**：`VERSION` 是 `go:embed` 进二进制的真源，决定 `/api/info` 与「设置」页显示值；历史缺陷 v1.6.4 只改了 manifest + package.json，导致已推送包显示 1.6.0。
 > 收口必跑 `scripts\check-versions.ps1`（仓库根按脚本位置推导，可用 `-RepoRoot` 覆盖）；在 `FVCC\server` 下 `go test ./internal/version` 现已在 Windows 本机真跑并在漂移时判红（不再静默 SKIP）。
+
+### FVCS 版本号同步清单（两处，第二处最容易漏）
+
+| 文件 | 当前值 |
+|------|--------|
+| `FVCS\pkg\version\VERSION`（`go:embed` 真源） | 1.3.1 |
+| `FVCS\pkg\version\version_test.go`（对齐断言里的字面量） | 1.3.1 |
+
+> FVCS 的校验用例把期望值写成硬编码字面量，只改 `VERSION` 会让 `go test ./pkg/version` 判红；v1.3.1 批次即按两处同步。FVCS 不在 `check-versions.ps1` 的三真源比对范围内（该脚本只校 FVCC）。
 
 ### FVCC 构建步骤明细（对应 build.ps1 内部实现）
 
@@ -149,13 +158,13 @@ print("OK: 成员完整 / checksum 一致 / 图标一致")
 
 | 工具 | 版本 | 路径 |
 |------|------|------|
-| Go | 1.24.6 (go.mod toolchain) | 通过 `GOTOOLCHAIN=local` 自动下载 |
+| Go | go.mod 声明 `go 1.27.1`（与 FVCC 同一口径，`GOTOOLCHAIN=auto` 选取） | 本机 PATH 上的 Go 1.27.1 直接可用；历史「FVCS 用 go1.24.6 + `GOTOOLCHAIN=local`」的写法已作废 |
 | GCC (MSYS2) | mingw-w64 | `C:\msys64\mingw64\bin\gcc.exe` |
 
 ### FVCS 环境变量
 
 ```powershell
-$env:GOTOOLCHAIN  = "local"
+$env:GOTOOLCHAIN  = "auto"   # 双端统一；local 会把版本锁死在启动器自身
 $env:CGO_ENABLED  = "1"
 $env:CC           = "C:\msys64\mingw64\bin\gcc.exe"   # 必须显式指定，cgo 才能找到编译器
 $env:PATH         = "C:\msys64\mingw64\bin;$env:PATH"
@@ -177,10 +186,28 @@ go test ./pkg/... ./cmd/service -count=1 -v
 
 ### Go 工具链
 
-- **不要混用多个 Go 版本**。FVCC 用 go1.27.1（`GOTOOLCHAIN=auto` 自动匹配缓存工具链），FVCS 用 go1.24.6（`GOTOOLCHAIN=local`）。
+- **双端统一 `GOTOOLCHAIN=auto`**：`FVCC/server/go.mod` 与 `FVCS/go.mod` 都声明 `go 1.27.1`，auto 按 go.mod 选取工具链（模块缓存已含 `golang.org/toolchain@v0.0.1-go1.27.1`，无额外下载）。`build.ps1` 探测启动器的顺序是 `sdk\go1.25.3` → `Program Files\Go` → PATH 上的 `go`，无论命中哪个，auto 都会升到 go.mod 要求的版本；旧的「FVCS 用 go1.24.6 + local」写法已作废（本机 `sdk\go1.24.6` 目录也已不存在）。
+- **`go` 指令是下限，不是 pin**：上游已发布 go1.27.2（补丁版，另有 1.26.9），但把两个 go.mod 的 `go` 指令提到 1.27.2 只会让新环境必须下载该工具链，收益是补丁修复而非语言特性，故本仓库保持 `go 1.27.1` 下限、由 auto 在实际运行时选取本机/缓存里满足下限的工具链。
 - **不要把 `GOCACHE` 留在 C 盘**。当前 C 盘剩余约 15 GB，GOCACHE 默认 2.5 GB 就在那里。
   - 推荐：在 `build-env.ps1` 中已配置 `GOCACHE` 到 `D:\GoCache`。
   - 手动设置：`$env:GOCACHE = "D:\GoCache"`
+
+### 工具链与依赖版本基线（2026-10-13 审计复核）
+
+| 项 | 本仓库声明/锁定值 | 上游最新 | 处置 |
+|----|----|----|----|
+| Go 工具链 | 双端 go.mod `go 1.27.1`（语言下限，无 `toolchain` 行） | go1.27.2（1.27 线补丁） | **保持 1.27.1 下限**：`go` 指令不是 pin，补丁级改进由 auto + 本机工具链自然获得，抬高下限只会让新环境必装指定版本 |
+| CI Go | `.github/workflows/fvcc-ci.yml` → `actions/setup-go@v5` + `1.27.x` | — | 与 go.mod 一致，无需改 |
+| Node 运行时 | 本机 v26.11.1（系统级 MSI，`C:\Program Files\nodejs`；`AppData\Local\hermes\node` 有一份残留副本，PATH 排在系统目录之后故不生效） | 26.11.1（Current 线） | **已升级**（2026-10-13，从 v25.9.0——v25 是已 EOL 的奇数 Current 线）。注意 26 仍是 Current 而非 LTS（active LTS 为 24 Krypton），下次抬 LTS 时同步 CI 与 `engines` |
+| CI Node | `.github/workflows/fvcc-ci.yml` → `actions/setup-node@v4` + `node-version: '26'` | 26.x | **与本机运行时、`engines.node`、`@types/node` 四处对齐** |
+| FVCC 前端 | vite 8.3.4、TypeScript 7.0.2、postcss 8.5.30、autoprefixer 10.6.1、lightweight-charts 5.2.1、@fontsource 5.3.0 | 全部当前 | 已随 v1.6.6 刷新；2026-10-14 `npm outdated` 复跑仅剩下行 tailwindcss 一项 |
+| `@types/node` | ^26（锁 26.6.5） | 26.6.5 | **已随 Node 26 运行时同批刷新**（2026-10-13） |
+| `tailwindcss` | ^3.4.17（锁 3.4.19） | 4.3.3 | **刻意推迟**：v4 为 CSS-first 配置重写，属专项工程 |
+| FVCC Go 依赖 | gin v1.12.0、gorilla/websocket v1.5.3 | 均为当前 | 无落后项 |
+| `modernc.org/sqlite` | v1.60.1（go.mod 直接依赖；驱动自身要求 `go 1.26.0`，仍低于本仓库 1.27.1 下限，无需抬） | v1.60.1 | **已升级**（2026-10-13 专项批次，v1.14.0→v1.60.1 跨 46 个 minor）：老驱动生成的 fvcc.db 由新驱动读取/迁移/回写实测通过，WAL、`schema_version`、AUTOINCREMENT 续号均保持；副作用是依赖面收窄（删 cc/v3、ccgo/v3、x/mod、x/tools 等 10 项，go.sum −109 行），代价是二进制 +565 KB（fpk +2.4%） |
+| FVCS Go 依赖 | fyne v2.8.2、`fyne.io/systray` 伪版本 v1.12.3-0.20260810…、mattn/go-sqlite3 v1.14.52、golang.org/x/sys v0.49.0 | 均为当前 | systray 伪版本是 fyne 2.8.x go.mod 的 MVS 结果（覆盖不掉），本批已确认可接受 |
+
+> 刷新纪律：补丁/次版本级"落后即可顺手升"，大版本与跨多 minor 的项一律另立专项；同主题多批次做完再统一 bump 版本、写台账。
 
 ### MSYS2 MinGW-w64
 
@@ -195,7 +222,7 @@ FVCS 的 CGO 构建依赖 MSYS2 MinGW-w64 的 gcc。确保 `C:\msys64\mingw64\bi
 ### fnOS 部署
 
 - FVCC 的 `fnpack` 需要 `app/fvcc`（Linux ELF）和 `app/ui/` 目录同时存在。
-- 当前版本 `1.6.5`，在 manifest、package.json、server/internal/version/VERSION 中均已同步（升级版本必须三处同步，见上表）。
+- 当前版本 `1.6.7`（配套渲染节点 FVCS `1.3.1`），在 manifest、package.json、server/internal/version/VERSION 中均已同步（升级版本必须三处同步，见上表）。
 - fnpack 工具：`D:\Fnos.VideoConversion\fnpack-1.2.3-windows-amd64.exe`（1.2.3 可无缝替换 1.2.1，用法一致；旧版已归档至 `archive\tools\fnpack-1.2.1.exe` 仅留存）。
 - 版本一致性校验：发布前运行 `.\scripts\check-versions.ps1`（P0-1 新增），校验 manifest / package.json / server/VERSION 三方对齐及 go.mod 工具链声明。
 - 打包必须在干净 stage 目录 `FVCC\temp\fpk_stage` 内执行（build.ps1 自动完成），避免 fnpack 递归扫描真实目录导致耗时 ~14s。
@@ -208,10 +235,10 @@ FVCS 的 CGO 构建依赖 MSYS2 MinGW-w64 的 gcc。确保 `C:\msys64\mingw64\bi
 | `go-sqlite3` 编译失败 | CGO 未启用或 GCC 不在 PATH | 运行 `build-env.ps1` 设置环境变量 |
 | `go-gl/gl` 编译失败 | `go test ./...` 包含 `cmd/ui` | 只测 `./pkg/... ./cmd/service` |
 | `build constraints exclude all Go files` | 纯 Go 构建 CGO 依赖 | FVCS 必须 `CGO_ENABLED=1` |
-| `internal/stringslite` 缺失 | std 源码不完整 | 切换回正确 Go 版本，用 `GOTOOLCHAIN=local` |
+| `internal/stringslite` 缺失 | std 源码不完整（多见于手工解压/被裁剪的 Go 安装） | 换用完整安装的 Go（PATH 上的 `C:\Program Files\Go`），由 `GOTOOLCHAIN=auto` 按 go.mod 选取；不要靠 `local` 绕 |
 | FVCC 构建后无界面 | 缺少 `app/ui/` 或 `app/fvcc` | 先构建前端，再构建后端 |
 | fnpack 打包耗时 ~14s | fnpack 验证阶段递归扫描工作目录（真实 FVCC 目录含 temp/logs/历史 fpk 等） | 在干净 stage 目录 `FVCC\temp\fpk_stage` 打包（build.ps1 已自动处理），耗时降至 ~2s |
 | fnpack 报 `Packing failed. Required file ... is missing` 但脚本“成功” | fnpack 失败时 exit code 仍为 0 | 成功判定必须以输出文本 `Packing successfully` 为准，不要只查 `$LASTEXITCODE`（build.ps1 已内置校验） |
 | `cannot find main module`（go build 报错） | 未在 server 模块目录内执行 | 进入 `FVCC\server` 后执行 `go build -trimpath -ldflags "-s -w" -o ../app/fvcc .` |
-| `go.mod requires go >= 1.27.1` 但 `GOTOOLCHAIN=local` 报错 | 工具链版本不匹配 | 使用 `GOTOOLCHAIN=auto`，自动匹配缓存工具链（FVCC 统一 auto，FVCS 才是 local） |
+| `go.mod requires go >= 1.27.1` | 启动器 Go 版本低于 go.mod 声明，且 `GOTOOLCHAIN=local` 禁止了自动选取 | 改用 `GOTOOLCHAIN=auto`（`build-env.ps1` / `build.ps1` 均已统一 auto，双端同口径） |
 | fpk 内 `ui/config` / 图标缺失 | vite `emptyOutDir` 清空 `app/ui` 且 ui-src/public 被误删 | 恢复 `ui-src/public/config`、`ui-src/public/images`，重新 `npm run build` |

@@ -90,13 +90,13 @@ go test ./...
 
 | 文件 | 字段 | 当前值 |
 |------|------|--------|
-| `manifest` | `version` | 1.6.5 |
-| `ui-src/package.json` | `version` | 1.6.5 |
-| `server/internal/version/VERSION` | 文件内容 | 1.6.5 |
+| `manifest` | `version` | 1.6.7 |
+| `ui-src/package.json` | `version` | 1.6.7 |
+| `server/internal/version/VERSION` | 文件内容 | 1.6.7 |
 
-配套渲染节点 FVCS 版本见仓库根 `FVCS/pkg/version/VERSION`（当前 1.3.0）。
+配套渲染节点 FVCS 版本见仓库根 `FVCS/pkg/version/VERSION`（当前 1.3.1）。
 
-## 近期版本线摘要（1.5.4 ~ 1.6.5）
+## 近期版本线摘要（1.5.4 ~ 1.6.7）
 
 | 版本 | 内容 |
 |------|------|
@@ -110,8 +110,10 @@ go test ./...
 | 1.6.0 | 视觉打磨版（方向 A 精修冷灰）：令牌层重排 / selectField·checkbox·按钮变体 / 导航分组·搜索胶囊·状态栏 / V1 趋势图修复·V5-V8 逐页 / 微交互 + WCAG 对比度验收（配套 FVCS v1.3.0：Fyne 托盘 GUI 纳入构建 `-Target FVCS-UI`，主题贴近 FVCC 蓝调） |
 | 1.6.4 | 任务页视觉改进三批次（方案稿 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`，GLM5.3F / Step5P / Gemini-3.8F 三方评审整合；交付版本直接由 1.6.0 跳到 1.6.4，代码注释中的 `v1.6.1-A*` / `v1.6.2-B*/C*` / `v1.6.3 修复` 是批次开发期的本地中间 bump 编号，未入库未出包，登记见 `docs/TASK_REFERENCE.md` §3.8）：A 层级修复+状态反馈（errorMsg 独立成行、首屏骨架 `listSkeleton`、批量键禁用/pending、选中即时高亮、ERROR 红条、去硬宽）；B 热路径性能（进度条 `transform: scaleX(--p)` 走合成层、render/updateOverview 签名守卫、scrollPos 主页/抽屉独立 key）；C 速率与实验项（WS 合并 `speed` + 倍速后缀实时展示、`#/tasks?fx=stripes\|breathe` 默认关）。含两处实测抓出的修复：空任务库骨架常驻（`loaded` 改由首次成功 render 置真）、`check-design` R3 误报 `box-shadow` |
 | 1.6.5 | 版本真源漂移修复 + 校验加固：`internal/version/VERSION` 补齐至 1.6.5（1.6.4 出包漏改致「设置」页显示 1.6.0）；`version_test.go` 改为向上定位仓库根比对三真源、失败一律判红不再静默 SKIP（Windows 本机自此真跑），新增禁止硬编码版本字面量用例；`scripts/check-versions.ps1` 去硬编码盘符并支持 `-RepoRoot`（用户拍板发新补丁号而非强推重指 v1.6.4 tag） |
+| 1.6.6 | 依赖刷新批次（无功能/界面改动，双端 patch bump，配套 FVCS v1.3.1）：FVCC vite 8.3.0→8.3.4、postcss→8.5.30、autoprefixer→10.6.1、@types/node 22.20.1→22.20.5、间接 x/sys →v0.49.0；FVCS x/sys v0.30.0→v0.49.0、go-sqlite3 →v1.14.52、fyne v2.8.0→v2.8.2（systray 随之为 fyne 2.8.x 的 MVS 伪版本，已确认可接受）。刻意推迟：Tailwind 4、Node 26、modernc.org/sqlite v1.60.1（详见仓库根 BUILD.md「工具链与依赖版本基线」） |
+| 1.6.7 | sqlite 驱动专项批次（无功能/界面改动）：`modernc.org/sqlite` v1.14.0→v1.60.1（跨 46 个 minor）。升级前审干 store 层对驱动的接触面（`sql.Open` 无 DSN 参数、三条 PRAGMA 走 `db.Exec`、无驱动私有 API）；升级后用**老驱动真实产出的 fvcc.db** 由新驱动经实际 store 路径 Open→migrate→写回→二次 Load 验证（WAL 保持、`schema_version` 不误重置、`AUTOINCREMENT` 续号、立即落盘可见）。依赖面收窄（删 cc/ccgo/opt/strutil/token/uint128/x-mod/x-sync/x-tools/shellquote 十项，go.sum 净减 109 行），代价：二进制 +565 KB、fpk +2.4%。同批 Node 运行时 v25.9.0（已 EOL 奇数 Current 线）→ v26.11.1 系统级 MSI，四处口径对齐：`engines.node >=26.0.0`、CI `setup-node` 22→26、`@types/node` ^22→^26；构建产物内容哈希逐项不变，故该轮不再 bump。依赖刷新余项仅剩 Tailwind 4 专项 |
 
-逐轮明细见仓库根 `docs/IMPROVEMENT_LOG.md`（§十一~§二十）。
+逐轮明细见仓库根 `docs/IMPROVEMENT_LOG.md`（§十一~§二十四）。
 
 ## 项目内文档体系
 
@@ -146,7 +148,7 @@ go test ./...
 | P1-1 | Profile 反射白名单更新 | ✅ 已落地 | `server/internal/protocol/applyjson.go` + 单测（P2-1 分层后位置） |
 | P1-2 | SMB 路径校验 | ✅ 已落地 | `server/internal/security/smb_validate.go` + 单测（P2-1 分层后位置） |
 | P1-3 | 文档落地（代码注释引用设计规格） | ✅ 已落地 | 注释以 `WebVideoEditor_Design/07-§3.2` 形式引用 |
-| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地 | 三处 1.6.5 已同步（2026-10-13 复核）；本表已更新，消除 README 滞后。校验闭环加固：`version_test.go` 定位仓库根比对三真源、漂移即红（旧实现路径写错 + 读取失败即 Skipf，Windows 本机长期"绿而无效"，v1.6.4 的 VERSION 漂移因此溜过），另新增"禁止硬编码版本字面量"用例；`check-versions.ps1` 不再硬编码盘符 |
+| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地 | 三处 1.6.7 已同步（2026-10-14 复核）；本表已更新，消除 README 滞后。校验闭环加固：`version_test.go` 定位仓库根比对三真源、漂移即红（旧实现路径写错 + 读取失败即 Skipf，Windows 本机长期"绿而无效"，v1.6.4 的 VERSION 漂移因此溜过），另新增"禁止硬编码版本字面量"用例；`check-versions.ps1` 不再硬编码盘符 |
 | P1-5 | 依赖瘦身（前端字体 / 后端 indirect） | 🟡 部分落地 | 字体 latin 子集已瘦身（app/ui/assets 12 文件）；go.mod 已执行 `go mod tidy` 复核：29 个 indirect 均为 gin v1.12 传递依赖（mongo-driver v2 由 gin 直接 require、quic-go 由 gin http3 引入），无进一步精简空间；node_modules 全字符集不进入构建产物，建议保持不动 |
 
 ## 治理计划状态（P2-1 ~ P2-8）

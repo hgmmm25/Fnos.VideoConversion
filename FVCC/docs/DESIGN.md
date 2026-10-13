@@ -46,6 +46,8 @@ motion:
 
 # FVCC Web UI — Design Contract
 
+> 复核：2026-10-14（对齐 **FVCC v1.6.7 / FVCS v1.3.1**，台账见仓库根 `docs/IMPROVEMENT_LOG.md` §二十三 / §二十四）——本轮为 sqlite 驱动与 Node 运行时的依赖/工具链批次，**零 ui-src 视觉与令牌改动**（构建产物内容哈希逐项不变），故本文全部条款、令牌真源位置与 `check:design` 门禁口径原样成立，热路径与状态反馈惯例无新增约束。需注意的后续项：`tailwindcss` 3.4.19→4.3.3 专项落地时将直接改写本文的令牌映射机制（v4 为 CSS-first，`tailwind.config.js` 的 token 映射与 `@apply` 语义均变），届时必须同步回写本文，不可"先升库再补文档"。
+
 > 复核：2026-10-13（对齐 **FVCC v1.6.5 / FVCS v1.3.0**，台账见仓库根 `docs/IMPROVEMENT_LOG.md` §二十 / 第二十八轮）——本轮 1.6.0（方向 A 令牌层重排 / 控件自绘 / 外壳 / 逐页修复 / 微交互+WCAG）与 1.6.4（任务页批次 A+B+C）都在本契约约束内落地，`npm run build` 链路仍先跑 `check:design` 再 `tsc -b` + `vite build`（2026-10-13 全绿）；**令牌真源 `src/style.css` 与门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）的位置与口径维持成立，但 frontmatter 的逐条取值与 R1-R10 的逐条文案本次未逐项复跑**，沿用上一轮结论。新形成的前端惯例（`listSkeleton` 组件、进度条合成层写法、签名守卫、骨架退出条件）补记于 R7 与「热路径与状态反馈惯例」节。
 >
 > 上一轮复核（保留为历史快照）：2026-10-12（对齐 FVCC v1.6.0）——令牌真源 `src/style.css`、门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）与 Named Rules 均与代码一致；P1-2 决策门定案（2026-10-11）后本契约维持零框架前端不变。
