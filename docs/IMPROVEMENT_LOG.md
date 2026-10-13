@@ -893,6 +893,15 @@ v4 preflight 不再给 `button` / `[role=button]` 加 `cursor: pointer`，意味
 - 与本轮无关的既有挂账不变：`FVCC/.commandcode/` 处置（仍未入库也未 ignore）、store 备份/恢复前端入口、任务页 Filter Chips 与 `?fx=` 实验动画、其余页面骨架迁 `listSkeleton`、e2e B 档 #7/#9、P3-6/P3-8。
 - `baseline-snapshot` 推送不触发 CI 这条限制依旧成立：v4 的构建路径要到向 `main` 提 PR 时才第一次在 CI 上真跑（本机 `npm ci` + `npm run build` 已绿作为替代证据）。
 
-### 25.10 入库与发布后记
+### 25.10 入库与发布后记（2026-10-14）
 
-（待用户批准提交/push/tag 后回填。）
+用户判定"功能没问题"，批准整批一次性入库。本批次按两个逻辑提交推送 `fork/baseline-snapshot`：
+
+- **`e1ed35c` `chore(deps): Tailwind CSS 4.3.3 大版本专项（CSS-first 令牌迁移），版本 bump v1.6.8`**——23 文件 `+1,219 / −1,418`，含 `FVCC/ui-src/tailwind.config.js` 删除（`delete mode 100644`）。
+- 本笔 `docs(ledger)` 后记提交（提交状态随入库更新），**注解 tag `v1.6.8` 打在此笔**并推送，与 v1.6.7 的发布口径一致。
+
+提交前复跑门禁全绿：`check:design --all` 33 文件无违规、`npm run build`（CSS `index-By6Fdeqj.css` 内容哈希未变）、`go build ./...` 与 `go vet ./...` 干净、`go test ./... -count=1` 14 包全绿、`scripts/check-versions.ps1` 三方 1.6.8 一致；`FVCC/fvcc.fpk`（11,013,500 B）为提交前已核验产物。
+
+**未入库项如实登记**：`FVCC/.commandcode/` 仍是 `??`（既未跟踪也未 ignore），本轮不代为处置。构建产物 `FVCC/app/`、`FVCC/temp/`、`fvcc.fpk` 按 `.gitignore` 规则不入库；本轮自建的临时解包校验脚本 `FVCC/temp/verify_fpk.py` 已删除。
+
+**发布后仍待回收**：NAS 真机视觉对照清单（淡色 `color-mix` 色差、焦点环、按钮无 `cursor:pointer` 的操作感、触屏悬停门控、forced-colors）与既有的渲染 Failed/Cancelled 分支验证。CI 侧限制不变：`baseline-snapshot` 推送不触发工作流，v4 构建路径首次 CI 真跑要到向 `main` 提 PR 时。
