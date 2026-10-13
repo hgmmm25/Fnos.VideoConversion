@@ -1,4 +1,6 @@
-# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-12 更新至 v1.5.12）
+# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-13 更新至 v1.6.5）
+
+> **现状快照（2026-10-13 第二十八轮，本次落地）**：当前版本 **v1.6.5**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，`check-versions.ps1` 实跑通过）。本轮两段：上半段收口**任务页视觉改进批次 A+B+C**（方案 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md` + 三方外部模型评审，已随 `fe06e52` 以 **v1.6.4** 推送并打 tag）；下半段修 **VERSION 第三真源漂移**——v1.6.4 出包只 bump 了 manifest + package.json，漏了 `internal/version/VERSION`（仍 1.6.0），已推送的包「设置」页经 `/api/info` 显示 1.6.0；并把 **版本一致性校验从"Windows 静默 SKIP"改为真跑**（旧 `version_test.go` 相对路径写成 `../../manifest`、解析到不存在的 `FVCC/server/manifest`，读取失败又走 `t.Skipf`，故本机 `go test ./...` 长期"绿而无效"，漂移只在 Linux CI 才暴露）。用户拍板走 **发 v1.6.5** 而非强推重指 v1.6.4 tag（tag 历史干净）。详见 §二十。
 
 > **现状快照（2026-10-11 第二十轮，本次落地）**：当前版本 **v1.5.8**（manifest / ui-src/package.json / server/internal/version/VERSION 三处一致，check-versions.ps1 实测通过）。本轮完成 **P3-5 store 持久化健壮性（备份/迁移/快照回滚）**，按阶段 A~D 依次本地提交：**A 备份**（efef4bd：backup.go 定时 30min×12 轮转池 + 写前备份 + manual 永久）、**B 迁移框架**（16f1043：migrate.go data_version 锚点与 schema_version 正交，SQLite 走 import_meta、JSON 走 data_version.json，1→2→3 迁移链 + 全新安装打锚 + 高版本拒启）、**C 快照回滚**（59e4004：restore.go 整包验签换入 + API POST /store/restore 仅后端，zip 白名单防 zip-slip + 64MB 单条上限 + 回滚前自动 prerestore 备份 + 失败零副作用）、**D 收口**（store.go 头部 TODO(P1) 移除 + 版本 1.5.8 + 文档台账回写）。评审口径已锁：secret.key 不入备份、恢复沿用现密钥；恢复后运行中任务重置 QUEUE（同崩溃恢复语义）；本轮不做前端入口。上一轮（1.5.5~1.5.7 Windows 路径边界批次）**已提交 68ebdec 并打 tag v1.5.7**（校正第十九轮"工作区未提交"的过时记载，P3-1 对该批次关闭）。验证：`go build` / `go vet` / `go test -count=1 ./...`（12 包）全绿，coverage 56.7%→**59.0%**（门禁 55%）；-race 需 cgo，留 Linux CI。详见 §十二。
 
@@ -607,3 +609,41 @@ v1.5.11 部署后真机复验：FVCC 提交侧不再 `E_ASSET_MISSING`，任务�
 - README（根）版本行、可视化托盘管理章节（fynetheme 注记）、部署行（fvcs-ui/fvcs-settings + FVCS-UI 构建命令）同步。
 
 **状态（本轮收口，2026-10-12）**：批次①-⑥ + 版本收口全部经用户逐批验收通过后，拆三笔提交推送 `fork/baseline-snapshot`：`1e622f0` feat(ui) 批次①-⑤（16 文件）、`22035c6` feat(fvcs) v1.3.0 渲染节点 GUI 复活（含新增 `FVCS/pkg/fynetheme`）、`b1a0d93` chore(release) 版本收口 1.6.0/1.3.0 + 本台账 + gitignore 治理；注解 tag **v1.6.0** 落在 `b1a0d93` 并推送（配套 FVCS v1.3.0）。工作树干净，临时走查产物（seed-theme.html/_walkthrough）未混入提交。
+
+## 二十、第二十八轮（2026-10-13）：任务页视觉改进批次 A+B+C 收口（v1.6.4 已推送）+ VERSION 第三真源漂移修复与校验加固（v1.6.5）
+
+### 20.1 背景
+
+按 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`（GLM5.3F / Step5P / Gemini-3.8F 三方外部模型评审整合稿）对任务页做三批次改造，并在收口时发现 **v1.6.4 的第三个版本真源漏 bump**：包内 `internal/version/VERSION` 仍为 `1.6.0`，导致已推送的 1.6.4 包「设置」页经 `/api/info` 显示 1.6.0。本台账一并补记上半段（v1.6.4，已于 2026-10-13 02:40 随 `fe06e52` + `b007a3d` 推送并打 tag **v1.6.4**）与下半段（v1.6.5 修复轮，本轮）。
+
+### 20.2 上半段：v1.6.4 任务页视觉改进批次 A+B+C（`fe06e52`，7 文件 +197/−44）
+
+- **批次 A（层级修复 + 状态反馈）**：`errorMsg` 独立成行并带 `title`；拆除 `sub` 上 `truncate` 与 `flex-wrap` 的互相抵消；首屏骨架接入 `listSkeleton`；批量三键零选中时禁用、刷新期 pending 态；`.task-selected` 选中即时高亮；活动卡左侧 `signal` 静态指示线；`getPhaseStyle` 补全状态文案且 ERROR 走红条；操作区去掉 `w-[200px]` 硬宽；`serverName` 改中性标签去撞色；hover ring 与 servers 页对齐。
+- **批次 B（热路径性能）**：进度条由 `width` 改 `transform: scaleX(--p)` 走合成层；`render` 增加 id/顺序签名重排守卫；`updateOverview` 增加计数签名守卫；`scrollPos` 接线（主页与抽屉独立 key，不互串）。硬约束沿用 v1.6.1 方案：**视觉改进不得增加 WS tick 重绘**。
+- **批次 C（速率 + 实验项）**：WS `applyTaskUpdate` 合并 `speed` 字段（经 `models.go` `speed,omitempty` + `TaskUpdateFullMsg` 核实链路后转正，不再等"产品确认"），进度文案实时带倍速后缀；`#/tasks?fx=stripes` / `?fx=breathe` URL 开关（默认关）；`ui.ts` 新增 `listSkeleton` 泛化组件。
+- **两处过程修复（用户实测抓出）**：
+  - 空任务库下骨架常驻"出不来"——A2 首屏骨架初版把退出条件写成 `tasks.length>0`，改为**首次成功 render 即置 `loaded`**，空列表正常落到 `emptyState`；
+  - `check-design` R3 正则误报 CSS 属性 `box-shadow`（规则本意查内联样式），前缀排除 `-`/`:`；选中态 inset 阴影按 v1.6.1 方案 §2.3 裁决为合法。
+
+### 20.3 下半段：v1.6.5——VERSION 漂移修复 + 版本校验从"静默 SKIP"改为真跑
+
+**版本收口 1.6.0/1.6.4 → 1.6.5**（三真源同步：`FVCC/server/internal/version/VERSION`、`FVCC/manifest`、`FVCC/ui-src/package.json`）。路线经用户拍板选 **发新补丁号 v1.6.5**，不强推重指 `v1.6.4` tag：一是 tag 历史保持干净，二是 fnOS 只装严格更高版本，同版本号重指也无法覆盖已装到 NAS 的包。
+
+- **`FVCC/server/internal/version/version_test.go` 重写校验口径**（+130/−12）：
+  - 新增 `findRepoRoot`：以 **`runtime.Caller` 的测试源文件目录 + `os.Getwd()` 双起点**向上逐级搜索，判定条件是目录内同时存在 `FVCC/manifest` 与 `FVCC/ui-src/package.json`（用文件存在性而非 `.git`，因 tarball/CI 检出未必带 `.git`）；
+  - **失败一律 `t.Fatal`，彻底移除 `t.Skipf`**——定位不到仓库根、读不到文件、版本字段缺失、版本不一致，四种情况全部判红。旧实现写死 `../../manifest`（从包目录 `internal/version` 上溯 2 层实为 `FVCC/server/manifest`，不存在；正确层数是 4 层到 `FVCC/`），读不到就 Skip，于是 Windows 本机 `go test ./...` "全绿但零校验"；
+  - 新增 `TestAppVerIsNotPinnedLiteral`：扫描本包**非测试** `.go` 文件，出现 `"x.y.z"` 形式硬编码版本字面量即判红（守住"VERSION 是唯一真源"，历史同类缺陷见 FVCS `hello.go` 硬编码 `1.2.0`）；测试文件不进扫描，避免用例夹具（如 9.9.9）误伤。
+- **`version.go` 注释修正**：原"同步修改：本目录 VERSION、`../manifest`、`../ui-src/package.json`"的相对路径本身就是错的（正是它误导了上一轮只改两处），改为按仓库根写清三处真源 + 层数，并注明校验已由"会 SKIP"变为"必真跑"。
+- **`scripts/check-versions.ps1` 去硬编码**：`$BASE_DIR = "D:\Fnos.VideoConversion"` 改为由 `$PSScriptRoot` 推导仓库根，并新增 `-RepoRoot` 显式覆盖 + 定位失败明确判红。
+  - **本机环境事实（值得记）**：这台主机的 PowerShell 5.1 实测下**变量名区分大小写**——`$BaseDir` 有值时 `$BASE_DIR` 仍为空、`Get-Variable` 只登记一个。初版把参数命名为 `$BaseDir` 而下游沿用 `$BASE_DIR`，运行即 `Join-Path: Cannot bind argument ... null`。修复方式为只保留一种大小写写法（参数改名 `-RepoRoot`，与 `$BASE_DIR` 无大小写歧义），不依赖语言的大小写不敏感语义。
+
+### 20.4 验证
+
+- `go vet ./...` 通过；`go test ./... -count=1`（FVCC/server 全量）全绿；`internal/version` 三条用例 `-v` 实跑均为 **PASS 且无 SKIP**（`版本三方对齐通过：AppVer=1.6.5`）。
+- **反例验证（拦得住漂移才算修好）**：受控把 `FVCC/manifest` 改回 `1.6.4` → `TestAppVerMatchesPackagingFiles` 立刻 `FAIL`，报错文案指向"三处一起 bump"；还原后恢复一致。
+- `npm run build`（`check:design` + `tsc -b` + `vite build`）全绿，48 模块，产物输出 `FVCC/app/ui/`。
+- `scripts/check-versions.ps1`：仓库根实跑输出 `manifest=1.6.5 package.json=1.6.5 VERSION=1.6.5 => 一致`；从 `C:\` 以绝对路径调用同样通过（不再依赖 CWD 与盘符）；`-RepoRoot C:\Windows` 正常判红退出 1。
+- **出包核验**：`build.ps1 -Target FVCC -NoTest` 产出 `FVCC/fvcc.fpk`（10,752,127 字节）。解包核对——包内 `manifest` 为 `version = 1.6.5`；`app.tgz` 内 `app/fvcc` 二进制中 `1.6.x` 版本串**只出现 `1.6.5` 一次**，`1.6.4`/`1.6.0` 命中数均为 0（即漂移值已彻底不在包内）。
+- 1.6.x 线未再做 `FVCC_v*_fnos_x86.fpk` 归档副本（该惯例实际停在 1.5.11），本轮沿用现状未新增。
+
+**状态（本轮，2026-10-13）**：v1.6.4 批次 A+B+C 已推送并打 tag（`fe06e52` / `b007a3d` + tag `v1.6.4`，用户硬件验收"蛮正常"）。v1.6.5 修复轮改动 6 文件（三真源 + `version.go` + `version_test.go` + `check-versions.ps1`）+ 本台账，**本地未提交、未推送、未打 tag**，按既定闸门等用户点头后再收口。仍开放项：概览 Filter Chips（待产品拍板）、`?fx=stripes|breathe` 实验动画转正/弃用（待真实并发实测裁决）、其余页面骨架迁移 `listSkeleton`。

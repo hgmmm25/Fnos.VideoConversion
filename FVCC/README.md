@@ -90,13 +90,13 @@ go test ./...
 
 | 文件 | 字段 | 当前值 |
 |------|------|--------|
-| `manifest` | `version` | 1.6.0 |
-| `ui-src/package.json` | `version` | 1.6.0 |
-| `server/internal/version/VERSION` | 文件内容 | 1.6.0 |
+| `manifest` | `version` | 1.6.5 |
+| `ui-src/package.json` | `version` | 1.6.5 |
+| `server/internal/version/VERSION` | 文件内容 | 1.6.5 |
 
 配套渲染节点 FVCS 版本见仓库根 `FVCS/pkg/version/VERSION`（当前 1.3.0）。
 
-## 近期版本线摘要（1.5.4 ~ 1.6.0）
+## 近期版本线摘要（1.5.4 ~ 1.6.5）
 
 | 版本 | 内容 |
 |------|------|
@@ -108,8 +108,10 @@ go test ./...
 | 1.5.11 | 渲染取根「有界单根」：`EDLClip.sourceRoot` 透传 + `resolveRenderRoots`；FVCS `makeSrcResolver` 对齐 `BuildSMBPath`（配套 FVCS v1.2.5） |
 | 1.5.12 | RENDER_EDL 终态轮询收口（`pollRenderTerminal`/`completeRenderTask`，修出片后卡「收尾·100%」）；`validateRootRelPath` 与 FVCS `ValidateRootPath` 严格同规则（配套 FVCS v1.2.6） |
 | 1.6.0 | 视觉打磨版（方向 A 精修冷灰）：令牌层重排 / selectField·checkbox·按钮变体 / 导航分组·搜索胶囊·状态栏 / V1 趋势图修复·V5-V8 逐页 / 微交互 + WCAG 对比度验收（配套 FVCS v1.3.0：Fyne 托盘 GUI 纳入构建 `-Target FVCS-UI`，主题贴近 FVCC 蓝调） |
+| 1.6.1 ~ 1.6.4 | 任务页视觉改进三批次（方案 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`，GLM5.3F / Step5P / Gemini-3.8F 三方评审整合）：A 层级修复+状态反馈（errorMsg 独立成行、首屏骨架 `listSkeleton`、批量键禁用/pending、选中即时高亮、ERROR 红条、去硬宽）；B 热路径性能（进度条 `transform: scaleX(--p)` 走合成层、render/updateOverview 签名守卫、scrollPos 主页/抽屉独立 key）；C 速率与实验项（WS 合并 `speed` + 倍速后缀实时展示、`#/tasks?fx=stripes\|breathe` 默认关）。含两处实测抓出的修复：空任务库骨架常驻（`loaded` 改由首次成功 render 置真）、`check-design` R3 误报 `box-shadow` |
+| 1.6.5 | 版本真源漂移修复 + 校验加固：`internal/version/VERSION` 补齐至 1.6.5（1.6.4 出包漏改致「设置」页显示 1.6.0）；`version_test.go` 改为向上定位仓库根比对三真源、失败一律判红不再静默 SKIP（Windows 本机自此真跑），新增禁止硬编码版本字面量用例；`scripts/check-versions.ps1` 去硬编码盘符并支持 `-RepoRoot`（用户拍板发新补丁号而非强推重指 v1.6.4 tag） |
 
-逐轮明细见仓库根 `docs/IMPROVEMENT_LOG.md`（§十一~§十九）。
+逐轮明细见仓库根 `docs/IMPROVEMENT_LOG.md`（§十一~§二十）。
 
 ## 项目内文档体系
 
@@ -144,7 +146,7 @@ go test ./...
 | P1-1 | Profile 反射白名单更新 | ✅ 已落地 | `server/internal/protocol/applyjson.go` + 单测（P2-1 分层后位置） |
 | P1-2 | SMB 路径校验 | ✅ 已落地 | `server/internal/security/smb_validate.go` + 单测（P2-1 分层后位置） |
 | P1-3 | 文档落地（代码注释引用设计规格） | ✅ 已落地 | 注释以 `WebVideoEditor_Design/07-§3.2` 形式引用 |
-| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地 | 三处 1.6.0 已同步（2026-10-12 复核，随版本线推进持续对齐）；本表已更新，消除 README 滞后 |
+| P1-4 | manifest 修复 + 版本单一来源 | ✅ 已落地 | 三处 1.6.5 已同步（2026-10-13 复核）；本表已更新，消除 README 滞后。校验闭环加固：`version_test.go` 定位仓库根比对三真源、漂移即红（旧实现路径写错 + 读取失败即 Skipf，Windows 本机长期"绿而无效"，v1.6.4 的 VERSION 漂移因此溜过），另新增"禁止硬编码版本字面量"用例；`check-versions.ps1` 不再硬编码盘符 |
 | P1-5 | 依赖瘦身（前端字体 / 后端 indirect） | 🟡 部分落地 | 字体 latin 子集已瘦身（app/ui/assets 12 文件）；go.mod 已执行 `go mod tidy` 复核：29 个 indirect 均为 gin v1.12 传递依赖（mongo-driver v2 由 gin 直接 require、quic-go 由 gin http3 引入），无进一步精简空间；node_modules 全字符集不进入构建产物，建议保持不动 |
 
 ## 治理计划状态（P2-1 ~ P2-8）
