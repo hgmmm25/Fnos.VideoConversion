@@ -10,7 +10,7 @@
 
 FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 Web 客户端：浏览本地素材、把转码/代理/渲染任务下发给 FVCS 渲染端、通过 WebSocket 实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript 零框架原生 DOM，产物以 fpk 形式打包供 fnOS 安装。
 
-**当前基线（2026-10-14）**：**FVCC v1.6.9 / FVCS v1.3.1**——三真源一致（`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION`），`scripts/check-versions.ps1` 绿（v1.6.5 起校验为「漂移即红」）。v1.6.9 为**低风险收尾批次（第三十七轮）**：store 备份/恢复前端入口 + P3-6 勾选 + `.commandcode/` 收编；已出 fpk（11,014,297 B）、已提交（主体 `dedd124` + 后记笔打注解 tag `v1.6.9`）并推送 `fork/baseline-snapshot`，NAS 真机安装由用户验证。
+**当前基线（2026-10-14）**：**FVCC v1.6.9 / FVCS v1.3.1**——三真源一致（`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION`），`scripts/check-versions.ps1` 绿（v1.6.5 起校验为「漂移即红」）。v1.6.9 为**低风险收尾批次（第三十七轮）**：store 备份/恢复前端入口 + P3-6 勾选 + `.commandcode/` 收编；已出 fpk（11,014,297 B）、已提交（主体 `dedd124` + 后记笔打注解 tag `v1.6.9`）并推送 `fork/baseline-snapshot`；**NAS 真机复验通过（用户 2026-10-14 执行）：备份/恢复面板显示正常、功能可用，P3-5 整条关闭**。
 
 ### 1.0 版本线摘要（git 核验）
 
