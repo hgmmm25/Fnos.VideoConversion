@@ -905,3 +905,58 @@ v4 preflight 不再给 `button` / `[role=button]` 加 `cursor: pointer`，意味
 **未入库项如实登记**：`FVCC/.commandcode/` 仍是 `??`（既未跟踪也未 ignore），本轮不代为处置。构建产物 `FVCC/app/`、`FVCC/temp/`、`fvcc.fpk` 按 `.gitignore` 规则不入库；本轮自建的临时解包校验脚本 `FVCC/temp/verify_fpk.py` 已删除。
 
 **发布后仍待回收**：NAS 真机视觉对照清单（淡色 `color-mix` 色差、焦点环、按钮无 `cursor:pointer` 的操作感、触屏悬停门控、forced-colors）与既有的渲染 Failed/Cancelled 分支验证。CI 侧限制不变：`baseline-snapshot` 推送不触发工作流，v4 构建路径首次 CI 真跑要到向 `main` 提 PR 时。
+
+## 二十六、第三十五轮（2026-10-14）：CI Actions 大版本升级（checkout/setup-go/setup-node → v7）
+
+### 26.1 背景
+
+第三十五轮的前置是一次全量工具版本复核（本机安装态 vs 各上游最新版）。复核结论：两个 Go 模块的直接依赖与 FVCC 前端 9 个包**全部已是最新版**（含跨大版本核对，不只是 `npm outdated` 的范围内核对），工具链里 Node 26.11.1 与 MSYS2 gcc 16.2.0 亦为最新，落后项都是补丁级（Go 1.27.1→1.27.2、FFmpeg 9.0.1→9.0.2）。**唯一实质工具债是 CI 的三个 action pin**：`checkout@v4`（最新 v7.0.1）、`setup-go@v5`（v7.0.0）、`setup-node@v4`（v7.1.0）。
+
+### 26.2 三个大版本各自的破坏性变更（逐条判定是否影响本仓库）
+
+| action | 跨越 | 破坏性变更 | 对本仓库的影响 |
+|---|---|---|---|
+| `actions/checkout` | v4→v7 | v5：运行时换 Node 24，要求 runner ≥ v2.327.1；v6：凭据落盘改为独立文件（`persist-credentials` 语义）；v6.1/v5.1：新增 `allow-unsafe-pr-checkout`；v7：**拦截 `pull_request_target` / `workflow_run` 里的 fork PR 检出**，并迁移到 ESM | checkout 之后没有任何 git 写操作，凭据落盘方式无关；本工作流触发事件是 `push` / `pull_request`，**不碰 v7 的拦截面**；ubuntu-latest runner 远高于 v2.327.1 |
+| `actions/setup-go` | v5→v7 | **v6：显式设 `GOTOOLCHAIN=local`**（不再自动下载 go.mod 声明的更高工具链）、优先用 `toolchain` 指令、运行时换 Node 24；v7：ESM 迁移 + `@actions/cache` 6.2.0 | 与仓库既有 `GOTOOLCHAIN=auto` 口径正面冲突，需判定（见 26.3）；`cache: true` 默认 + `cache-dependency-path` 用法不变 |
+| `actions/setup-node` | v4→v7 | v5：`package.json` 有 `packageManager` 字段时**自动开缓存**（可用 `package-manager-cache: false` 关）+ 运行时换 Node 24；v6：自动缓存限定为 npm；v7：**移除 dummy `NODE_AUTH_TOKEN` 导出**、新增 `cache-primary-key` / `cache-matched-key` 输出、缓存文档改为防投毒口径 | `ui-src/package.json` 没有 `packageManager` 字段，自动缓存路径根本不触发，显式 `cache: npm` 行为不变；本工作流不发布 npm 包，`NODE_AUTH_TOKEN` 移除无影响 |
+
+### 26.3 `GOTOOLCHAIN=local` 的判定（本轮唯一的实质风险）
+
+`FVCC/server/go.mod` 声明 `go 1.27.1`（**下限**），CI 的 `go-version: '1.27.x'` 在 v6+ 的 local 语义下会解析出 runner 上最新的 1.27 补丁（当前 1.27.2）并**禁止再下载别的工具链**。因为 1.27.2 ≥ 1.27.1，两个 job 的所有 `go` 命令都正常执行，**升级无影响**。
+
+需要留一道后手：若将来把 go.mod 的 `go` 指令抬到比 runner 可用补丁还高，CI 会直接报 `go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)`。这是"抬 go 指令必须同步改 `go-version`"的信号，已写进工作流头注释。
+
+顺带澄清一个口径差异：本机 Windows 仍按 `build-env.ps1` 的 `GOTOOLCHAIN=auto`（启动器 `sdk/go1.25.3` 与 go.mod 下限不同源，必须靠 auto 选取），CI 则是 local 锁定。**两端不一致是有意为之**，不是漂移。
+
+### 26.4 改动与本地验证
+
+改动仅 `.github/workflows/fvcc-ci.yml` 一个文件：三处 `uses:` 升到 v7（4 个 step 实例），头部新增 action 版本基线注释。**未 bump 应用版本、未出包**（纯 CI 配置，产物零变化）。
+
+本地按 CI 的两个 job 逐项复现（Go 侧统一 `env -u GOOS -u GOARCH` + `CGO_ENABLED=1` + mingw gcc）：
+
+- **frontend job 全绿**：`npm ci`（exit 0）→ `npm run build` 绿，产物内容哈希与本轮复核前那次构建逐项一致（`index-By6Fdeqj.css` 49.95 kB / `index-CIDB_L2E.js` 205.82 kB）。
+- backend job：`go vet ./...` 干净；`scripts/check-coverage.ps1 -Threshold 60` **PASS，总覆盖率 60.7%**（与第二十六轮口径一致）。
+- **backend 的 `go test -race ./...` 判红**——见 26.5。
+
+### 26.5 首次真跑 `-race` 暴露的两个 scheduler 失败（与 action 版本无关）
+
+第三十三轮出包时登记的是"`-race` 本机跑不了（需 CGO），留给 Linux CI"。本轮本机装了 MSYS2 mingw-w64 gcc，`CGO_ENABLED=1 go test -race` **实际可跑**，于是这个从未被执行过的门禁第一次真跑就红了。两处：
+
+1. **`TestP1EventDrivenQueueDispatch`：`WARNING: DATA RACE`（确定性、跨平台）**。`fakeDispatcher` 的 `edlCalls` / `lastServer` / `lastTask` 是裸字段，写方是调度器协程（`scheduler.go:183 handleEvent → :274 processTask → :939 handleRenderEDL → :979 dispatchRenderLike → scheduler_edl_test.go:43` 自增），读方是测试协程在 `scheduler_p1_test.go:47` 轮询 `d.edlCalls == 0`。桩件无同步 → **Linux CI 同样会红**。涉及面：`fakeDispatcher` 被 4 个测试文件使用（`scheduler_edl_test.go`、`scheduler_p1_test.go`、`scheduler_concurrency_test.go`、`node_select_integration_test.go`），裸读点约 12 处，修法为桩内加 mutex + 提供带锁读取器。
+2. **`TestSchedulerTickConcurrentSafe`：`仍有 11 个任务滞留 QUEUE 未收敛`**（`scheduler_concurrency_test.go:123`）。160 个并发提交任务在 `-race` 降速下超出 10 s 收敛窗口；不带 `-race` 时该包 9.091 s 全绿（本轮两次实测一致）。属时序余量问题，需判定是放宽窗口还是确有收敛缺陷。
+
+**不带 `-race` 时两个失败都不出现**——这解释了为什么历轮"`go test ./... -count=1` 14 包全绿"的记录与本轮结论不矛盾。
+
+### 26.6 CI 现状事实（本轮首次查清，后续批次的基础）
+
+- **CI 从来没有绿过**。仓库只有 2 次运行记录，均 2026-09-21，均为 `go test` 步骤失败、覆盖率门禁随之 skipped：`35596178916`（push/main，a7070c0）、`35596150083`（pull_request，080754c）。当时门禁还是 `>= 55%`。
+- **`fork/main` 落后 `baseline-snapshot` 45 个提交**（main 头 = a7070c0，2026-09-21 的 "Merge pull request #1"），其工作流仍是旧版（`node-version: '22'`、无 `-Threshold`）。`origin`（zdongno01）侧 0 次运行。
+- 工作流只在 `main` 的 push / PR 触发，日常分支 `baseline-snapshot` 的推送不触发——所以**本轮的 pin 升级无法靠推日常分支验证**，要么向 `main` 提 PR，要么临时把 `baseline-snapshot` 加进 `on.push.branches`。
+- 本机 `gh` 未登录（`gh run list` 报需 `gh auth login`），运行历史是经公开 API 取到（两个仓库均 public）；action 破坏性变更取自各仓库 release notes + `setup-go` PR #460 原文。
+
+### 26.7 本批次未做与待定（等用户裁决）
+
+- **是否在本批次一并修 `-race`**：修则目标是拿到史上第一次绿 CI，代价是批次范围从"CI 配置"扩到"产品测试代码"；不修则本批次推送后 CI 仍会在 `go test -race` 判红（Setup 步骤会成功，足以证明 pin 升级本身有效）。
+- **验证跑 CI 的路径**：开 PR `baseline-snapshot → fork/main`（不动 main，PR head 用新工作流）／临时把 `baseline-snapshot` 加进 push 触发（多两个提交，全程命令行）／先不推送只留本地验证。
+- 复核中另记下两项非本批次欠账：`actions` 之外，CI 的 `go-version` 仍是 `1.27.x` 范围写法（与本机 1.27.1 存在补丁漂移，是否钉死待定）；`setup-go` 也支持 `go-version-file: FVCC/server/go.mod` 直接读下限。
+- 与本批次无关的既有挂账不变：`FVCC/.commandcode/` 处置、NAS 真机视觉清单回收、渲染 Failed/Cancelled 分支、P3-6/P3-8、e2e B 档 #7/#9。
