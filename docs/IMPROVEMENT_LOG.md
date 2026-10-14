@@ -960,3 +960,67 @@ v4 preflight 不再给 `button` / `[role=button]` 加 `cursor: pointer`，意味
 - **验证跑 CI 的路径**：开 PR `baseline-snapshot → fork/main`（不动 main，PR head 用新工作流）／临时把 `baseline-snapshot` 加进 push 触发（多两个提交，全程命令行）／先不推送只留本地验证。
 - 复核中另记下两项非本批次欠账：`actions` 之外，CI 的 `go-version` 仍是 `1.27.x` 范围写法（与本机 1.27.1 存在补丁漂移，是否钉死待定）；`setup-go` 也支持 `go-version-file: FVCC/server/go.mod` 直接读下限。
 - 与本批次无关的既有挂账不变：`FVCC/.commandcode/` 处置、NAS 真机视觉清单回收、渲染 Failed/Cancelled 分支、P3-6/P3-8、e2e B 档 #7/#9。
+
+## 二十七、第三十六轮（2026-10-14）：本机 Go 工具链升级 1.27.1 → 1.27.2 与「auto 选取语义」查清
+
+### 27.1 批次裁决（用户口径）
+
+- 第三十五轮的 26.7 两个待定项由用户裁决：**"本批次只推 pin，race 另立批次"**、**"验证先不做"**（不推送、不开 PR 跑 CI）。
+- 本轮范围：升级本机工具链里唯二落后项中的 Go（选 **官网 MSI 覆盖安装**），npm **暂不升**，FFmpeg **"不升 ffmpeg，这是另个体系"**。
+- **纯工具链与文档口径批次：不 bump 应用版本、不出 fpk。**
+
+### 27.2 升级动作与包完整性
+
+- 路径：`C:\Program Files\Go`（`go env GOROOT`）由官网 MSI 覆盖安装，PATH Go 从 1.27.1 → **1.27.2**；`sdk\go1.25.3` 启动器保留未动（这点是关键，见 27.3）。
+- `winget upgrade --id GoLang.Go` 报"找不到可用的升级"——winget 源当时仍只有 1.27.1，**补丁级升级不可依赖 winget**，走 go.dev/dl 才对。
+- 安装包 `go1.27.2.windows-amd64.msi`：本地 66,154,496 B，sha256 `dc673c9207a83f95031549fafe72cc0b4c4554a1c16b373d875e90cf8d995ed9`，与 `go.dev/dl?mode=json&include=all` 公布值**逐项一致**（本轮复算确认）。
+
+### 27.3 关键发现：交付产物并不随本机 PATH Go 的补丁升级而变（并纠正上一轮的误判）
+
+`GOTOOLCHAIN=auto` 的选取语义是——**启动器版本 ≥ go.mod 下限 → 用启动器；启动器 < 下限 → 严格取 go.mod 声明的那个版本**（命中模块缓存或下载）。本仓库两个 go.mod 下限是 `go 1.27.1`，而 `build.ps1` 的 `$SDK_PATHS` 首选 `sdk\go1.25.3`（低于下限），所以：
+
+| 构建路径 | 实际编译用的 Go | linux/amd64 产物尺寸 |
+|---|---|---|
+| `build.ps1`（1.25.3 启动器 + auto） | **go1.27.1**（模块缓存 `golang.org/toolchain@v0.0.1-go1.27.1.windows-amd64`） | 27,414,688 B |
+| 直接在 PATH 上 `go build`（1.27.2 启动器 + auto） | go1.27.2 | 27,431,072 B（+16,384 B） |
+| 已入库的 v1.6.8 交付 `FVCC/app/fvcc` | `go version -m` = **go1.27.1** | 27,414,688 B |
+
+本轮实测：升级后用 1.25.3 启动器按 `build.ps1` 的同参（`-trimpath -ldflags "-s -w"`、`GOOS=linux GOARCH=amd64 CGO_ENABLED=0`）重建，产物 **27,414,688 B，与交付二进制同尺寸**、`go version -m` 同为 go1.27.1、嵌入的 build settings 逐项相同。
+
+- **纠正**：本轮初判"Go 补丁升级会让二进制 +16 KB，从而『同尺寸即后端零改动』这条打包校验跨补丁级失效"——那是**直接在 PATH 上 `go build`（1.27.2）**得到的，不是交付路径。`build.ps1` 恒用 1.27.1，所以该口径在 fpk 层面**未被破坏**，v1.6.8 的"二进制逐字节同尺寸"结论仍然成立。
+- 顺带登记：同参数两次构建的 **sha256 不同**（每次构建的 buildid 随机，`-s -w -trimpath` 也不消除），所以打包核验只能比**尺寸与版本串**，不能比哈希——历史上比的就是尺寸，口径一致。
+- 反面含义（后续批次的决策依据）：想让交付产物真正吃到 1.27.2 的补丁修复，必须**同步抬两个 go.mod 的 `go` 指令 + CI 的 `go-version`**（setup-go v6+ 是 local 语义，见 26.3），单升本机 PATH Go 没有效果。本轮按"`go` 指令是下限不是 pin"的既有口径**未抬 go.mod**。
+
+### 27.4 验证（本轮亲跑，非沿用）
+
+- 双端构建：FVCC `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" .` exit 0（产物头 4 字节 `\177ELF`）；FVCS `CGO_ENABLED=1 + mingw64 gcc` 的 `go build ./pkg/... ./cmd/service` exit 0（该路径直用 PATH Go，`go env GOVERSION` = go1.27.2）。
+- `cd FVCC/server`：`go build ./...` 与 `go vet ./...` 干净，`go mod tidy -diff` 空输出（依赖图无需变动）。
+- `go test ./... -count=1`：**14 包全绿**（api 19.4s / edl 7.3s / media / node / pathutil / protocol / remote / scheduler 15.4s / security / store 27.1s / store/model / version / logger / smbshare）。
+  - 升级后第一次全量跑时 `TestSchedulerTickConcurrentSafe` 判红（"仍有 2 个任务滞留 QUEUE 未收敛" + TempDir RemoveAll 非空告警）；单独复跑 scheduler ×3 全绿、复跑全量再次全绿 → 判定为**已登记的主机负载时序 flake**（不带 `-race` 时该用例的 10 s 收敛窗口本就在余量边缘），**不是 Go 1.27.2 的回归**。
+- `scripts/check-versions.ps1` 绿：三方 1.6.8 一致 + go.mod `go 1.27.1`。
+- 本轮改的两个 `.ps1` 只动注释，均已 `Parser::ParseFile` 语法核验 PARSE-OK。
+
+### 27.5 npm 停在 11.20.0 的原因（用户请求升，实测升不动，如实登记）
+
+`npm -v` 仍是 11.20.0（Node 26.11.1 MSI 内置）。上游 12.2.0，但本机**无法原地升**：`npm config get prefix` = `C:\Users\xx318\AppData\Roaming\npm`（可写、无需管理员），而 PATH 里 `C:\Program Files\nodejs`（内置 npm 的落点）**排在它之前**，`npm i -g npm@12` 装到前者也会被后者的 11.20.0 遮蔽，`npm -v` 照旧；`C:\Program Files\nodejs` 需管理员权限才能改写。两条可行路径留给用户决策：① 管理员调整 PATH 顺序（把 `%APPDATA%\npm` 提前）后 `npm i -g npm@12`；② 等下一次 Node MSI 升级自带新 npm。**不影响交付**：CI 用 `setup-node` 自带的 npm，本仓库只跑 `npm ci` / `npm run build`。本轮未擅自改系统 PATH（会波及其他项目）。
+
+### 27.6 FFmpeg：裁决"另个体系"，同时登记实测真相
+
+- 用户裁决：**不升 ffmpeg**，它不属于本仓库工具链口径。
+- 复核时发现旧文档口径是错的：`where`/`which` 实测 PATH 上唯一命中是 **`D:\YTSage\ffmpeg.exe`**（9.0.1-essentials，gyan.dev 构建），**`D:\FFmpegTools\bin` 根本不存在**；仓库代码里也没有对该目录的引用。
+- FVCS 侧 ffmpeg 是**配置项** `ffmpeg_path`（`FVCS/pkg/config/config.go:41`，默认 `.\ffmpeg.exe`），由安装者按部署实际填写；ffprobe 路径由它同目录推导（`FVCS/pkg/ffmpeg/edl.go:143`）。即 ffmpeg 不随 `build.ps1` 构建、不进 fpk——与"另一体系"的裁决一致。
+- 已按此口径改写 `docs/FVCC_项目现状与开发步骤.md` §6.2 的 ffprobe/ffmpeg 行（旧文写"本机构建机已装 ffprobe 9.0.1"但没写解析路径）。**fnOS 侧 ffmpeg PATH 是否可达仍未解**，属真机核验项，由用户实测。
+
+### 27.7 本批次改动清单与入库状态
+
+- 文档/注释口径（本轮，**未提交**）：`BUILD.md`（FVCC 前置条件 Go 行、FVCS 环境要求 Go 行、注意事项「Go 工具链」新增"auto 的选取语义"条、基线表 Go 工具链行改写 + 新增 npm 行 + 新增 FFmpeg 行）、`build-env.ps1`（工具链选择注释）、`build.ps1`（auto 选取语义注释）、`docs/FVCC_项目现状与开发步骤.md` §6.2 两行、本节台账。
+- 第三十五轮的 CI pin 批次 **`4365e31`**：已提交，**尚未推送**（推送与打 tag 按既定纪律等用户确认；该批次不 bump 版本、不出包）。
+- 未入库项照旧：`FVCC/.commandcode/` 仍是 `??`；`temp/` 下本轮的核验产物（MSI、两份对比二进制、go.dev 元数据 JSON）按 `.gitignore` 不入库。
+
+### 27.8 未做与待定
+
+- **`go test -race` 修复**仍是独立批次（26.5 的 `fakeDispatcher` 裸字段数据竞争 + `TestSchedulerTickConcurrentSafe` 收敛窗口判定）。
+- **是否抬 go.mod 的 `go` 指令到 1.27.2**：本轮按"下限不是 pin"未抬；若希望交付产物吃到补丁，需与 CI `go-version` 同批处理（27.3）。
+- **npm 12 的两条升级路径选哪条**：等用户裁决（27.5）。
+- **CI 首跑路径**（PR 到 `fork/main` vs 临时加 push 分支）仍未定，`4365e31` 也因此停在本地。
+- 与本批次无关的既有挂账不变：`FVCC/.commandcode/` 处置、NAS 真机视觉清单回收、渲染 Failed/Cancelled 分支、P3-6/P3-8、e2e B 档 #7/#9。

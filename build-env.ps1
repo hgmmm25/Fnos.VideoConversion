@@ -18,7 +18,9 @@ $env:GOARCH_FVCC = "amd64"
 $env:CGO_ENABLED_FVCC = "0"
 
 # --- Go 工具链选择（FVCC 与 FVCS 共用）---
-# 两个模块的 go.mod 都声明 `go 1.27.1`，本机 PATH 上的 Go 亦为 1.27.1。
+# 两个模块的 go.mod 都声明 `go 1.27.1`（语言下限）；本机 PATH 上的 Go 已升至 1.27.2
+# （2026-10-14 官网 MSI 覆盖安装），但 build.ps1 优先用上面 1.25.3 启动器 + auto，
+# 会严格取 go.mod 声明的 go1.27.1（模块缓存已含），故交付包二进制仍由 1.27.1 产出。
 # 必须用 auto：local 会把版本锁死在启动器自身，若机器上装的是更旧的 Go（例如历史上
 # 残留的 go1.24.6），FVCS 构建即报 `go.mod requires go >= 1.27.1`。
 $env:GOTOOLCHAIN = "auto"

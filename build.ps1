@@ -50,6 +50,9 @@ if (-not $GO_EXE) {
 # Both FVCC (server/go.mod) and FVCS (go.mod) declare `go 1.27.1`; the go1.27.1
 # toolchain is already cached in GOMODCACHE (golang.org/toolchain@v0.0.1-go1.27.1),
 # so auto incurs no download and avoids "go.mod requires go >= 1.27.1" failures.
+# Note: auto picks go.mod's exact version when the launcher is older, and the
+# launcher itself when it already satisfies the floor. Since $SDK_PATHS probes the
+# 1.25.3 launcher first, builds here run go1.27.1 even though PATH Go is now 1.27.2.
 $GOTOOLCHAIN = "auto"
 
 # FVCC backend cross-compile target

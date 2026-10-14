@@ -69,7 +69,7 @@ cd D:\Fnos.VideoConversion
 
 | 工具 | 版本 | 路径 |
 |------|------|------|
-| Go (FVCC 后端) | go.mod 声明 `go 1.27.1` + `GOTOOLCHAIN=auto`（本机 PATH 上 Go 实测 1.27.1，模块缓存已含 `golang.org/toolchain@v0.0.1-go1.27.1`） | 启动器 `C:\Users\xx318\sdk\go1.25.3\go\bin\go.exe` 或 `C:\Program Files\Go\bin\go.exe`（build.ps1 按此顺序探测） |
+| Go (FVCC 后端) | go.mod 声明 `go 1.27.1`（语言下限）+ `GOTOOLCHAIN=auto`；**本机 PATH 上的 Go 实为 1.27.2**（2026-10-14 由官网 MSI 覆盖升级，`C:\Program Files\Go`；模块缓存另有 `golang.org/toolchain@v0.0.1-go1.27.1`）。经 `build.ps1` 构建时因启动器探测顺序命中 1.25.3，auto 严格取 go.mod 声明的 **1.27.1**，故交付产物工具链不随 PATH Go 补丁变化 | 启动器 `C:\Users\xx318\sdk\go1.25.3\go\bin\go.exe` 或 `C:\Program Files\Go\bin\go.exe`（build.ps1 按此顺序探测） |
 | Node.js | v26.11.1（系统级 MSI，2026-10-13 由 v25.9.0 升级；CI 同为 26，`@types/node` 已抬至 ^26，`package.json` 声明 `engines.node >= 26.0.0`） | `C:\Program Files\nodejs\node.exe`（系统 PATH 首位） |
 | npm | 11.20.0（随 Node 26.11.1 内置；上游最新已 12.2.0，本仓库未跟） | 系统 PATH |
 | fnpack | 1.2.3（打包工具） | `D:\Fnos.VideoConversion\fnpack-1.2.3-windows-amd64.exe` |
@@ -159,7 +159,7 @@ print("OK: 成员完整 / checksum 一致 / 图标一致")
 
 | 工具 | 版本 | 路径 |
 |------|------|------|
-| Go | go.mod 声明 `go 1.27.1`（与 FVCC 同一口径，`GOTOOLCHAIN=auto` 选取） | 本机 PATH 上的 Go 1.27.1 直接可用；历史「FVCS 用 go1.24.6 + `GOTOOLCHAIN=local`」的写法已作废 |
+| Go | go.mod 声明 `go 1.27.1`（语言下限，与 FVCC 同一口径，`GOTOOLCHAIN=auto` 选取） | 本机 PATH 上的 Go 已升至 **1.27.2**（2026-10-14 官网 MSI 覆盖安装），满足下限可直接用；经 `build.ps1` 构建时因启动器探测顺序命中 `sdk\go1.25.3`，auto 会严格取 go.mod 声明的 1.27.1（模块缓存已含）。历史「FVCS 用 go1.24.6 + `GOTOOLCHAIN=local`」的写法已作废 |
 | GCC (MSYS2) | mingw-w64 gcc 16.2.0（Rev3，2026-10-14 实测；上游包当前为 16.2.0-5，同一 gcc 版本） | `C:\msys64\mingw64\bin\gcc.exe` |
 
 ### FVCS 环境变量
@@ -187,8 +187,9 @@ go test ./pkg/... ./cmd/service -count=1 -v
 
 ### Go 工具链
 
-- **双端统一 `GOTOOLCHAIN=auto`**：`FVCC/server/go.mod` 与 `FVCS/go.mod` 都声明 `go 1.27.1`，auto 按 go.mod 选取工具链（模块缓存已含 `golang.org/toolchain@v0.0.1-go1.27.1`，无额外下载）。`build.ps1` 探测启动器的顺序是 `sdk\go1.25.3` → `Program Files\Go` → PATH 上的 `go`，无论命中哪个，auto 都会升到 go.mod 要求的版本；旧的「FVCS 用 go1.24.6 + local」写法已作废（本机 `sdk\go1.24.6` 目录也已不存在）。
-- **`go` 指令是下限，不是 pin**：上游已发布 go1.27.2（补丁版，另有 1.26.9），但把两个 go.mod 的 `go` 指令提到 1.27.2 只会让新环境必须下载该工具链，收益是补丁修复而非语言特性，故本仓库保持 `go 1.27.1` 下限、由 auto 在实际运行时选取本机/缓存里满足下限的工具链。
+- **双端统一 `GOTOOLCHAIN=auto`**：`FVCC/server/go.mod` 与 `FVCS/go.mod` 都声明 `go 1.27.1`，auto 按 go.mod 选取工具链（模块缓存已含 `golang.org/toolchain@v0.0.1-go1.27.1`，无额外下载）。`build.ps1` 探测启动器的顺序是 `sdk\go1.25.3` → `Program Files\Go` → PATH 上的 `go`；旧的「FVCS 用 go1.24.6 + local」写法已作废（本机 `sdk\go1.24.6` 目录也已不存在）。
+- **auto 的选取语义（决定交付产物用哪个 Go）**：启动器版本 **≥ go.mod 下限** → 直接用启动器；启动器 **< 下限** → 取 go.mod 声明的**精确版本**（命中模块缓存或下载）。因 `build.ps1` 首先命中 1.25.3 启动器（低于下限），经它构建的 FVCC/FVCS **恒由 go1.27.1 产出**，与本机 PATH 上装的 Go 补丁版无关——2026-10-14 把 PATH Go 升到 1.27.2 后实测：走 `build.ps1` 的启动器路径重建 `app/fvcc` 仍是 **27,414,688 B、`go version -m` = go1.27.1**（与已入库的 v1.6.8 交付二进制同尺寸），而直接在 PATH 上 `go build` 则为 27,431,072 B、go1.27.2（+16,384 B）。所以「比较二进制尺寸判断后端是否零改动」这条打包校验，只在同一条构建路径内成立。
+- **`go` 指令是下限，不是 pin**：上游已发布 go1.27.2（补丁版，另有 1.26.9），但把两个 go.mod 的 `go` 指令提到 1.27.2 只会让新环境必须下载该工具链，收益是补丁修复而非语言特性，故本仓库保持 `go 1.27.1` 下限。注意由此产生的副作用：抬 PATH Go 到 1.27.2 **不会**改变 `build.ps1` 的交付产物（见上一条），想要产物真正吃到 1.27.2 的补丁，必须同步抬 go.mod 的 `go` 指令并把 CI 的 `go-version` 一起抬。
 - **不要把 `GOCACHE` 留在 C 盘**。当前 C 盘剩余约 15 GB，GOCACHE 默认 2.5 GB 就在那里。
   - 推荐：在 `build-env.ps1` 中已配置 `GOCACHE` 到 `D:\GoCache`。
   - 手动设置：`$env:GOCACHE = "D:\GoCache"`
@@ -197,10 +198,12 @@ go test ./pkg/... ./cmd/service -count=1 -v
 
 | 项 | 本仓库声明/锁定值 | 上游最新 | 处置 |
 |----|----|----|----|
-| Go 工具链 | 双端 go.mod `go 1.27.1`（语言下限，无 `toolchain` 行） | go1.27.2（1.27 线补丁） | **保持 1.27.1 下限**：`go` 指令不是 pin，补丁级改进由 auto + 本机工具链自然获得，抬高下限只会让新环境必装指定版本 |
+| Go 工具链 | 双端 go.mod `go 1.27.1`（语言下限，无 `toolchain` 行）；本机 PATH Go **1.27.2**（2026-10-14 官网 MSI 覆盖安装），`sdk\go1.25.3` 启动器仍在 | go1.27.2（1.27 线补丁） | **保持 1.27.1 下限**：`go` 指令不是 pin，抬高下限只会让新环境必装指定版本。**注意**：抬 PATH Go 不会让交付产物自动吃到补丁——`build.ps1` 走 1.25.3 启动器 + auto，恒选 go.mod 声明的 1.27.1（见上一节「auto 的选取语义」） |
 | CI Go | `.github/workflows/fvcc-ci.yml` → `actions/setup-go@v7` + `1.27.x` | — | 与 go.mod 下限一致。**注意 setup-go v6+ 会显式设 `GOTOOLCHAIN=local`**（CI 端不再自动下载工具链），因解析出的 1.27.x 补丁 ≥ go.mod 的 1.27.1 下限而无影响；若将来抬 go.mod 的 `go` 指令，必须同步抬 `go-version`，否则 CI 报 `go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)`。本机仍用 `GOTOOLCHAIN=auto`（见 build-env.ps1），两端不同源是有意为之 |
 | Node 运行时 | 本机 v26.11.1（系统级 MSI，`C:\Program Files\nodejs`；`AppData\Local\hermes\node` 有一份残留副本，PATH 排在系统目录之后故不生效） | 26.11.1（Current 线） | **已升级**（2026-10-13，从 v25.9.0——v25 是已 EOL 的奇数 Current 线）。注意 26 仍是 Current 而非 LTS（active LTS 为 24 Krypton），下次抬 LTS 时同步 CI 与 `engines` |
 | CI Node | `.github/workflows/fvcc-ci.yml` → `actions/setup-node@v7` + `node-version: '26'` | 26.x | **与本机运行时、`engines.node`、`@types/node` 四处对齐**。setup-node v5+ 会按 `packageManager` 字段自动开缓存，`ui-src/package.json` 无该字段故不触发，仍由显式 `cache: npm` 负责；v7 移除了 dummy `NODE_AUTH_TOKEN`（本仓库不发布 npm 包，无影响） |
+| npm | 11.20.0（Node 26.11.1 MSI 内置，`C:\Program Files\nodejs`） | 12.2.0 | **未跟进，且本机无法原地升**：PATH 里 `C:\Program Files\nodejs`（内置 npm 11.20.0）排在 `%APPDATA%\npm` 之前，`npm i -g npm@12` 装到后者也会被前者遮蔽，而前者需管理员权限才能改写。两条路：管理员调整 PATH 顺序，或等下一次 Node MSI 升级自带。**不影响交付**：CI 用 `setup-node` 自带的 npm，本仓库只跑 `npm ci`/`npm run build` |
+| FFmpeg | 本机 9.0.1-essentials（`D:\YTSage\ffmpeg.exe`，PATH 上唯一命中；无 `D:\FFmpegTools` 目录）。FVCS 侧是配置项 `ffmpeg_path`（默认 `.\ffmpeg.exe`），由安装者按实际部署填写 | 9.0.2 | **不在本仓库工具链口径内**（2026-10-14 用户裁决"不升 ffmpeg，这是另个体系"）：ffmpeg 是 FVCS 运行时调用的外部媒体工具，不随 `build.ps1` 构建、不进 fpk，升级由 FFmpeg 体系自身决定，本表只登记事实不做处置 |
 | CI action pin | checkout / setup-go / setup-node 一律 **v7**（2026-10-14 由 v4 / v5 / v4 升级） | v7.0.1 / v7.0.0 / v7.1.0 | 三者运行时均已换 Node 24，要求 runner ≥ v2.327.1（ubuntu-latest 满足）。checkout v7 拦截 `pull_request_target` / `workflow_run` 的 fork PR 检出，本工作流用 `pull_request` 不受影响。升级后 CI 的 `go test -race ./...` 会真红（scheduler 测试桩 `fakeDispatcher` 裸字段跨协程读写 + 并发收敛用例在 -race 降速下超窗），详见 `docs/IMPROVEMENT_LOG.md` §二十六 |
 | FVCC 前端 | vite 8.3.4、TypeScript 7.0.2、postcss 8.5.30、tailwindcss 4.3.3 + `@tailwindcss/postcss` 4.3.3、lightweight-charts 5.2.1、@fontsource 5.3.0 | 全部当前 | 已随 v1.6.6 刷新；2026-10-14（v1.6.8）Tailwind 4 专项落地后 `npm outdated` 归零。**`autoprefixer` 已随 v4 移除**，浏览器前缀由 v4 内建 Lightning CSS 负责 |
 | `@types/node` | ^26（锁 26.6.5） | 26.6.5 | **已随 Node 26 运行时同批刷新**（2026-10-13） |

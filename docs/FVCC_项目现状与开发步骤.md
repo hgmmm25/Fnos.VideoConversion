@@ -228,8 +228,8 @@ D:\Fnos.VideoConversion\FVCC\
 
 | 项 | 现状 | 动作 |
 |---|---|---|
-| ffprobe/ffmpeg | 本机构建机已装 ffprobe 9.0.1（2026-09-20 实测），fnOS 运行时待核验；未安装时探测走 stub | 部署/安装脚本补 ffmpeg 依赖；`check-versions.ps1` 或启动自检提示 |
-| Go 工具链 | go.mod 要求 go 1.27.1，本机 go 1.27.1 可用（2026-09-20 实测）；fnOS 运行时需 `GOTOOLCHAIN=auto` | 保持 auto；勿依赖固定路径（历史踩坑：台账路径 `D:\fntv-tools\go\bin\go.exe` 已失效、系统 Go std 不完整） |
+| ffprobe/ffmpeg | 本机构建机实测 ffmpeg/ffprobe **9.0.1-essentials**，PATH 上解析到 `D:\YTSage\ffmpeg.exe`（跨盘路径；并不存在历史文档提到的 `D:\FFmpegTools\bin`）；fnOS 运行时待核验；未安装时探测走 stub。**2026-10-14 裁决：ffmpeg 属另一体系，不纳入本仓库工具链升级口径**（FVCS 通过配置项 `ffmpeg_path` 调用外部 ffmpeg，默认 `.\ffmpeg.exe`，不进 fpk） | 部署/安装脚本补 ffmpeg 依赖；`check-versions.ps1` 或启动自检提示 |
+| Go 工具链 | go.mod 要求 go 1.27.1（语言下限）；本机 PATH Go 已升至 **1.27.2**（2026-10-14 官网 MSI），但 `build.ps1` 优先命中 `sdk\go1.25.3` 启动器 + auto，实际交付产物仍由 **go1.27.1** 编译（auto 在启动器低于下限时严格取 go.mod 声明版本）；fnOS 侧跑的是预编译二进制，不涉及工具链 | 保持 auto；勿依赖固定路径（历史踩坑：台账路径 `D:\fntv-tools\go\bin\go.exe` 已失效、系统 Go std 不完整）。想让产物吃到 1.27.2 补丁，须同步抬 go.mod 的 `go` 指令与 CI `go-version` |
 
 ### 6.3 文档缺口
 
