@@ -8,7 +8,7 @@ export type IconName =
   | 'check' | 'warning' | 'edit' | 'trash' | 'save' | 'circle'
   | 'upload' | 'download' | 'clock' | 'link' | 'grip' | 'scissors'
   | 'grid' | 'arrow-right' | 'volume' | 'mute' | 'maximize' | 'minimize'
-  | 'rewind' | 'fast-forward'
+  | 'rewind' | 'fast-forward' | 'chevron-down' | 'chevron-up'
 
 const ICON_PATHS: Record<IconName, string> = {
   list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
@@ -49,6 +49,8 @@ const ICON_PATHS: Record<IconName, string> = {
   minimize: '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>',
   rewind: '<polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/>',
   'fast-forward': '<polygon points="13 19 22 12 13 5 13 19"/><polygon points="2 19 11 12 2 5 2 19"/>',
+  'chevron-down': '<polyline points="6 9 12 15 18 9"/>',
+  'chevron-up': '<polyline points="18 15 12 9 6 15"/>',
 }
 
 export function svgIcon(name: IconName, size = 16): SVGSVGElement {
@@ -98,9 +100,61 @@ export function skeletonRows(n: number, h = '0.75rem'): HTMLElement[] {
   return rows
 }
 
+/** 列表骨架容器：skeletonRows 的标准铺法（p-4 间距 + 行距），供各列表页首屏复用 */
+export function listSkeleton(n = 5, h = '3rem'): HTMLElement {
+  return el('div', { class: 'p-4 space-y-3' }, skeletonRows(n, h))
+}
+
 /** 仅对读屏器可见的文本（颜色/图标之外的状态等价物） */
 export function srOnly(text: string): HTMLElement {
   return el('span', { class: 'sr-only' }, [text])
+}
+
+// ===== V1.6-② 下拉选择控件 selectField =====
+// 外观自绘（appearance-none + 令牌描边 + chevron 覆盖层），弹层保持原生并由 color-scheme 跟随主题；
+// 返回的包装层兼容 HTMLSelectElement 常用 API（value/disabled/innerHTML/options/appendChild(option)/onchange），
+// 使调用点可机械替换 el('select', …)。
+export interface SelectFieldHandle extends HTMLDivElement {
+  readonly selectEl: HTMLSelectElement
+  value: string
+  disabled: boolean
+  readonly options: HTMLOptionsCollection
+  selectedIndex: number
+}
+
+export function selectField(
+  opts: { class?: string; ariaLabel?: string; title?: string } = {}
+): SelectFieldHandle {
+  const select = el('select', { class: 'input select w-full' }) as HTMLSelectElement
+  if (opts.ariaLabel) select.setAttribute('aria-label', opts.ariaLabel)
+  if (opts.title) select.setAttribute('title', opts.title)
+  const wrap = el('div', {
+    class: `select-field ${(opts.class ?? '').replace(/\binput\b/g, '').trim()}`,
+  }) as SelectFieldHandle
+  wrap.appendChild(select)
+  wrap.appendChild(
+    el('span', { class: 'select-chevron', 'aria-hidden': 'true' }, [svgIcon('chevron-down', 14)])
+  )
+  const isOptionNode = (n: Node | string): n is HTMLOptionElement | HTMLOptGroupElement =>
+    n instanceof HTMLOptionElement || n instanceof HTMLOptGroupElement
+  const nativeAppend = Node.prototype.appendChild.bind(wrap) as (n: Node) => Node
+  Object.defineProperties(wrap, {
+    selectEl: { get: () => select },
+    value: { get: () => select.value, set: (v: string) => { select.value = v } },
+    disabled: { get: () => select.disabled, set: (v: boolean) => { select.disabled = v } },
+    selectedIndex: { get: () => select.selectedIndex, set: (v: number) => { select.selectedIndex = v } },
+    options: { get: () => select.options },
+    innerHTML: { get: () => select.innerHTML, set: (v: string) => { select.innerHTML = v } },
+  })
+  wrap.appendChild = ((node: Node) =>
+    isOptionNode(node) ? select.appendChild(node) : nativeAppend(node)) as typeof wrap.appendChild
+  wrap.append = ((...nodes: (Node | string)[]) => {
+    for (const n of nodes) {
+      if (isOptionNode(n)) select.appendChild(n)
+      else select.appendChild(typeof n === 'string' ? document.createTextNode(n) : n)
+    }
+  }) as typeof wrap.append
+  return wrap
 }
 
 export function formatSize(bytes: number): string {
@@ -132,30 +186,35 @@ export function formatTime(iso: string): string {
 }
 
 // ===== Toast =====
-let toastTimer: number | null = null
+// V1.6-⑤ 规范化：错误停留 4s、其余 2.5s；同屏最多 4 条（超出挤掉最旧）；
+// 层级 z-[60] 高于对话框遮罩 z-50；入场右侧滑入+淡入（双 rAF 确保过渡触发）
+const TOAST_MAX = 4
 export function toast(msg: string, type: 'info' | 'error' | 'success' = 'info') {
   let box = document.getElementById('toast-box')
   if (!box) {
-    box = el('div', { id: 'toast-box', class: 'fixed top-4 right-4 z-50 flex flex-col gap-2' })
+    box = el('div', { id: 'toast-box', class: 'fixed top-4 right-4 z-[60] flex flex-col gap-2' })
     document.body.appendChild(box)
   }
+  while (box.children.length >= TOAST_MAX) box.firstElementChild?.remove()
+  // V1.6-⑤ V9：success(#22c55e)/danger(#ef4444) 实底白字不达 AA（2.28/3.76），
+  // 改 soft 底 + soft-text 强色字（双主题均 ≥4.6），info 保持 ink 实底
   const color =
     type === 'error'
-      ? 'bg-danger text-white'
+      ? 'bg-danger-soft text-danger-soft-text'
       : type === 'success'
-      ? 'bg-success text-white'
+      ? 'bg-success-soft text-success-soft-text'
       : 'bg-ink text-surface'
   const t = el(
     'div',
-    { class: `${color} text-sm px-4 py-2 rounded shadow-lg transition-opacity` },
+    { class: `${color} text-sm px-4 py-2 rounded shadow-lg ring-1 ring-line opacity-0 translate-x-2 transition-[opacity,transform] duration-200` },
     [msg]
   )
   box.appendChild(t)
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.remove('opacity-0', 'translate-x-2')))
   setTimeout(() => {
     t.classList.add('opacity-0')
     setTimeout(() => t.remove(), 300)
-  }, 2500)
-  void toastTimer
+  }, type === 'error' ? 4000 : 2500)
 }
 
 // ===== 自建 overlay 无障碍（P2-2：role=dialog / aria-modal / Esc / 焦点陷阱 / 返回焦点）=====
@@ -243,7 +302,7 @@ export function confirmDialog(message: string, title = '确认操作', danger = 
     })
     const modal = el('div', { class: 'card w-80 p-5 shadow-xl' })
     // P1-2：危险态不再用 2px 彩色描边，改由标题红字 + 危险按钮表达风险级别
-    const titleColor = danger ? 'rgb(var(--c-danger-hover))' : ''
+    const titleColor = danger ? 'var(--c-danger-hover)' : ''
     const titleEl = el('h3', { class: 'font-semibold text-base mb-2' }, [title])
     if (titleColor) titleEl.style.color = titleColor
     const msgEl = el('p', { class: 'text-sm text-ink-muted mb-4' }, [message])

@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fvcc/internal/pathutil"
 	"fvcc/internal/protocol"
 	"fvcc/internal/store"
 	"fvcc/internal/security"
@@ -83,7 +84,7 @@ func (h *Handlers) restoreTrash(c *gin.Context) {
 	}
 	for _, tp := range trashPaths {
 		tp = filepath.Clean(tp)
-		if strings.HasPrefix(abs, tp+string(filepath.Separator)) {
+		if pathutil.WithinRoot(tp, abs) {
 			allowed = true
 			break
 		}
@@ -100,7 +101,7 @@ func (h *Handlers) restoreTrash(c *gin.Context) {
 	orig := ""
 	for _, tp := range trashPaths {
 		tp = filepath.Clean(tp)
-		if strings.HasPrefix(abs, tp+string(filepath.Separator)) {
+		if pathutil.WithinRoot(tp, abs) {
 			rel, rerr := filepath.Rel(tp, abs)
 			if rerr != nil {
 				protocol.Fail(c, 500, rerr.Error())

@@ -9,6 +9,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -55,6 +56,24 @@ func TestMoveToTrashOutsideRoot(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "x.mp4")
 	if _, err := MoveToTrash([]string{root}, outside); err == nil {
 		t.Fatal("越权路径移入回收站应报错")
+	}
+}
+
+// TestMoveToTrashDriveRoot Windows 盘符根回归：授权根 D:\ 时子路径必须可移入回收站。
+// 回归「Clean 后以分隔符结尾的根直接拼接分隔符导致子路径永不命中」bug。
+func TestMoveToTrashDriveRoot(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows 专属：盘符根路径")
+	}
+	// 用真实盘符根的授权形式验证纯逻辑（不落盘：仅 TrashRootFor/边界判定）
+	if _, err := TrashRootFor([]string{`D:\`}, `D:\Fnos.VideoConversion\FVCC\server`); err != nil {
+		t.Fatalf("盘符根 D:\\ 下子路径应匹配授权根: %v", err)
+	}
+	if _, err := TrashRootFor([]string{`D:\Fnos.VideoConversion`}, `D:\Fnos.VideoConversion2\x.mp4`); err == nil {
+		t.Fatal("同前缀歧义路径不应匹配授权根")
+	}
+	if _, err := TrashRootFor([]string{`D:\Fnos.VideoConversion`}, `D:\Other\x.mp4`); err == nil {
+		t.Fatal("越权路径不应匹配授权根")
 	}
 }
 

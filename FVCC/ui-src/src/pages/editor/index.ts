@@ -113,7 +113,7 @@ export async function renderProjectPicker(root: HTMLElement) {
       class:
         'h-9 w-32 focus:w-72 max-w-[60vw] px-3 text-sm rounded border border-line ' +
         'bg-surface text-ink placeholder-ink-muted ' +
-        'focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary ' +
+        'focus:outline-hidden focus:ring-2 focus:ring-primary/40 focus:border-primary ' +
         'transition-[width] duration-300 ease-out-strong',
       placeholder: '新项目名称',
       maxlength: '64',
@@ -447,8 +447,12 @@ export async function renderEditor(root: HTMLElement, projectId: string): Promis
     initialMuted: playerMuted,
     // 打点 → 时间线：片段由 preview 侧按 in/out 构造，这里只做装配；上限由 store 的 addClip 守卫 + 落地复核兜底
     onAddClip: (clip) => {
-      edlStore.dispatch({ type: 'addClip', clip })
-      if (!edlStore.getState().clips.some((c) => c.clipId === clip.clipId)) {
+      // 有界单根：preview 构造的片段不带素材根，按 assetId 从素材库回填其所属授权根
+      // （与整段添加路径一致，供渲染提交取根）。查不到则留空，渲染回落 videoRoot。
+      const src = assetsPanel?.list().find((a) => a.assetId === clip.assetId)
+      const filled = clip.sourceRoot || !src?.sourceRoot ? clip : { ...clip, sourceRoot: src.sourceRoot }
+      edlStore.dispatch({ type: 'addClip', clip: filled })
+      if (!edlStore.getState().clips.some((c) => c.clipId === filled.clipId)) {
         toast('添加失败：片段数已达上限或入出点非法（01 §5.1）', 'error')
       }
     },

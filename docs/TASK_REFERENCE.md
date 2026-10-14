@@ -2,7 +2,7 @@
 
 > 用途：混乱报告 P2-6「清理任务编号注释」的落地物。代码注释中散落的 `B-xx / C-xx / D-xx / M4 / Px-x / 修复①-⑤` 任务编号与 `03 §4.2` 式章节引用，在本表中统一登记为可读语义，供维护者追溯设计依据。
 > 约定：新增注释请直接书写可读语义，编号仅作括号溯源；本表与代码同仓维护，`docs/` 为章节引用文档的权威位置说明。
-> 维护日期：2026-09-21（第六版；同步混乱报告第七版 1.5.3：P0-2 SQLite 迁移落地——store 包新增 sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go，代码注释新增"P0-2 提交 1/2/3"批次标记（见 §2.1 编号漂移登记补录）；P1-1 事件驱动调度落地补登记（eab7688）。B-05/B-06 编号语义与代表位置不变）
+> 维护日期：2026-10-14（第十二版；对齐 **FVCC v1.6.8** 的 Tailwind CSS 4 大版本专项——该批次同样**未引入任何新任务编号**，改动全在 `ui-src` 样式链与构建配置（含删除 `tailwind.config.js`、`scripts/check-design.mjs` 新增 `TW4-token-form` 门禁规则），其治理属性仍登记在 §3.8 的"发布治理"族下；依赖刷新主题至此收口，`npm audit` 现存 7 条告警清零。第十一版=同日更早：对齐 **FVCC v1.6.7 / FVCS v1.3.1** 的 sqlite 驱动专项与 Node 26 工具链批次——该批次**未引入任何新任务编号**（代码零改动，仅 `go.mod`/`go.sum`/`package.json`/CI/文档），其治理属性登记在 §3.8 的"发布治理"族下；第十一版相对第十版唯一变化是本行维护日期与该口径确认，编号族与 §1~§4 各表内容未增删。第十版=2026-10-13（对齐 v1.6.4 任务页视觉改进批次 A+B+C 与 v1.6.5 版本一致性收口——该两版在代码注释与文档中引入**新溯源写法「批次子项编号 `v1.6.1-A*` / `v1.6.2-B*` / `v1.6.2-C*`」与「方案稿 §x.y」章节引用**，并暴露一个高易错点：**方案稿编号 v1.6.1 ≠ 交付版本号 1.6.4**（1.6.1/1.6.2/1.6.3 仅为批次开发过程中的本地中间 bump，从未进 git 历史、未出包、未打 tag），统一登记于 §3.8；v1.6.5 的版本一致性校验未引入任务编号，属发布治理，同样在 §3.8 说明。第九版=2026-10-12（对齐 1.5.9~1.5.12 步骤 8 e2e 真机验证批次——该批次在代码注释中引入**新编号族「闭环①-⑤ / A档 #N」**（代理就绪回填、渲染四层收口、工具栏批量删除、重连自动上线等，见 §3.7 登记），除新族外未引入其他任务编号；文档全面对齐轮（根 README/BUILD、FVCC/README、FVCC/docs 7 份、根 docs/ 台账统一对齐 v1.5.12）不涉编号变更）。第八版=2026-10-11：§2.1 补录 P1-2 双语义登记——项目分析清单"前端收敛"已定案关闭 vs 混乱报告"SMB 校验 helper"早已落地，见 IMPROVEMENT_LOG §十三。第七版=2026-09-22：对齐 1.5.7——1.5.4 编辑器变速播放 J/K/L + 按钮图标化（080754c）、1.5.5~1.5.7 Windows 盘符根路径边界修复（handlers.go/edl_validate.go/trash.go/smbshare.go/stream.go/roots.go + assets.ts 递归扫描）落地，均未引入新任务编号，属既有 B 组路径校验/P2 系列的延续修复，详见 IMPROVEMENT_LOG §十一。第六版记录保留如下：同步混乱报告第七版 1.5.3：P0-2 SQLite 迁移落地——store 包新增 sqlite.go / sqlite_import.go / sqlite_load.go / sqlite_persist.go，代码注释新增"P0-2 提交 1/2/3"批次标记（见 §2.1 编号漂移登记补录）；P1-1 事件驱动调度落地补登记（eab7688）。B-05/B-06 编号语义与代表位置不变）
 
 ---
 
@@ -16,6 +16,9 @@
 | `D-xx` | 安全类任务（D 组） | server/ | 安全加固批次 |
 | `M4` | 预览网关与代理工作流模块 | server/ | 模块/里程碑编号（其余 M 编号均为前端 SVG path 误报） |
 | `修复①-⑤` | 2026-09-16 剪辑页缺陷修复批次 | server 与 ui-src | 缺陷修复标记 |
+| `闭环①-⑤ / A档 #N` | 2026-10-11~12 步骤 8 e2e 真机验证批次（见 §3.7） | server 与 ui-src | 闭环场景编号与缺陷编号（FVCS 侧 render_edl / makeSrcResolver 同族） |
+| `v1.6.1-A*` / `v1.6.2-B*` / `v1.6.2-C*` | 2026-10-13 v1.6.4 任务页视觉改进批次 A/B/C 的子项标记（见 §3.8） | ui-src/src/ | 批次内子项溯源；前缀的 1.6.1/1.6.2 是**开发中间 bump，不是交付版本号**（交付为 1.6.4） |
+| `方案稿 §x.y` | `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md` 章节（见 §3.8 与 §4 注） | ui-src/src/、ui-src/scripts/ | 视觉改进方案稿引用，**不属** `nn §x.y` 规格文档族 |
 | `nn §x.y` | WebVideoEditor_Design 规格文档章节 | server 与 ui-src | 规格文档引用（文档位置见 §4） |
 
 ---
@@ -27,17 +30,19 @@
 | 编号 | 可读语义 | 代表位置 |
 |---|---|---|
 | P0-1 | 凭据安全：AuthKey/SMBPassword 加密落库 + 响应不回显明文（internal/store/model/models.go 过时 TODO 已随 1.4.7 清理） | server/internal/security/crypto.go、internal/store/store.go、internal/api/handlers.go |
-| P1-1 | updateProfile 59 块手写字段映射收敛（反射白名单 helper applyFields） | server/internal/protocol/applyjson.go、internal/scheduler/scheduler.go（tick 合并快照） |
+| P1-1 | updateProfile 59 块手写字段映射收敛（反射白名单 helper applyFields） | server/internal/protocol/applyjson.go、internal/scheduler/scheduler.go（1.5.3 已升级为事件驱动调度 eab7688：事件循环 + 内存索引 + 定时落盘 + WS 广播全覆盖） |
 | P1-2 | SMB 共享路径校验收敛为 helper（doScanDirectory/probeVideo/browseDirs/createTask 四处复用） | server/internal/security/smb_validate.go |
 | P1-3 | 文档落地（README/规格入库）与数据面 WSS 加密（SECURITY.md §4） | server/internal/remote/remote.go、docs/SECURITY.md |
 | P2-1 | 可观测性：trace ID 全链路 + /metrics 指标扩展 + 前端骨架屏/空态 | server/internal/api/（handlers 拆分）、internal/store/store.go、ui-src/* |
 | P2-2 | 测试补强 / 前端无障碍对话框语义（role=dialog/焦点陷阱） | server/internal/*/*_test.go、ui-src/src/* |
-| P2-3 | CI 流水线 + 覆盖率基线（≥60%） | .github/workflows/fvcc-ci.yml、scripts/check-coverage.ps1 |
+| P2-3 | CI 流水线 + 覆盖率基线（门槛 ≥60%；演进 55%/56.7%→59.0%→2026-10-12 补测后 60.7% 上调关闭，原 P3-7 待办已落地） | .github/workflows/fvcc-ci.yml、scripts/check-coverage.ps1 |
 | P2-4 | 统一 API 错误契约 {ok:false,code,msg,detail?} | server/internal/protocol/apierr.go、ui-src/src/api.ts、docs/API_CONTRACT.md |
 | P2-5 | 删除操作回收站化（_trash 移入/恢复/清空） | server/internal/store/trash.go、ui-src/src/api.ts |
 | P2-6 | 清理 AIGC 残留与任务编号注释（本表即落地物） | docs/TASK_REFERENCE.md |
 
-> **编号漂移登记（2026-09-19，路径更新 2026-09-20）**：混乱报告 §4 中 `P2-1`（后端分层）、`P2-2`（前端组件化）为**报告体系编号**（均已落地）；代码注释中的 `P2-1` 多指"可观测性：Prometheus 指标端点"（internal/api/handler_metrics_test.go），`P2-2` 在代码注释中未见（前端 P 组为另一套清单，见 §2.2）。两套语义并存属历史事实，维护者按文件归属对照。本表"代表位置"已更新为 P2-1 分层后 internal 路径；B/C/D/M4/修复 组的旧路径映射见 §3 顶部路径说明。
+> **P1-2 双语义补录（2026-10-11 第八版）**：`P1-2` 在《项目分析与改进方向.md》§5 中为"前端收敛（freecut 双轨）"，与本表 §2.1 的" SMB 校验 helper"（混乱报告体系）双语义并存。两者**均已关闭**：SMB helper 早于 1.4.x 落地（smb_validate.go）；前端收敛于 2026-10-11 定案关闭（方案 A 维持零框架、借设计不借底座，见 IMPROVEMENT_LOG §十三）。本表 §2.1 行维持 SMB helper 语义不变。
+> **编号漂移登记（2026-09-19，路径更新 2026-09-20，P0-2 补录 2026-09-21）**：混乱报告 §4 中 `P2-1`（后端分层）、`P2-2`（前端组件化）为**报告体系编号**（均已落地）；代码注释中的 `P2-1` 多指"可观测性：Prometheus 指标端点"（internal/api/handler_metrics_test.go），`P2-2` 在代码注释中未见（前端 P 组为另一套清单，见 §2.2）。两套语义并存属历史事实，维护者按文件归属对照。
+> **P0-2 双语义补录（2026-09-21 第六版）**：`P0-2` 在《项目分析与改进方向.md》中为"清理工程残留 + .gitignore"（✅ 已落地），在混乱报告/IMPROVEMENT_LOG §三 中为"JSON 文件存储迁 SQLite"（✅ 已落地，2026-09-21 a72b8ff / 9e122d5 / 5dd373e）。1.5.3 起 `server/internal/store/sqlite*.go` 代码注释新增"P0-2 提交 1/2/3"批次标记（提交 1=引入驱动、提交 2=存量导入、提交 3=读回主路径 + persist 载体切换），该标记即 SQLite 迁移语义，**不再指工程残留清理**。两处历史语义均已落实，后续新增注释沿用 SQLite 迁移语义。本表"代表位置"已更新为 P2-1 分层后 internal 路径；B/C/D/M4/修复 组的旧路径映射见 §3 顶部路径说明。
 
 ### 2.2 前端 P 组（源自 FVCC 前端 UI 优化清单，**与后端同名编号含义不同**）
 
@@ -122,7 +127,35 @@
 | `genproxy_share_cred_test.go` | 代理生成 + 共享凭据（share_cred）场景测试（原名 `genproxy_share_cred_126_test.go`，`126` 为任务票号，2026-09-18 git mv 去票号） | 票号 126 的具体任务描述已不可考（代码内无台账对应） |
 | `handlers_edl_list_test.go` | EDL 列表接口契约测试（原名 `handlers_edl_list_contract_test.go`，contract 后缀表示按接口契约命名，2026-09-18 git mv 去后缀） | 契约语义可从 03 §4.2 追溯 |
 
-> 结论：测试文件命名混用「被测对象 + 票号/契约后缀」，与实现文件对应关系不直观，属混乱报告 §2.8 扣分项③；P2-7 已于 2026-09-18 落地，两文件统一为 `handlers_<domain>_test.go` 风格（git mv 保留历史），后续新测试沿用该风格。
+> 结论：测试文件命名混用「被测对象 + 票号/契约后缀」，与实现文件对应关系不直观，属混乱报告后端测试命名规范扣分项；P2-7 已于 2026-09-18 落地，两文件统一为 `handlers_<domain>_test.go` 风格（git mv 保留历史），后续新测试沿用该风格。
+
+### 3.7 闭环①-⑤ / A档 #N（2026-10-11~12 步骤 8 e2e 真机验证批次，第九版登记）
+
+「闭环①-⑤」= 步骤 8 e2e 走查的五个业务闭环场景；「#N」= 走查中发现的 A 档缺陷编号（台账见 `docs/IMPROVEMENT_LOG.md` §十四~§十六，FVCS 侧同族改动见 §十五/§十六）。代码注释中 `闭环② 回填`、`闭环④ #10` 等短写依下表还原：
+
+| 编号 | 可读语义 | 结局 | 代表位置 |
+|---|---|---|---|
+| 闭环① | 转码链路走查 | PASS（无缺陷） | — |
+| 闭环② | 代理就绪态（#5 提交带素材根、#6 挂载回填 `GET /api/proxy` + `VerifyProxyMeta` 帧率数值近似） | 已修复（v1.5.9） | server/internal/api/handlers_proxy.go、router.go、internal/media/proxy.go、ui-src/src/api.ts、types.ts、pages/editor/assets.ts |
+| 闭环③ | EDL 渲染链路（**#8 四层收口**：①FVCS `srcBase=mountPath` ②FVCC 提交侧有界单根 `EDLClip.sourceRoot`→`resolveRenderRoots` ③FVCS `makeSrcResolver`→`BuildSMBPath` ④FVCC `pollRenderTerminal`/`completeRenderTask` 终态轮询，附 edl `validateRootRelPath` 与 FVCS `ValidateRootPath` 跨端同规则） | 已修复并真机复验通过（v1.5.10~1.5.12） | server/internal/scheduler/scheduler.go、internal/api/handlers_render.go、internal/edl/edl_validate.go、FVCS pkg/task/render_edl.go |
+| 闭环④ | 回收站（#10 工具栏批量删除按钮，原仅右键入口） | 已修复（v1.5.9） | ui-src/src/pages/scanner.ts |
+| 闭环⑤ | 节点断联（#11 FVCS 重连 Hello 自动收口 online，不再滞留离线） | 已修复（v1.5.9） | server/internal/node/node.go（ApplyNodeHello 自动收口 online）、main.go 回调接线、internal/node/node_test.go |
+
+> 注意区分：本节 `#N` 为 e2e 走查缺陷编号（#5/#6/#8/#10/#11），与 IMPROVEMENT_LOG 各轮次编号、混乱报告 Px-x 编号分属不同体系；B档遗留项 **#7**（代理可见性判定分辨率阈值）与 **#9**（跨多授权根混合渲染，现提交侧显式拒绝）沿用同一 #N 族，未落地。
+
+### 3.8 批次子项编号与方案稿引用（2026-10-13 v1.6.4 / v1.6.5 收口批次，第十版登记）
+
+代码注释里的 `v1.6.1-A2`、`v1.6.2-B3`、`方案稿 §2.3` 等短写源自 v1.6.4 任务页视觉改进批次（提交 `fe06e52`，tag `v1.6.4` → `b007a3d`；方案 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`，GLM5.3F / Step5P / Gemini-3.8F 三方外部模型评审整合稿）。台账见 `docs/IMPROVEMENT_LOG.md` §二十（第二十八轮）。
+
+| 写法 | 可读语义 | 正确还原 / 易错点 | 代表位置 |
+|---|---|---|---|
+| `批次 A`（层级修复 + 状态反馈） | `errorMsg` 独立成行带 `title`、拆除 `truncate` 与 `flex-wrap` 冲突、首屏骨架接入 `listSkeleton`、批量三键零选中禁用 + 刷新 pending、`.task-selected` 即时高亮、活动卡左侧 `signal` 静态指示线、`getPhaseStyle` 补全状态文案（ERROR 走红条）、去 `w-[200px]` 硬宽、`serverName` 中性标签、hover ring 与 servers 页对齐 | 交付版本 **1.6.4**；注释前缀写的是开发中间 bump（`v1.6.1-A*`），**不得当作交付版本号** | ui-src/src/pages/tasks.ts（A1~A9）、ui-src/src/ui.ts |
+| `批次 B`（热路径性能） | 进度条 `width` → `transform: scaleX(var(--p))` 走合成层、`render` id/顺序签名重排守卫、`updateOverview` 计数签名守卫、`scrollPos` 接线（主页与抽屉独立 key） | 注释前缀为 `v1.6.2-B*`；硬约束「**视觉改进不得增加 WS tick 重绘**」随批次 B 立规，后续列表页改动仍须遵守 | ui-src/src/pages/tasks.ts（B1~B4）、ui-src/src/lib/scrollPos.ts |
+| `批次 C`（速率 + 实验项） | WS `applyTaskUpdate` 合并 `speed` 后进度文案实时带倍速后缀（链路 `models.go` `speed,omitempty` + `TaskUpdateFullMsg`）、`#/tasks?fx=stripes` / `?fx=breathe` URL 实验开关（默认关）、`ui.ts` 新增 `listSkeleton` 泛化组件 | 注释前缀为 `v1.6.2-C*`；`?fx=...` 是实验开关标识，**不是任务编号**，勿与 `#N` 缺陷号混读 | ui-src/src/store.ts:161、ui-src/src/pages/tasks.ts、ui-src/src/ui.ts:104 |
+| `方案稿 §x.y` | `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md` 的章节引用（如 §2.3 = 选中态 inset 阴影合法性裁决条款） | 与 §4 的 `nn §x.y`（WebVideoEditor_Design 规格）分属两套文档，还原时先看在哪套：视觉改进方案稿 vs 数据/协议规格 | ui-src/scripts/check-design.mjs:122、ui-src/src/pages/tasks.ts |
+| `v1.6.1` / `v1.6.2` / `v1.6.3` | 批次开发过程中的**本地中间 bump**，从未进 git 历史、未出包、未打 tag | ⚠️ **本表最高易错点**：git 核验 manifest 版本序列为 `1.6.0 → 1.6.4 → 1.6.5`；方案文档文件名的 "v1.6.1" 是**方案稿编号**。凡"1.6.1~1.6.4 版本线"的写法一律纠正为"**1.6.4**（方案稿 v1.6.1 的落地批次）" | 本表 §3.8、`docs/FVCC_UI设计优化方向.md` §7.7.2 |
+
+> 范畴说明：v1.6.5（tag `v1.6.5` → `5166cbe`，代码 `ceeb1b2`）的 VERSION 第三真源漂移修复与版本一致性校验加固（`server/internal/version/version_test.go` 漂移即 `t.Fatal` + `TestAppVerIsNotPinnedLiteral` 反硬编码、`scripts/check-versions.ps1` 去硬编码路径）**未引入新任务编号**，其注释只以 `v1.6.4` / `v1.6.5` 版本号自指（version.go:12、version_test.go:42）；该项属**发布/打包一致性治理**，不是数据面安全机制，口径区分见 `docs/SECURITY.md` 与 `FVCC/docs/SECURITY.md` 的 2026-10-13 复核记录。
 
 ---
 
@@ -144,6 +177,8 @@
 | 10 | 10-实施进度与下一步.md | §3「下一步」E2E 清单；「C 组决策对齐清单」 |
 | FS.md | ⚠️ 无对应文件（仓库内不存在） | `FS.md 8.2`（security.go 引用的四层路径校验原始规格）——外部/历史文档，仓库内**不可考**，语义已由 security.go 内联注释完整自述 |
 
+> 族外提示（2026-10-13 第十版补）：代码注释中另有一类 `方案稿 §2.3` 式引用，指向本仓库 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md`（视觉改进方案稿），**不属**本表的 `nn §x.y` WebVideoEditor_Design 规格族，还原规则见 §3.8。
+
 ---
 
 ## 5. 维护约定
@@ -151,3 +186,4 @@
 1. 新代码注释**禁止**再引入未登记的任务编号；确需溯源时按「可读语义（编号）」格式书写。
 2. 新规格文档引用一律写 `WebVideoEditor_Design/<文件名> §x.y` 全路径。
 3. 本表新增/修改编号映射时同步更新本节，避免再次漂移。
+4. 批次子项溯源（2026-10-13 第十版增）：分批次改造沿用「批次 A/B/C（+ 方案稿 §x.y）」写法；注释里的**开发中间 bump 版本号**（如 `v1.6.1-A2`、`v1.6.2-B3`）只作批次内定位用，**不得当作交付版本号**——交付版本一律以 git tag 为准（1.6.x 线为 `v1.6.0` / `v1.6.4` / `v1.6.5`），跨文档叙述写交付版本号并括注方案稿编号，避免"1.6.1~1.6.4 版本线"式误读。

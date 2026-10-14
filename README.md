@@ -1,6 +1,6 @@
 # Fnos.VideoConversion 视频转码系统
 
-一套面向个人与工作室的远程视频转码方案，核心支持 fnNAS 远程调用 Windows 主机 FVCS 算力转码。服务端依托 FFmpeg，自动适配显卡加速、多任务并发与断点传输；Web 客户端 FVCC 可直连 NAS 与多台 Windows 转码机，自定义转码模板远程下发任务，适合家庭 NAS 远程批量处理视频素材。当前版本：FVCC v1.4.9 / FVCS v1.2.6。
+一套面向个人与工作室的远程视频转码方案，核心支持 fnNAS 远程调用 Windows 主机 FVCS 算力转码。服务端依托 FFmpeg，自动适配显卡加速、多任务并发与断点传输；Web 客户端 FVCC 可直连 NAS 与多台 Windows 转码机，自定义转码模板远程下发任务，适合家庭 NAS 远程批量处理视频素材。当前版本：FVCC v1.6.9 / FVCS v1.3.1。
 
 ## 项目组成
 
@@ -31,7 +31,7 @@
 ### 可视化托盘管理
 - 系统托盘程序，所有功能通过托盘菜单一键打开
 - 提供当前任务面板、设置面板、实时日志面板、系统资源监控面板
-- 支持开机自启、单实例互斥、深色/浅色主题自动适配
+- 支持开机自启、单实例互斥、深色/浅色主题自动适配（v1.3.0 起主题主色贴近 FVCC 前端蓝调，见 `pkg/fynetheme`）
 
 ### 视频转码引擎
 - 基于 FFmpeg 实现视频转码，支持多种编码格式互转
@@ -103,6 +103,14 @@
 - 可视化时间线编辑：多片段拖拽、拼接、裁剪、排序
 - 生成结构化 EDL 载荷，下发 FVCS RenderEDL 渲染任务（SMB 直读模式）
 - EDL 载荷校验与 FVCS 双端实现，保证契约一致
+- 时间线预览代理：为素材生成低码率代理并回水就绪状态（`GET /api/proxy`），非默认授权根素材同样可用
+- 渲染进度实时推送与终态收口：进度平滑展示，渲染完成后自动落定「完成」并移入历史
+
+### 数据备份与迁移
+- SQLite 任务/配置数据定时备份、写前备份与手动备份，支持保留轮转与 manifest 校验
+- 版本化数据迁移链，升级时自动执行迁移并在迁移前生成备份
+- 支持整包快照回滚（manifest 验签 + 双重把关审计）
+- 提供备份/恢复 API（前端入口后续接入）
 
 ### 转码方案管理
 - 创建并保存多套转码方案（编码、码率、分辨率、音频参数等）
@@ -137,10 +145,10 @@
 ## 构建与部署
 
 - **构建**：见 [BUILD.md](./BUILD.md)（一键脚本 `.\build.ps1`，含 FVCC fpk 打包与 FVCS 构建全流程、版本同步清单、故障排查）。
-- **版本单一来源**：FVCC 版本三处同步（`manifest` / `ui-src/package.json` / `server/internal/version/VERSION`，当前 v1.4.9），由 `scripts/check-versions.ps1` 自动校验；FVCS 版本见 `FVCS/pkg/version/VERSION`（当前 v1.2.6）。
+- **版本单一来源**：FVCC 版本三处同步（`manifest` / `ui-src/package.json` / `server/internal/version/VERSION`，当前 v1.6.9），由 `scripts/check-versions.ps1` 自动校验（仓库根由脚本位置推导，可 `-RepoRoot` 覆盖）；`internal/version/version_test.go` 会向上定位仓库根比对 manifest 与 package.json，定位/读取失败一律判红而非跳过，Windows 本机 `go test ./...` 与 Linux CI 同等有效；FVCS 版本见 `FVCS/pkg/version/VERSION`（当前 v1.3.1；注意 `pkg/version/version_test.go` 里还有一份硬编码期望值，bump 时两处同改）。
 - **部署**：
   - FVCC：fnOS 应用，构建产物 `FVCC\fvcc.fpk` 上传 NAS 安装；历史版本见 `archive/fpk/`。
-  - FVCS：Windows 常驻程序，`FVCS\fvcs-service.exe` 托盘运行，局域网被 FVCC 调度。
+  - FVCS：Windows 常驻程序，`FVCS\fvcs-service.exe` 无头服务 + `fvcs-ui.exe`（渲染节点托盘）+ `fvcs-settings.exe`（设置窗口），局域网被 FVCC 调度；GUI 构建：`.\build.ps1 -Target FVCS-UI`。
   - 安全部署建议：公网环境禁止 `0.0.0.0` 监听，仅绑定内网网卡；数据面启用 WSS/HTTPS（自签证书即可）。
 
 ## 目录结构

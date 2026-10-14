@@ -7,13 +7,27 @@
    用法：
      .\scripts\check-versions.ps1            # 只检查，不一致时退出码 1
      .\scripts\check-versions.ps1 -Quiet     # 仅输出结论行
+     .\scripts\check-versions.ps1 -RepoRoot D:\Other\Checkout   # 显式指定仓库根
 #>
 param(
-    [switch]$Quiet
+    [switch]$Quiet,
+    # 仓库根：默认由脚本自身位置推导（scripts/ 的上一级）。
+    # 原实现硬编码 "D:\Fnos.VideoConversion"，换机器/换目录即失效。
+    [string]$RepoRoot
 )
 
 $ErrorActionPreference = 'Stop'
-$BASE_DIR = "D:\Fnos.VideoConversion"
+# 注意：本机 PowerShell 实测下变量名区分大小写（$RepoRoot 与 $REPOROOT 非同一变量），
+# 因此这里显式赋值给下游统一使用的 $BASE_DIR，只保留一种大小写写法。
+if ($RepoRoot) { $BASE_DIR = $RepoRoot } else { $BASE_DIR = Split-Path -Parent $PSScriptRoot }
+if (-not $BASE_DIR) {
+    Write-Host "[FAIL] 无法推导仓库根（\$PSScriptRoot 为空，可能因非文件方式调用）；请用 -RepoRoot 显式指定" -ForegroundColor Red
+    exit 1
+}
+if (-not (Test-Path (Join-Path $BASE_DIR "FVCC\manifest"))) {
+    Write-Host "[FAIL] 未能从 $BASE_DIR 定位仓库根（缺 FVCC\manifest）；可用 -RepoRoot 显式指定" -ForegroundColor Red
+    exit 1
+}
 $FAIL = 0
 
 function Write-Check {

@@ -270,8 +270,17 @@ func VerifyProxyMeta(src, px model.VideoInfo) error {
 	if !FpsKnown(src.Fps) || !FpsKnown(px.Fps) {
 		return nil
 	}
-	// 同帧率：分数串相等（如 30000/1001）。
-	if strings.TrimSpace(src.Fps) != strings.TrimSpace(px.Fps) {
+	// 同帧率：优先数值近似比较（相对容差 1%）。
+	// 源与代理经重编码后分数串可能不同（如 "25" vs "25/1"、VFR 的 avg_frame_rate 漂移），
+	// 严格串相等会误判 valid 代理为 invalid → 前端"生成成功也不显示"（e2e 闭环② 回填相关）。
+	// 仅当二者都能解析为数值时走近似比较；否则回退原严格串比较，保持对真实差异的拦截。
+	srcF, okS := ParseFPS(src.Fps)
+	pxF, okP := ParseFPS(px.Fps)
+	if okS && okP && srcF > 0 && pxF > 0 {
+		if math.Abs(srcF-pxF)/srcF > 0.01 {
+			return fmt.Errorf("帧率不一致（源 %s / 代理 %s）", src.Fps, px.Fps)
+		}
+	} else if strings.TrimSpace(src.Fps) != strings.TrimSpace(px.Fps) {
 		return fmt.Errorf("帧率不一致（源 %s / 代理 %s）", src.Fps, px.Fps)
 	}
 	// 同时长：|dur_proxy - dur_src| ≤ 1 帧。

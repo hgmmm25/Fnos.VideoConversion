@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"Fnos.VC_Service/pkg/config"
+	"Fnos.VC_Service/pkg/fynetheme"
 	"Fnos.VC_Service/pkg/logger"
 	"Fnos.VC_Service/pkg/winapi"
 
@@ -15,7 +16,6 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -52,8 +52,11 @@ func main() {
 	myApp.SetIcon(fyne.NewStaticResource("icon.png", iconPngData))
 	logger.Info("settings", "App icon set from embedded FVCS.png, size=%d", len(iconPngData))
 
+	// v1.3.0 批次⑥：主题色贴近 FVCC 蓝调（pkg/fynetheme），明暗随系统
 	if winapi.IsDarkMode() {
-		myApp.Settings().SetTheme(theme.DarkTheme())
+		myApp.Settings().SetTheme(fynetheme.Dark())
+	} else {
+		myApp.Settings().SetTheme(fynetheme.Light())
 	}
 
 	cfg = config.Get()

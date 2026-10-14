@@ -49,6 +49,23 @@ FVCC/tasks.json
 FVCC/history_tasks.json
 FVCC/locks.json
 
+# ---- FVCC SQLite 运行库与 server 侧密钥（2026-09-22 追加，P0-2 迁移产物，不得入库）----
+FVCC/fvcc.db
+FVCC/fvcc.db-shm
+FVCC/fvcc.db-wal
+FVCC/server/fvcc.db
+FVCC/server/fvcc.db-shm
+FVCC/server/fvcc.db-wal
+FVCC/server/secret.key
+
+# ---- 仓库根运行产物（FVCS GUI 在根目录启动时生成的 SQLite 库，2026-10-12 追加）----
+/task.db
+/task.db-shm
+/task.db-wal
+/credentials.db
+/credentials.db-shm
+/credentials.db-wal
+
 # ---- FVCC 后端编译产物与调试残留（2026-09-18 追加）----
 FVCC/server/fvcc.exe
 FVCC/server/build_err.txt
@@ -67,3 +84,23 @@ fnpack-*.exe
 FVCC_official_unpack/
 freecut/
 test-media/
+
+# ---- FVCS 渲染节点凭据/密钥与运行时数据库（P0 加密配置 + TLS 密钥对 + SQLite 运行库，
+#      build.ps1 -Target FVCS / 测试会在仓库 FVCS/ 目录重新生成，绝不入库）----
+FVCS/config.enc.json
+FVCS/config.enc.json.bak
+FVCS/credentials.db
+FVCS/credentials.db-shm
+FVCS/credentials.db-wal
+FVCS/master.key
+FVCS/task.db
+FVCS/wss-cert.pem
+FVCS/wss-key.pem
+
+# ---- FVCC server 运行时产物（v1.6.0 收口：缩略图缓存/自动备份/数据版本标记，测试与运行会再生成，不入库）----
+FVCC/server/_wve_cache/
+FVCC/server/backup/
+FVCC/server/data_version.json
+
+# ---- AI 工具产物（v1.6.9 收口：commandcode 的 taste 分析缓存，与本项目无关，不入库）----
+FVCC/.commandcode/

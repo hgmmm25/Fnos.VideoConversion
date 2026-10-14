@@ -1,14 +1,3 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 839b5d1d4fff15220193598838e6072d_bace8b0fb59411f183e7525400de85a5
-    ReservedCode1: Doos8W1RmCRrBGJz7mRU7ksKJcD7CjfkazbSHt9J2dQgLecaCHWRrMnYD10+YIp1XGPncP8I8pD3bRdVFkNyjq2hkoa9HX249VP6a4j7mQnhNwWgnhlEjV7hgT2VcBzKaLB7UA6EQA0Cjhscj1V4TVtsybNmwYHKDqj60+jSttPRpaUTlzXCm1CrmOc=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 839b5d1d4fff15220193598838e6072d_bace8b0fb59411f183e7525400de85a5
-    ReservedCode2: Doos8W1RmCRrBGJz7mRU7ksKJcD7CjfkazbSHt9J2dQgLecaCHWRrMnYD10+YIp1XGPncP8I8pD3bRdVFkNyjq2hkoa9HX249VP6a4j7mQnhNwWgnhlEjV7hgT2VcBzKaLB7UA6EQA0Cjhscj1V4TVtsybNmwYHKDqj60+jSttPRpaUTlzXCm1CrmOc=
----
-
 # FVCC 数据面安全策略
 
 > 依据《WebVideoEditor_Design/07-安全校验与凭据管理细则.md》补写（2026-09-21），消除 `server/main.go` 等注释对 `docs/SECURITY.md` 的悬空引用。
@@ -88,6 +77,7 @@ AIGC:
 | 删除（视频→回收站 / 服务器 / 方案 / 任务 / 历史） | `destructive.delete` |
 | 清空日志 / 清空视频缓存 | `destructive.clear` |
 | 清空回收站 | `destructive.empty_trash` |
+| 快照回滚（P3-5，v1.5.8：成功/失败均记，附 backup ID 与操作者） | `snapshot.restore` |
 
 - 审计目标经 `SetAuditSink(store.AppendAudit)` 注入落库；未注入时降级日志。
 - 新增破坏性操作（如快照回滚）需同步扩展审计类型。
@@ -104,6 +94,8 @@ AIGC:
 | L4 落地 | 拼接根后 `filepath.Clean` → `EvalSymlinks` → 校验前缀含分隔符边界 | `E_ASSET_NOT_IN_ROOT` |
 
 - `src`/`proxy`/`dest` 三根只从配置读取，**禁止**从请求参数传入任意根。
+- 渲染根字段（`sourceRoot`/`destRoot`/`proxyRoot`）自 v1.5.12 起按「下发专用写法」校验（`validateRootRelPath`，与 FVCS `protocol.ValidateRootPath` 严格同规则、共用 `edl_vectors.json` 测试向量）：允许空（回落服务端默认根）、允许相对写法、允许 FVCC 未映射时的本地绝对写法（交调度侧 `BuildSMBPath` 解析实际共享），**只拒绝含 `..` 的穿越段**——纵深防御，实际落地边界仍由挂载/授权根决定。
+- 根边界判定 `WithinRoot(root, abs)` 收敛于 `internal/pathutil`（v1.5.8 单一真源，含 Windows 盘符根边界处理），各域禁止自行实现前缀包含。
 - SMB 传输模式：`ValidateSMBPath` 校验 path 位于已共享目录内。
 
 ### 6.2 EDL 载荷结构化白名单（对齐 07 §3.3）
@@ -122,5 +114,4 @@ AIGC:
 
 安全自测用例（S1~S15）见 07 §8，覆盖路径穿越、注入、载荷上限、权限、票据、重名、符号链接等；实现位置：`server/internal/edl/edl_validate_test.go` 与 FVCS 侧 `pkg/protocol` 测试，两侧共用同一组测试向量保证规则一致。
 
-变更记录：2026-09-21 补写（消除 main.go:205/207 等悬空引用）。
-*（内容由AI生成，仅供参考）*
+变更记录：2026-10-14 对齐 **FVCC v1.6.7 / FVCS v1.3.1** 复核——本文 §1~§7 口径无漂移，唯一与本轮相关的实现面变化是 store 的 SQLite 驱动大版本跳跃（v1.14.0→v1.60.1）：审计面（`audit_log` 追加序 = 插入序、`seq` AUTOINCREMENT 续号）与快照回滚面（restore 的 zip-slip / 篡改 / 未来 schema 拒绝）在新驱动下经老库真实兼容用例复验成立，相关阈值与校验规则未改。2026-09-21 补写（消除 main.go:205/207 等悬空引用）；2026-10-12 对齐 v1.5.12（清理 AIGC frontmatter 残留，补 `snapshot.restore` 审计、`validateRootRelPath` 跨端同规则与 `pathutil.WithinRoot` 单一真源）；2026-10-13 对齐 **FVCC v1.6.5 / FVCS v1.3.0** 复核（IMPROVEMENT_LOG §二十 / 第二十八轮）——**本文口径无漂移**：§1 威胁模型与适用范围、§2 网关鉴权与权限分级、§3 凭据加密与流转硬约束、§4 限流四类阈值、§5 审计类型表（含 `snapshot.restore`）、§6 路径四层校验 + `validateRootRelPath` 跨端同规则 + `pathutil.WithinRoot` 单一真源、§6.2 EDL 载荷白名单、§7 传输链路引用均未变；1.6.0 与 1.6.4 为 ui-src 视觉批次、1.6.5 为版本收口轮，**代码面无新增安全校验细则**，本轮亦未复跑 §8 的 S1~S15 自测用例（结论沿用既有的两侧共用 `edl_vectors.json` 向量校验）。范畴区分：v1.6.5 的版本三真源一致性校验（`internal/version/version_test.go` 由"读不到即 Skip"改为"漂移即 `t.Fatal`" + `TestAppVerIsNotPinnedLiteral` 反版本字面量硬编码、`scripts/check-versions.ps1` 由 `$PSScriptRoot` 推导仓库根）约束的是**发布/打包一致性**（防止包内版本串与实际代码漂移、避免"全绿但零校验"），属仓库治理与发布纪律；它不参与鉴权、路径校验、凭据处理或限流任一环节，**故不作为安全校验细则登记，也不新增审计类型**——治理侧溯源见 `docs/TASK_REFERENCE.md` §3.8，上层口径区分见仓库根 `docs/SECURITY.md` 同轮复核记录。

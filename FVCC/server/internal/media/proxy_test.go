@@ -192,6 +192,7 @@ func TestVerifyProxyMeta(t *testing.T) {
 		{"时长差 1 帧内", func(p *model.VideoInfo) { p.Duration = 10.02 }, false},
 		{"时长偏差超 1 帧", func(p *model.VideoInfo) { p.Duration = 10.5 }, true},
 		{"帧率不等", func(p *model.VideoInfo) { p.Fps = "25/1" }, true},
+		{"帧率同值异串(30 vs 30000/1001)", func(p *model.VideoInfo) { p.Fps = "30/1" }, false},
 		{"高度超 720", func(p *model.VideoInfo) { p.Height = 1080 }, true},
 		{"音轨缺失", func(p *model.VideoInfo) { p.AudioCodec = "" }, true},
 		{"探测不可用放行", func(p *model.VideoInfo) { p.Fps = "unknown"; p.Duration = 0; p.Height = 0 }, false},

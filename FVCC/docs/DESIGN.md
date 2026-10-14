@@ -2,28 +2,31 @@
 name: FVCC Web UI
 description: NAS 视频转码调度端 Web UI。零框架（el() 手工 DOM）+ Vite + TypeScript + Tailwind。设计目标范式参照 freecut（The Quiet Instrument）：器材感、克制、数据可读优先。
 colors:
-  # 真源：src/style.css 的 :root 与 [data-theme="dark"] 两套 RGB 通道变量（tailwind.config.js 映射为 token 类）
-  # 引用方式：rgb(var(--c-x) / <alpha-value>)；禁止在页面中直接书写 hex / rgba / 原色板类
-  page: "rgb(var(--c-page))"
-  surface: "rgb(var(--c-surface))"
-  surface-hover: "rgb(var(--c-surface-hover))"
-  surface-alt: "rgb(var(--c-surface-alt))  # 内嵌面（明度介于 surface 与 page）"
-  line: "rgb(var(--c-line))"
-  line-subtle: "rgb(var(--c-line-subtle))"
-  ink: "rgb(var(--c-ink))"
-  ink-muted: "rgb(var(--c-ink-muted))   # 正文/次要文本（浅色面对比度 ≥4.5:1）"
-  ink-subtle: "rgb(var(--c-ink-subtle)) # 仅用于图标/分隔等非文本元素，禁止用于正文与 hint"
-  primary: "rgb(var(--c-primary))       # 品牌与主操作"
-  primary-hover: "rgb(var(--c-primary-hover))"
-  signal: "rgb(var(--c-signal))         # 单一信号色：仅表达"进行中/活动态"
-  success: "rgb(var(--c-success))"
-  danger: "rgb(var(--c-danger))"
-  warning: "rgb(var(--c-warning))"
-  neutral: "rgb(var(--c-neutral))"
-  preview-bg: "rgb(var(--c-preview-bg)) # 编辑器预览区恒定深底（亮/暗主题保持一致）"
-  drop-line: "rgb(var(--c-drop-line))   # 拖拽落点指示线"
-  clip-video/audio/image/text/marker: "rgb(var(--c-clip-*)) # 时间线数据色，承载语义不可挪用"
-  ansi-*: "rgb(var(--ansi-*))           # 日志 ANSI 语义色（门禁登记豁免的仅此一组）"
+  # 真源：src/style.css 的 :root 与 [data-theme="dark"] 两套 --c-* 变量（Tailwind 4 起为完整 rgb() 颜色，不再是裸 RGB 通道）
+  # 映射：style.css 的 @theme inline 块把 --c-x 注册为 --color-x，从而生成 bg-x / text-x / border-x 等 token 类（不再有 tailwind.config.js）
+  # 引用方式：class 用 token 类；透明度用类名 /NN 修饰符（编译期落为 color-mix(in oklab, X N%, transparent)）。
+  #          手写 CSS 需要颜色时用 var(--c-x)，禁止 rgb(var(--c-x)) 与 <alpha-value>（v3 遗留写法）
+  # 禁止在页面中直接书写 hex / rgba / 原色板类
+  page: "var(--c-page)"
+  surface: "var(--c-surface)"
+  surface-hover: "var(--c-surface-hover)"
+  surface-alt: "var(--c-surface-alt)  # 内嵌面（明度介于 surface 与 page）"
+  line: "var(--c-line)"
+  line-subtle: "var(--c-line-subtle)"
+  ink: "var(--c-ink)"
+  ink-muted: "var(--c-ink-muted)   # 正文/次要文本（浅色面对比度 ≥4.5:1）"
+  ink-subtle: "var(--c-ink-subtle) # 仅用于图标/分隔等非文本元素，禁止用于正文与 hint"
+  primary: "var(--c-primary)       # 品牌与主操作"
+  primary-hover: "var(--c-primary-hover)"
+  signal: "var(--c-signal)         # 单一信号色：仅表达"进行中/活动态"
+  success: "var(--c-success)"
+  danger: "var(--c-danger)"
+  warning: "var(--c-warning)"
+  neutral: "var(--c-neutral)"
+  preview-bg: "var(--c-preview-bg) # 编辑器预览区恒定深底（亮/暗主题保持一致）"
+  drop-line: "var(--c-drop-line)   # 拖拽落点指示线"
+  clip-video/audio/image/text/marker: "var(--c-clip-*) # 时间线数据色，承载语义不可挪用"
+  ansi-*: "var(--ansi-*)           # 日志 ANSI 语义色（门禁登记豁免的仅此一组）"
 typography:
   # 字阶（当前为系统栈 + 数据等宽；P1-3 可选的 IBM Plex 引入不阻塞本契约）
   title: "font-semibold text-base"      # 面板/区块标题 600
@@ -46,6 +49,25 @@ motion:
 
 # FVCC Web UI — Design Contract
 
+> 复核：2026-10-14（对齐 **FVCC v1.6.8**，台账见仓库根 `docs/IMPROVEMENT_LOG.md` 第三十四轮）——**Tailwind CSS 3.4.19 → 4.3.3 大版本迁移落地**，这是本契约自建立以来唯一一次改写令牌映射机制（v1.6.7 预警的那条后续项已兑现）。变的是"令牌如何变成工具类"，不变的是"令牌真源仍是 `src/style.css` 的 `--c-*`"与 R1-R10 的语义条款：
+>
+> - **配置载体**：`tailwind.config.js` 已删除，token 映射改由 `src/style.css` 的 `@theme inline` 块承担；`postcss.config.js` 的插件由 `tailwindcss + autoprefixer` 换成 `@tailwindcss/postcss`（autoprefixer 移除，前缀由 v4 内建 Lightning CSS 负责）。
+> - **令牌形态**：`--c-*` 由裸 RGB 通道（`37 99 235`）改为**完整颜色**（`rgb(37 99 235)`）。原因是 v4 不再替换 `<alpha-value>`（会原样泄漏进产物），注册色必须是完整颜色，`/NN` 透明度修饰符改由编译期 `color-mix(in oklab, X N%, transparent)` 实现。手写 CSS 侧同步：`rgb(var(--c-x))` → `var(--c-x)`，半透明处用 `color-mix()`（见 `.task-selected`）。
+> - **暗色机制**：`@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *))`，仍由 `src/theme.ts` 在 `documentElement` 上切 `data-theme="dark"`，语义与 v3 `darkMode: 'class'` 等价。
+> - **扫描面**：`@import "tailwindcss" source(none)` + 显式 `@source "../index.html"` / `@source "./**/*.{ts,js,html}"`。v4 默认自动源探测会把 `scripts/*.mjs`、`vite.config.ts` 注释里的类名字样当真用法编进产物（实测多出 `.shadow-sm`），必须关闭后显式锁定，等价于 v3 的 `content` 域。
+> - **已接受的 v4 新默认**（2026-10-14 用户裁决，不再覆写回去，真机观感差异以此为准）：① preflight 不再给 `button / [role=button]` 加 `cursor: pointer`，94 处按钮鼠标悬停不再变手型；② `hover:` 变体包进 `@media (hover: hover)`，触屏设备上不残留悬停态；③ `/NN` 淡色走 oklab `color-mix`，低透明度（`/5`、`/15`）的色相与 v3 的 sRGB 插值略有差异。
+> - **`outline-none` 语义漂移已对齐**：v4 的 `outline-none` = 真去掉描边，v3 的行为改名为 `outline-hidden`（保留 forced-colors 下的 2px 透明描边）。焦点环三处（`.btn` / `.input` / `.checkbox`）与编辑器页签一并改为 `outline-hidden`，无障碍行为不变——R6/R9 条款原样成立。
+> - **命名漂移已清扫**：`shadow-sm` → `shadow-xs`、`shadow` → `shadow-sm`（R3 的判定口径同步扩到 `shadow-xs/sm/md`）；`ring` 裸类、`space-y-*` / `divide-y-*` 特异性变化、`transition-transform` 展开、`--spacing: .25rem` 间距取值经比对确认**零暴露或等价**（388 个类 token 逐项对齐，v3 有 / v4 无 = 0）。
+> - **门禁新增 `TW4-token-form` 规则**：`check:design` 拒绝 `<alpha-value>` 与 `rgb(var(--c-`，防止 v3 遗留令牌写法回潮；顺带修复了 `stripComments` 折叠多行块注释导致的行号错位（曾使 `--ansi-*` 豁免失效）。注意该规则名与 Named Rule R6（Dialog Semantics）无关，勿混淆。
+>
+> 产物校验：`npm run build` 全绿（`check:design` 33 文件无违规 → `tsc -b` → `vite build`），CSS 产物 banner `tailwindcss v4.3.3`，原始体积 42,782 → 49,956 B，**gzip 10.00 → 9.78 kB**；`color-mix` 52 处、`<alpha-value>` 泄漏 0 处、forced-colors 规则 4 处。未验证面：NAS 真机视觉对照（低透明度淡色、悬停/焦点观感、触屏）、Failed/Cancelled 分支。
+
+> 复核：2026-10-14（对齐 **FVCC v1.6.7 / FVCS v1.3.1**，台账见仓库根 `docs/IMPROVEMENT_LOG.md` §二十三 / §二十四）——本轮为 sqlite 驱动与 Node 运行时的依赖/工具链批次，**零 ui-src 视觉与令牌改动**（构建产物内容哈希逐项不变），故本文全部条款、令牌真源位置与 `check:design` 门禁口径原样成立，热路径与状态反馈惯例无新增约束。需注意的后续项：`tailwindcss` 3.4.19→4.3.3 专项落地时将直接改写本文的令牌映射机制（v4 为 CSS-first，`tailwind.config.js` 的 token 映射与 `@apply` 语义均变），届时必须同步回写本文，不可"先升库再补文档"。**（该项已于 v1.6.8 落地并回写，见上条。）**
+
+> 复核：2026-10-13（对齐 **FVCC v1.6.5 / FVCS v1.3.0**，台账见仓库根 `docs/IMPROVEMENT_LOG.md` §二十 / 第二十八轮）——本轮 1.6.0（方向 A 令牌层重排 / 控件自绘 / 外壳 / 逐页修复 / 微交互+WCAG）与 1.6.4（任务页批次 A+B+C）都在本契约约束内落地，`npm run build` 链路仍先跑 `check:design` 再 `tsc -b` + `vite build`（2026-10-13 全绿）；**令牌真源 `src/style.css` 与门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）的位置与口径维持成立，但 frontmatter 的逐条取值与 R1-R10 的逐条文案本次未逐项复跑**，沿用上一轮结论。新形成的前端惯例（`listSkeleton` 组件、进度条合成层写法、签名守卫、骨架退出条件）补记于 R7 与「热路径与状态反馈惯例」节。
+>
+> 上一轮复核（保留为历史快照）：2026-10-12（对齐 FVCC v1.6.0）——令牌真源 `src/style.css`、门禁命令 `check:design` / `check:design:diff`（`ui-src/scripts/check-design.mjs`）与 Named Rules 均与代码一致；P1-2 决策门定案（2026-10-11）后本契约维持零框架前端不变。
+
 ## 北极星
 
 **"调度台，不是仪表盘。"** FVCC 是 NAS 上的转码调度端：用户要的是"一眼看到队列与节点在干什么、哪里出了问题、怎么补一刀"，不是消费级糖果界面，也不是炫技 SaaS 数据看板。素材信息、进度与日志是屏幕上最需要可读的东西。
@@ -53,7 +75,7 @@ motion:
 ## Named Rules
 
 ### R1 · The Token Rule（令牌真源）
-一切颜色、圆角、缓动只允许来自 `src/style.css` 的 `--c-*` / `--ease-*` 变量及其 tailwind 映射类。**禁止**在 `src/` 内书写 hex、`rgba()` 或任意 Tailwind 原色板（`slate/blue/red/...`）。唯一豁免：日志 ANSI 语义色（`--ansi-*` 变量声明），且必须集中在 `style.css` 中登记。
+一切颜色、圆角、缓动只允许来自 `src/style.css` 的 `--c-*` / `--ease-*` 变量，以及同文件 `@theme inline` 块把它们注册成的 Tailwind token 类。**禁止**在 `src/` 内书写 hex、`rgba()` 或任意 Tailwind 原色板（`slate/blue/red/...`）；**禁止**回退到 v3 令牌写法（`<alpha-value>`、`rgb(var(--c-*))`），透明度用类名 `/NN` 修饰符，手写 CSS 的半透明用 `color-mix()`。唯一豁免：日志 ANSI 语义色（`--ansi-*` 变量声明），且必须集中在 `style.css` 中登记。
 
 ### R2 · The Single Signal Rule（单一信号色）
 `signal` 只表达"进行中 / 活动态"（进度、队列活跃、进行中的渲染）。主操作归 `primary`，语义反馈归 `success/danger/warning`。信号色出现面积必须克制——Squint Test（截图缩半）后仍能一眼指出"现在在跑什么"。
@@ -75,6 +97,10 @@ motion:
 - 空态：必须承载下一步动作按钮（如"暂无任务 → 去视频文件页创建"）；
 - 批量操作：逐项结果（成功 N、失败 M 及原因），不只报总数；
 - 低风险即时动作（选中、排序、静音切换）：乐观更新 + 失败回滚。
+- **骨架写法（2026-10-13 补记，v1.6.4 批次 A/C 形成）**：
+  - 长列表首屏骨架一律用 `ui.ts` 的泛化组件 `listSkeleton(n, h)`（v1.6.4 新增），不再各页自铺 `.skeleton` 块——**目前仅 tasks 页已切换**，其余页面尚未迁移，迁移时沿用下列退出条件；
+  - 骨架退出条件**必须**挂在"首次成功 render 即置 `loaded`"这一事件上，**禁止**写成 `items.length > 0`：v1.6.4 首版即因 `tasks.length>0` 导致空库时骨架常驻出不来，由用户真机实测抓出后改正，空列表应正常落到 `emptyState`；
+  - 骨架与空态互斥：只在首次拉取在途的窗口期铺骨架，此后刷新不再回落骨架。
 
 ### R8 · The Contrast Rule（对比度）
 正文与占位符 ≥ 4.5:1，大号/粗体 ≥ 3:1。`ink-muted` 用于正文与 hint；`ink-subtle` 只用于图标/分隔等非文本。进度条、badge 必须补 `role="progressbar"` / `aria-valuenow` 与文本等价，不单靠颜色表达状态。
@@ -86,10 +112,27 @@ motion:
 `npm run check:design`（全量）/ `check:design:diff`（增量，默认 git diff）执行 `scripts/check-design.mjs`：
 - 禁止硬编码 hex（ANSI 语义色登记豁免）；
 - 禁止 Tailwind 原色板；
-- 禁止默认态阴影（`shadow-sm/md`；`shadow-lg/xl` 仅限弹层）；
+- 禁止默认态阴影（`shadow-xs/sm/md`；`shadow-lg/xl` 仅限弹层）；
 - 禁止 <12px 文字；
-- 禁止 `max-height` 过渡。
+- 禁止 `max-height` 过渡；
+- 禁止 v3 遗留令牌写法（`<alpha-value>` / `rgb(var(--c-*))`，v1.6.8 起，对应 R1）。
 门禁以增量文件为范围，存量告警不计入本次提交阻塞；新代码违反即失败。
+
+**门禁口径补记（2026-10-13，v1.6.4 批次过程修复）**：阴影检查（对应 R3）此前会把 CSS 属性 `box-shadow` 当内联样式误报——规则本意只查内联 `style`，已按前缀排除 `-` / `:`；**选中态的 inset 阴影**（`.task-selected`）按方案稿 `docs/FVCC_任务页视觉改进整合方案_v1.6.1.md` §2.3 裁决为**合法**，属活动态反馈而非 R3/R5 禁止的默认态浮动阴影。
+
+## 热路径与状态反馈惯例（2026-10-13 补记，v1.6.4 批次 A+B/C 形成）
+
+这些写法在 1.6.4 任务页改造中固化为前端惯例，后续列表/队列类页面改动同等适用：
+
+- **硬约束：视觉改进不得增加 WS tick 重绘**（方案稿立规，批次 B 落地）。任何以"好看"为名的改动若让 1s 级 WS 推送路径多做一次 layout / repaint，视为不通过。
+- **进度条走合成层**：只写自定义属性 `--p`，由 CSS 以 `transform: scaleX(var(--p))` 引用；**禁止**动画 `width`、禁止每次更新重挂 `transition`（批次 B1）。
+- **签名守卫（signature guard）**：渲染前比对上一次的签名，未变化即跳过 DOM 重建——
+  - `render`：id / 顺序签名，未变且卡数一致时跳过重排循环（批次 B2）；
+  - `updateOverview`：分组计数 + 总量签名，未变时不 `replaceChildren`；空态签名固定 `'0'`，重复空态不再动概览 DOM（批次 B3）。
+- **滚动位置按实例上下文保存/恢复**：`lib/scrollPos` 的 `saveScrollPos` / `restoreScrollPos`，主页与抽屉使用**独立 key 不互串**；DOM 重建前先存、重建后恢复，WS tick 不跳滚动（批次 B4）。
+- **状态反馈的层级优先**：错误信息独立成行并带 `title`（不与 `truncate` 行尾互相抵消）；`serverName` 等中性标签走低饱和标签、不与进度条撞 `signal` 色；活动卡以左侧 `signal` 静态指示线作锚点；零选中的批量按钮直接禁用 + 刷新期 pending；选中态用 `.task-selected` 即时高亮，**不走重渲染**（批次 A）。
+- **倍速等实时数据走 WS 合并**：`store.ts` 的 `applyTaskUpdate` 合并 `speed`（后端 `models.go` `speed,omitempty` + `TaskUpdateFullMsg`），文案后缀单独 `span` 更新，不因一个字段重建整卡。
+- **实验动画一律挂在 URL 开关后**：`#/tasks?fx=stripes` / `?fx=breathe` **默认全关**，仅供真实并发实测裁决；未经真机裁决不得进入默认路径（也不得写进本契约作为规范）。
 
 ## 反例清单（不要做）
 

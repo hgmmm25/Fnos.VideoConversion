@@ -19,7 +19,7 @@ func TestVersionEmbeddedFromFile(t *testing.T) {
 	if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(Version) {
 		t.Fatalf("Version 非三段式版本号（应为 x.y.z）: %q", Version)
 	}
-	if Version != "1.2.6" {
-		t.Fatalf("Version=%q 与本次交付包版本 1.2.6 不一致：出新包时请同步修改 pkg/version/VERSION", Version)
+	if Version != "1.3.1" {
+		t.Fatalf("Version=%q 与本次交付包版本 1.3.1 不一致：出新包时请同步修改 pkg/version/VERSION", Version)
 	}
 }

@@ -471,6 +471,7 @@ type EDLClip struct {
 	ClipID           string      `json:"clipId"`               // 'c_<8hex>'
 	AssetID          string      `json:"assetId"`              // 'a_<8hex>'
 	File             string      `json:"file"`                 // 相对 SourceRoot 的 POSIX 路径
+	SourceRoot       string      `json:"sourceRoot,omitempty"` // 素材所属授权根本地绝对路径（有界单根渲染取根；旧项目省略回落 videoRoot）
 	InMs             int64       `json:"inMs"`                 // 入点
 	OutMs            int64       `json:"outMs"`                // 出点（开区间）
 	Speed            float64     `json:"speed"`                // P0 恒为 1.0

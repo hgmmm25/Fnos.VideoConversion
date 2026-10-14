@@ -1,7 +1,7 @@
 import { api } from '../api'
 import { store } from '../store'
-import { el, toast, svgIcon, confirmDialog, skeletonRows, setupDialogAccessibility } from '../ui'
-import { type Settings, type AppInfo, LOG_LEVELS } from '../types'
+import { el, toast, svgIcon, confirmDialog, skeletonRows, setupDialogAccessibility, selectField, formatTime, formatSize } from '../ui'
+import { type Settings, type AppInfo, type StoreBackup, type StoreBackupKind, LOG_LEVELS } from '../types'
 import { themeOptions, getCurrentTheme, setTheme } from '../theme'
 import { formBuilder } from '../lib/formBuilder'
 
@@ -53,7 +53,7 @@ export function renderSettings(container: HTMLElement) {
       el('div', { class: 'grid grid-cols-1 sm:grid-cols-2 gap-3' }, [a, b])
 
     // 外观（主题切换）
-    const themeSel = el('select', { class: 'input' }) as HTMLSelectElement
+    const themeSel = selectField({})
     for (const t of themeOptions) {
       const opt = el('option', { value: t.id }, [t.name])
       if (t.id === getCurrentTheme()) (opt as HTMLOptionElement).selected = true
@@ -222,6 +222,115 @@ export function renderSettings(container: HTMLElement) {
     }).catch(() => {
       cacheInfoEl.textContent = '加载失败'
     })
+
+    // 数据备份与恢复（P3-5 尾部：/api/store/* 后端在 v1.5.8 已交付，此处补前端入口）
+    const backupKindLabel: Record<StoreBackupKind, string> = {
+      auto: '定时',
+      manual: '手动',
+      prewrite: '写前',
+      premigration: '迁移前',
+      prerestore: '回滚兜底',
+    }
+    // 手动备份不参与轮转，列表可能很长；首屏只铺最近 20 份，余下按需展开
+    const backupListLimit = 20
+    const backupListEl = el('div', { class: 'mt-2 text-xs' }, skeletonRows(2, '0.75rem'))
+    const backupMoreBtn = el('button', { class: 'btn btn-sm mt-2' }, ['显示更多'])
+    backupMoreBtn.style.display = 'none'
+    const backupNowBtn = el('button', { class: 'btn btn-sm mt-2' }, ['立即备份'])
+    const backupRefreshBtn = el('button', { class: 'btn btn-sm mt-2 ml-2' }, ['刷新'])
+
+    let backups: StoreBackup[] = []
+    let backupExpanded = false
+
+    function renderBackupList() {
+      backupListEl.innerHTML = ''
+      if (backups.length === 0) {
+        backupListEl.appendChild(el('div', { class: 'text-ink-muted' }, ['暂无备份（数据写入时会自动产生）']))
+        backupMoreBtn.style.display = 'none'
+        return
+      }
+      const shown = backupExpanded ? backups : backups.slice(0, backupListLimit)
+      for (const b of shown) {
+        const restoreBtn = el('button', { class: 'btn btn-sm' }, ['恢复'])
+        restoreBtn.onclick = () => restoreBackup(b)
+        backupListEl.appendChild(
+          el('div', { class: 'flex items-center gap-2 py-1 border-b border-line last:border-0' }, [
+            el('span', { class: 'shrink-0' }, [formatTime(b.createdAt)]),
+            el('span', { class: 'w-16 shrink-0 text-ink-muted' }, [backupKindLabel[b.kind] || b.kind]),
+            el('span', { class: 'w-20 shrink-0 text-ink-muted' }, [formatSize(b.size)]),
+            el('div', { class: 'flex-1' }),
+            restoreBtn,
+          ])
+        )
+      }
+      const hidden = backups.length - shown.length
+      backupMoreBtn.style.display = hidden > 0 ? '' : 'none'
+      if (hidden > 0) backupMoreBtn.textContent = `显示其余 ${hidden} 份`
+    }
+
+    const loadBackups = async () => {
+      backupListEl.innerHTML = ''
+      backupListEl.append(...skeletonRows(2, '0.75rem'))
+      try {
+        const r = await api.listStoreBackups()
+        backups = r.backups || []
+        renderBackupList()
+      } catch (e) {
+        backups = []
+        backupListEl.innerHTML = ''
+        backupListEl.appendChild(el('div', { class: 'text-danger' }, [(e as Error).message]))
+      }
+    }
+
+    backupMoreBtn.onclick = () => {
+      backupExpanded = true
+      renderBackupList()
+    }
+    backupRefreshBtn.onclick = () => loadBackups()
+    backupNowBtn.onclick = async () => {
+      backupNowBtn.setAttribute('disabled', 'true')
+      try {
+        const r = await api.createStoreBackup()
+        toast(`手动备份已创建：${r.backup.id}`, 'success')
+        backupExpanded = false
+        await loadBackups()
+      } catch (e) {
+        toast((e as Error).message, 'error')
+      } finally {
+        backupNowBtn.removeAttribute('disabled')
+      }
+    }
+
+    // 整包恢复是覆盖式破坏动作（后端已 RequireAdmin + snapshot.restore 审计 + 回滚前自动兜底备份）
+    const restoreBackup = async (b: StoreBackup) => {
+      const ok = await confirmDialog(
+        `将从「${backupKindLabel[b.kind] || b.kind} ${formatTime(b.createdAt)}」的备份整包恢复。当前全部业务数据（任务/服务器/项目/设置等）会被该备份覆盖；恢复前系统自动生成一份兜底备份。`,
+        '确认整包恢复',
+        true
+      )
+      if (!ok) return
+      try {
+        const r = await api.restoreStoreBackup(b.id)
+        toast(`恢复完成，兜底备份：${r.restore.preRestoreId}`, 'success')
+        await store.loadAll()
+        await load()
+      } catch (e) {
+        toast((e as Error).message, 'error')
+      }
+    }
+
+    form.append(
+      el('div', { class: 'bg-surface-alt rounded-lg p-3 my-3' }, [
+        el('div', { class: 'text-sm font-medium mb-2' }, ['数据备份与恢复']),
+        el('div', { class: 'text-xs text-ink-muted' }, [
+          '备份包含任务/历史/服务器/项目/设置等业务数据（凭据与 secret.key 不入包）；系统生成备份（定时/写前/迁移前/回滚兜底）共用最近 12 份轮转池，手动备份永久保留。',
+        ]),
+        backupListEl,
+        el('div', {}, [backupMoreBtn]),
+        el('div', {}, [backupNowBtn, backupRefreshBtn]),
+      ]),
+    )
+    loadBackups()
 
     // 播放设置（2026-09-16 修复⑤：剪辑页预览器默认静音改为可配置，不再硬编码；P2-2：字段由 formBuilder 生成）
     form.append(

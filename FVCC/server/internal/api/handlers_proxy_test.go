@@ -115,6 +115,46 @@ func TestM4ProxySubmitContract(t *testing.T) {
 	}
 }
 
+func TestM4ProxyListHydration(t *testing.T) {
+	e := newM4Env(t)
+	// 登记两条 ready + 一条 invalid/stale，GET /proxy 只回填 ready。
+	e.store.UpsertAssetProxy(AssetProxy{AssetKey: "demo/a_01.mp4", ProxyRel: "demo/a_01.proxy.mp4", ProxyDurationMs: 3000, State: ProxyStateReady})
+	e.store.UpsertAssetProxy(AssetProxy{AssetKey: "demo/b_02.mp4", ProxyRel: "demo/b_02.proxy.mp4", ProxyDurationMs: 5000, State: ProxyStateReady})
+	e.store.UpsertAssetProxy(AssetProxy{AssetKey: "demo/c_03.mp4", ProxyRel: "demo/c_03.proxy.mp4", State: ProxyStateInvalid})
+	e.store.UpsertAssetProxy(AssetProxy{AssetKey: "demo/d_04.mp4", ProxyRel: "demo/d_04.proxy.mp4", State: ProxyStateStale})
+
+	w := doEDLRequest(t, e.r, http.MethodGet, "/api/proxy", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /proxy 应 200，实际 %d %s", w.Code, w.Body.String())
+	}
+	var res struct {
+		Items []struct {
+			File       string `json:"file"`
+			ProxyFile  string `json:"proxyFile"`
+			DurationMs int64  `json:"durationMs"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("响应解析失败: %v (%s)", err, w.Body.String())
+	}
+	if len(res.Items) != 2 {
+		t.Fatalf("只应回填 2 条 ready 代理，实际 %d：%s", len(res.Items), w.Body.String())
+	}
+	byFile := map[string]int64{}
+	for _, it := range res.Items {
+		byFile[it.File] = it.DurationMs
+	}
+	if byFile["demo/a_01.mp4"] != 3000 || byFile["demo/b_02.mp4"] != 5000 {
+		t.Fatalf("ready 代理字段不符: %+v", res.Items)
+	}
+	if _, ok := byFile["demo/c_03.mp4"]; ok {
+		t.Fatalf("invalid 代理不得回填")
+	}
+	if _, ok := byFile["demo/d_04.mp4"]; ok {
+		t.Fatalf("stale 代理不得回填")
+	}
+}
+
 func TestM4ScanDirectoryFiltersReservedDirs(t *testing.T) {
 	e := newM4Env(t)
 	e.writeFile(t, "demo/a.mp4", 16)

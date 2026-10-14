@@ -81,7 +81,10 @@ function miniGauge(load: ServerLoad, online: boolean): HTMLElement {
   arc.setAttribute('stroke-dasharray', `${ratio * c} ${c}`)
   arc.setAttribute('stroke-dashoffset', '0')
   svg.append(track, arc)
-  const center = el('div', { class: 'absolute inset-0 flex items-center justify-center text-sm font-semibold font-mono tabular-nums' }, [String(load.active)])
+  // V1.6-④ V7：无任何关联任务时中心显示破折号而非语义不明的「0」，避免误读为故障
+  const center = el('div', {
+    class: `absolute inset-0 flex items-center justify-center font-mono tabular-nums ${total > 0 ? 'text-sm font-semibold' : 'text-base text-ink-muted'}`,
+  }, [total > 0 ? String(load.active) : '—'])
   const box = el('div', { class: 'relative w-14 h-14 shrink-0', title: `进行中 ${load.active} / 共 ${total} 个关联任务` })
   box.appendChild(svg)
   box.appendChild(center)
@@ -131,14 +134,16 @@ export function renderServers(container: HTMLElement) {
     // 过滤掉 isLocal 服务器（fnNAS 自转码由创建转码任务时自动提供，无需在此管理）
     const remoteServers = store.servers.filter(s => !s.isLocal)
     if (remoteServers.length === 0) {
-      // P2-1：空状态承载"下一步动作"
+      // P2-1：空状态承载"下一步动作"；V1.6-④ V7：在剩余空间内垂直居中，不再贴顶
       list.appendChild(
-        emptyState('暂无服务器，请点击右上角「新增服务器」添加', 'server', {
-          label: '新增服务器',
-          onClick: () => {
-            addBtn.click()
-          },
-        })
+        el('div', { class: 'flex h-full min-h-[300px] w-full items-center justify-center' }, [
+          emptyState('暂无服务器，请点击右上角「新增服务器」添加', 'server', {
+            label: '新增服务器',
+            onClick: () => {
+              addBtn.click()
+            },
+          }),
+        ])
       )
     } else {
       const grid = el('div', { class: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3' })
@@ -176,7 +181,7 @@ export function renderServers(container: HTMLElement) {
           return editBtn
         })(),
         (() => {
-          const delBtn = el('button', { class: 'btn btn-sm btn-danger' }, [])
+          const delBtn = el('button', { class: 'btn btn-sm btn-danger-ghost' }, [])
           delBtn.append(svgIcon('trash', 14) as unknown as Node)
           delBtn.title = '删除'
           delBtn.onclick = (e) => {

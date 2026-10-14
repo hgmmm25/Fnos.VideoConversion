@@ -4,7 +4,7 @@
 //                  ③代理状态落地（queued/ready/invalid）+ 订阅 WS proxy_ready；
 //                  ④缩略图按时间段分格（时间线侧，见 timeline.ts）；⑤deduplicated 字段消费；
 //                  ⑥订阅/缓存清理、toRelative 兜底收敛、sourceRoot 随设置刷新。
-import { el, toast } from '../../ui'
+import { el, toast, selectField, svgIcon } from '../../ui'
 import { api } from '../../api'
 import { store, type ProxyReadyInfo } from '../../store'
 import type { AssetRef, AssetVisibility, ProxyState, VideoInfo } from '../../types'
@@ -118,6 +118,7 @@ export function toAssetRef(v: VideoInfo, sourceRoot: string, assetId?: string): 
   return {
     assetId: assetId || newAssetId(),
     file: toRelative(v.path, sourceRoot),
+    sourceRoot,
     durationMs: Math.max(0, Math.round((v.duration || 0) * 1000)),
     width: v.width || 0,
     height: v.height || 0,
@@ -154,8 +155,9 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
   let sortKey: SortKey = 'name'
   // 需求2：名称/时长/大小 支持正序/倒序（1 正序 / -1 倒序）
   let sortDir: 1 | -1 = 1
-  // 需求3：文件夹式阅览——非递归扫描，子目录由前端据视频相对路径推导后在此列展示
-  const recursive = false
+  // 2026-09-22 修复：素材扫描支持递归子文件夹（用户 v1.5.6 下子文件夹视频不显示）
+  // 递归模式下子文件夹视频直接汇入列表展示；ensureSubDir 目录行不再触发（保持列表展示）
+  const recursive = true
   interface DirEntry {
     name: string
     path: string
@@ -166,15 +168,15 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
 
   // 修复①：授权目录下拉（多根切换）+ 浏览对话框（browseDirs 受后端授权校验约束）
   // 2026-09-20 UI 精简：删除「路径手填 + 扫描」对话框（所有目录已由授权下拉/浏览覆盖）
-  const rootSel = el('select', {
-    class: 'input text-xs flex-1 min-w-0',
+  const rootSel = selectField({
+    class: 'text-xs flex-1 min-w-0',
     title: '切换授权素材目录',
-  }) as HTMLSelectElement
+  })
   rootSel.onchange = () => {
     const next = rootSel.value
     if (next) setActiveRoot(next, true)
   }
-  const browseBtn = el('button', { class: 'btn btn-primary shrink-0 text-xs px-2 py-1' }, ['浏览…'])
+  const browseBtn = el('button', { class: 'btn btn-primary shrink-0 whitespace-nowrap text-xs px-2.5 py-1' }, ['浏览…'])
   browseBtn.onclick = () => openDirBrowser((dir) => startScan(dir), currentDir || activeRoot)
   syncRootOptions()
 
@@ -187,24 +189,27 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
     renderList()
   }
 
-  const sortSel = el('select', { class: 'input text-xs w-20 shrink-0', title: '排序字段' }, [
+  const sortSel = selectField({ class: 'text-xs w-20 shrink-0', title: '排序字段' })
+  sortSel.append(
     el('option', { value: 'name' }, ['名称']),
     el('option', { value: 'duration' }, ['时长']),
     // 扫描接口未返回 mtime，P0 以"大小"替代"修改时间"（偏差已登记）
     el('option', { value: 'size' }, ['大小']),
-  ]) as HTMLSelectElement
+  )
   sortSel.onchange = () => {
     sortKey = sortSel.value as SortKey
     renderList()
   }
-  // 需求2：正序/倒序切换按钮（名称/时长/大小 三字段共用）
+  // V1.6-④ V6：↑↓ 文本箭头换为 svgIcon 方向箭头，与其它排序切换按钮统一
   const dirBtn = el('button', {
-    class: 'btn shrink-0 text-xs px-1.5 py-1 w-8',
+    class: 'btn btn-sm shrink-0 w-9 flex items-center justify-center',
     title: sortDir === 1 ? '当前正序，点击切换为倒序' : '当前倒序，点击切换为正序',
-  }, [sortDir === 1 ? '↑' : '↓']) as HTMLButtonElement
+  }) as HTMLButtonElement
+  const renderDirIcon = () => dirBtn.replaceChildren(svgIcon(sortDir === 1 ? 'chevron-up' : 'chevron-down', 14))
+  renderDirIcon()
   dirBtn.onclick = () => {
     sortDir = sortDir === 1 ? -1 : 1
-    dirBtn.textContent = sortDir === 1 ? '↑' : '↓'
+    renderDirIcon()
     dirBtn.title = sortDir === 1 ? '当前正序，点击切换为倒序' : '当前倒序，点击切换为正序'
     renderList()
   }
@@ -230,7 +235,7 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
       return
     }
     rootSel.disabled = false
-    for (const r of roots) rootSel.append(el('option', { value: r }, [shortRoot(r)]))
+    for (const r of roots) rootSel.append(el('option', { value: r, title: r }, [shortRoot(r)]))
     rootSel.value = roots.includes(activeRoot) ? activeRoot : roots[0]
   }
 
@@ -247,9 +252,10 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
     return best
   }
 
+  // V1.6-④ V6：仅取末段时多根常显示为 server/data 之类无区分度名称，改为末两段 + 完整路径 tooltip
   function shortRoot(r: string): string {
     const seg = normPath(r).split('/').filter(Boolean)
-    return seg.length ? seg[seg.length - 1] : r
+    return seg.length > 1 ? seg.slice(-2).join('/') : r
   }
 
   /** 切换授权根（root 必为授权列表项）；rescan=true 时清空列表重新扫描 */
@@ -579,7 +585,7 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
     }
     setProxyState(a.file, { state: 'queued' })
     try {
-      const r = await api.createProxy({ assetId: a.assetId, file: a.file })
+      const r = await api.createProxy({ assetId: a.assetId, file: a.file, root: a.sourceRoot })
       if (r.deduplicated) {
         toast('该素材已有代理任务在处理，已复用既有任务', 'info')
       } else {
@@ -612,6 +618,36 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
     return p.proxyFile ? fileFromProxyRel(p.proxyFile) : ''
   }
 
+  /** 闭环② 回填：挂载时从服务端拉取已就绪代理，恢复 proxyByFile 与列表角标。
+   *  不依赖瞬时 WS proxy_ready——页面重启/切回后 ready 态不再丢失。 */
+  async function hydrateProxies(): Promise<void> {
+    if (destroyed) return
+    try {
+      const r = await api.listProxies()
+      if (destroyed) return
+      let changed = false
+      for (const item of r.items) {
+        const existing = proxyByFile.get(item.file)
+        if (existing && existing.state === 'ready' && existing.proxyFile === item.proxyFile) continue
+        proxyByFile.set(item.file, {
+          state: 'ready',
+          proxyFile: item.proxyFile,
+          durationMs: item.durationMs,
+        })
+        const a = assets.find((x) => x.file === item.file)
+        if (a) {
+          a.proxyState = 'ready'
+          a.proxyFile = item.proxyFile
+          a.proxyDurationMs = item.durationMs
+        }
+        changed = true
+      }
+      if (changed) renderList()
+    } catch {
+      // 回填失败静默：不影响扫描/预览，WS proxy_ready 仍可落地新就绪的代理
+    }
+  }
+
   // 素材数超上限时提前提示（EDL_LIMITS 与后端 handlers_edl.go 同源）
   const unsubClips = edlStore.subscribe((s, changed) => {
     if (!changed.includes('clips')) return
@@ -619,6 +655,9 @@ export function buildAssetsPanel(opts: AssetsPanelOptions): AssetsPanel {
   })
   // 修复⑥：WS 订阅取消（原实现未取消，销毁后闭包泄漏）
   const unsubProxyReady = store.onProxyReady(handleProxyReady)
+
+  // 闭环②：挂载即回填已就绪代理（proxyByFile 跨扫描保留，后续 toRef 自动标注 ready）
+  hydrateProxies()
 
   if (currentDir) startScan(currentDir)
   else {

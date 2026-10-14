@@ -34,6 +34,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fvcc/internal/pathutil"
 	"fvcc/internal/security"
 	"fvcc/logger"
 )
@@ -118,14 +119,23 @@ func (h *Handlers) renderEDLProject(c *gin.Context) {
 		return
 	}
 
-	// 闸门 4：解析素材根 / 成品根（03 §2.3、09 §4.2）
-	sourceRoot, destRoot, localSource, localDest, rootMapped := h.resolveEDLRoots()
+	// 闸门 4：解析素材根 / 成品根（03 §2.3、09 §4.2）。
+	// 有界单根：优先按片段携带的素材授权根取根（与代理同机制），修复"渲染一律回落 videoRoot、
+	// 使非默认根素材报素材不存在"；旧项目片段无根时回落 videoRoot/exportRoot 既有口径。
+	sourceRoot, destRoot, localSource, localDest, rootMapped, rvCode, rvStatus, rv := h.resolveRenderRoots(proj.Clips)
+	if rv != nil {
+		edlErr(c, rvStatus, rvCode, rv.Msg, rv.Detail)
+		return
+	}
 	if sourceRoot == "" || destRoot == "" {
 		edlErr(c, http.StatusBadRequest, errCodeEDLInvalid,
 			"未配置素材根/成品根，请在设置中配置 videoRoot/exportRoot",
 			gin.H{"field": "sourceRoot", "sourceRoot": sourceRoot, "destRoot": destRoot})
 		return
 	}
+	// 未映射为共享相对根（未配 smbSharePath）时保持本地绝对写法：sourceRoot 仅用于
+	// 调度侧 toSMBUNC→BuildSMBURL 解析实际共享（与代理/转码同机制，依赖 smbUser），
+	// FVCS 渲染落地不消费它（srcBase=挂载点）。因此不在此早失败，照常入队交调度器下发。
 
 	// 闸门 5：输出名规范化（03 §4.4 / 07 §3.5）
 	base, nerr := normalizeOutputBase(in.OutputName)
@@ -396,6 +406,15 @@ func (h *Handlers) resolveEDLRoots() (sourceRoot, destRoot, localSource, localDe
 	if localDestRoot == "" && localSourceRoot != "" {
 		localDestRoot = filepath.Join(localSourceRoot, "_exports")
 	}
+	return h.mapEDLRoots(localSourceRoot, localDestRoot, strings.TrimSpace(cfg.SMBSharePath))
+}
+
+// mapEDLRoots 把「本地素材根 / 本地成品根」映射为协议根 + 本地可见路径 + 是否映射为共享相对根。
+// 供 resolveEDLRoots（默认口径）与 resolveRenderRoots（片段根口径）共用：
+//   - 本地根存在（isDir）才回填本地可见路径（否则置空，存在性预检/成品重名避让自动跳过）；
+//   - 协议根写法优先映射为「相对共享根 POSIX 相对根」（03 §2.3），shareBase 缺省或未覆盖两根时
+//     保持本地 POSIX 写法并 rootMapped=false（由调用方降级处置，绝不猜测映射）。
+func (h *Handlers) mapEDLRoots(localSourceRoot, localDestRoot, shareBase string) (sourceRoot, destRoot, localSource, localDest string, rootMapped bool) {
 	if localSourceRoot != "" {
 		localSource = filepath.FromSlash(localSourceRoot)
 		if !isDir(localSource) {
@@ -409,11 +428,9 @@ func (h *Handlers) resolveEDLRoots() (sourceRoot, destRoot, localSource, localDe
 		}
 	}
 
-	// 协议根写法：优先映射为「相对共享根的 POSIX 相对根」（03 §2.3：协议内不出现磁盘绝对路径）；
-	// 未配置共享根或根不在共享内时保持本地 POSIX 写法，由 rootMapped=false 通知调用方降级处置。
 	sourceRoot = toPOSIXRoot(localSourceRoot)
 	destRoot = toPOSIXRoot(localDestRoot)
-	if shareBase := strings.TrimSpace(cfg.SMBSharePath); shareBase != "" {
+	if shareBase != "" {
 		if relS, okS := toShareRelRoot(localSourceRoot, shareBase); okS {
 			if relD, okD := toShareRelRoot(localDestRoot, shareBase); okD {
 				sourceRoot, destRoot, rootMapped = relS, relD, true
@@ -421,6 +438,57 @@ func (h *Handlers) resolveEDLRoots() (sourceRoot, destRoot, localSource, localDe
 		}
 	}
 	return sourceRoot, destRoot, localSource, localDest, rootMapped
+}
+
+// distinctClipSourceRoots 汇总片段携带的素材授权根（去重、忽略空根），返回原始写法切片。
+func distinctClipSourceRoots(clips []EDLClip) []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(clips))
+	for i := range clips {
+		key := normalizeRootForCompare(clips[i].SourceRoot)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, strings.TrimSpace(clips[i].SourceRoot))
+	}
+	return out
+}
+
+// resolveRenderRoots 渲染取根（有界单根）：
+//   - 片段全部同根 → 以该授权根为素材根、其下 _exports 为成品根（与代理「素材/产物同根」同机制，
+//     彻底修复旧实现一律回落 videoRoot、使非默认根素材报 E_ASSET_MISSING 的问题）；
+//   - 片段跨多个根 → 明确拒绝（真正混合多根属跨端 #9，暂不落地）；
+//   - 片段均无根（旧项目）→ 回落 resolveEDLRoots 既有 videoRoot/exportRoot 口径（向后兼容）。
+//
+// 违规时末三返回（错误码, HTTP 状态, 详情）非空，调用方据此直接响应；v==nil 表示正常。
+func (h *Handlers) resolveRenderRoots(clips []EDLClip) (sourceRoot, destRoot, localSource, localDest string, rootMapped bool, code string, status int, v *edlViolation) {
+	roots := distinctClipSourceRoots(clips)
+	switch len(roots) {
+	case 0:
+		sourceRoot, destRoot, localSource, localDest, rootMapped = h.resolveEDLRoots()
+		return
+	case 1:
+		local, ok := h.matchAuthorizedSrcRoot(roots[0])
+		if !ok {
+			return "", "", "", "", false, errCodeRootUnknown, http.StatusBadRequest, &edlViolation{
+				Msg:    "素材根不在授权目录内：" + roots[0],
+				Detail: gin.H{"field": "sourceRoot", "sourceRoot": roots[0]},
+			}
+		}
+		var cfg Settings
+		if h.store != nil {
+			cfg = h.store.GetSettings()
+		}
+		sourceRoot, destRoot, localSource, localDest, rootMapped =
+			h.mapEDLRoots(local, filepath.Join(local, "_exports"), strings.TrimSpace(cfg.SMBSharePath))
+		return
+	default:
+		return "", "", "", "", false, errCodeEDLInvalid, http.StatusBadRequest, &edlViolation{
+			Msg:    "暂不支持跨多个授权目录混合素材（请确保片段来自同一目录；多根渲染见 #9）",
+			Detail: gin.H{"field": "clips.sourceRoot", "roots": roots},
+		}
+	}
 }
 
 // toPOSIXRoot 把授权目录（本地绝对路径）转成契约要求的 POSIX 相对根写法。
@@ -530,13 +598,7 @@ func pathWithin(root, target string) bool {
 	if err != nil {
 		return false
 	}
-	if r == t {
-		return true
-	}
-	if !strings.HasSuffix(r, string(filepath.Separator)) {
-		r += string(filepath.Separator)
-	}
-	return strings.HasPrefix(t, r)
+	return pathutil.WithinRoot(r, t)
 }
 
 // fileExists 判定路径存在且为普通文件。

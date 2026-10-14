@@ -11,11 +11,63 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 const edlVecWantOK = "OK"
+
+// TestEDLWithinRootBoundary 覆盖授权根边界判定：根自身、根下子路径、同前缀歧义路径。
+// 重点回归 Windows 盘符根（D:\）Clean 后仍以分隔符结尾导致的「子路径永不命中」bug。
+func TestEDLWithinRootBoundary(t *testing.T) {
+	sep := string(filepath.Separator)
+
+	// 通用（平台无关）用例：非分隔符结尾的根
+	root := filepath.Join("vol", "media")
+	within := filepath.Join(root, "a.mp4")
+	ambig := filepath.Join("vol", "media2", "a.mp4")
+	if !edlWithinRoot(root, root) {
+		t.Errorf("根自身应命中: root=%q abs=%q", root, root)
+	}
+	if !edlWithinRoot(root, within) {
+		t.Errorf("根下子路径应命中: root=%q abs=%q", root, within)
+	}
+	if edlWithinRoot(root, ambig) {
+		t.Errorf("同前缀歧义路径不应命中: root=%q abs=%q", root, ambig)
+	}
+
+	// 分隔符结尾的根（Windows 盘符根场景，跨平台用显式根+sep 模拟同形态）
+	driveRoot := "D:" + sep // 仅 Windows 上真实为盘符根；其它平台验证「根以分隔符结尾」分支
+	if runtime.GOOS != "windows" {
+		driveRoot = sep // 非 Windows 无盘符概念，用根分隔符等价模拟
+	}
+	if !edlWithinRoot(driveRoot, driveRoot) {
+		t.Errorf("根自身应命中: root=%q", driveRoot)
+	}
+	child := driveRoot
+	if runtime.GOOS == "windows" {
+		child = driveRoot + "Fnos.VideoConversion" + sep + "FVCC"
+	} else {
+		child = driveRoot + "mnt" + sep + "data"
+	}
+	if !edlWithinRoot(driveRoot, child) {
+		t.Errorf("以分隔符结尾的根下子路径应命中（回归盘符根 bug）: root=%q abs=%q", driveRoot, child)
+	}
+
+	// Windows 专属：盘符根下任意路径都在授权内；同前缀目录也在内（盘符根即全盘）
+	if runtime.GOOS == "windows" {
+		if !edlWithinRoot(`D:\`, `D:\Fnos.VideoConversion\FVCC\server`) {
+			t.Errorf("D:\\ 授权下子路径应命中: D:\\Fnos.VideoConversion\\FVCC\\server")
+		}
+		if !edlWithinRoot(`D:\Fnos.VideoConversion`, `D:\Fnos.VideoConversion\FVCC`) {
+			t.Errorf("非盘符根子路径应命中")
+		}
+		if edlWithinRoot(`D:\Fnos.VideoConversion`, `D:\Fnos.VideoConversion2`) {
+			t.Errorf("同前缀歧义路径不应命中: D:\\Fnos.VideoConversion2")
+		}
+	}
+}
 
 type edlVectorRelPath struct {
 	ID       string `json:"id"`

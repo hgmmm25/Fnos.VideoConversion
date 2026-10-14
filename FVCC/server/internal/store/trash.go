@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"fvcc/internal/pathutil"
 )
 
 // TrashDirName 回收站目录名（`_` 前缀受 isReservedMediaName 保护）。
@@ -27,7 +29,7 @@ func TrashRootFor(roots []string, path string) (string, error) {
 	best := ""
 	for _, root := range roots {
 		root = filepath.Clean(root)
-		if !strings.HasPrefix(path, root+string(filepath.Separator)) {
+		if !pathutil.WithinRoot(root, path) {
 			continue
 		}
 		if len(root) > len(best) {
@@ -50,7 +52,7 @@ func MoveToTrash(roots []string, path string) (string, error) {
 	root := ""
 	for _, r := range roots {
 		r = filepath.Clean(r)
-		if strings.HasPrefix(abs, r+string(filepath.Separator)) && len(r) > len(root) {
+		if pathutil.WithinRoot(r, abs) && len(r) > len(root) {
 			root = r
 		}
 	}

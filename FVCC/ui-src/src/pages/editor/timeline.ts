@@ -3,7 +3,7 @@
 //        + 拖拽换位（2px 蓝色插入线）+ 素材拖入 + 选中 + 播放头 + 工具条
 // 坐标口径：轨道为**全局时间轴**（片段首尾相接，毫秒）；片段内为**源素材时间轴**
 // 兜底宽度导致 x = ms/totalMs*width 不再成立 → 由本文件向 ruler 注入分段线性映射（ruler.ts）
-import { el, svgIcon, toast, confirmDialog } from '../../ui'
+import { el, svgIcon, toast, confirmDialog, selectField } from '../../ui'
 import { api } from '../../api'
 import type { AssetRef, EDLClip } from '../../types'
 import { RENDER_PRESETS, type PresetOption } from './preset'
@@ -153,7 +153,7 @@ export function buildTimeline(opts: TimelineOptions): TimelinePanel {
   // 2026-09-20 UI 精简：删除「按添加 / 按素材名」排序下拉——
   // 排序会重排时间线片段顺序且选中后立即重置回「按添加」，状态不持久，作用有限
 
-  const profileSel = el('select', { class: 'input text-xs w-44 shrink-0', title: '渲染方案（服务端 presetKey 枚举，05 §5.1）' }) as HTMLSelectElement
+  const profileSel = selectField({ class: 'text-xs w-44 shrink-0', title: '渲染方案（服务端 presetKey 枚举，05 §5.1）' })
   profileSel.onchange = () => opts.onSelectPreset(profileSel.value)
 
   // 需求4/5：不再在时间线工具条重复渲染「渲染导出」按钮与「总时长」统计——

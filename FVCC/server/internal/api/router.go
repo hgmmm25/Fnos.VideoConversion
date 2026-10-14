@@ -38,6 +38,11 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 		api.GET("/video-cache", h.getVideoCacheInfo)
 		api.DELETE("/video-cache", security.RequireAdmin(), h.clearVideoCache)
 
+		// P3-5 阶段 A：store 备份（仅后端 API，评审点 4）——手动备份 + 备份列表。
+		api.POST("/store/backup", security.RequireAdmin(), h.createStoreBackup)
+		api.GET("/store/backups", security.RequireAdmin(), h.listStoreBackups)
+		api.POST("/store/restore", security.RequireAdmin(), h.restoreStoreBackup)
+
 		// 视频管理
 		api.POST("/video/scan", h.scanDirectory)
 		api.GET("/video/scan-stream", h.scanDirectoryStream)
@@ -105,6 +110,8 @@ func newRouter(cfg Config, h *Handlers) *gin.Engine {
 
 		// 代理工作流（M4 / 04 §3.2）：写操作，与 EDL 删除类一致挂 requireAdmin（07 §4.2）
 		api.POST("/proxy", security.RequireAdmin(), h.handleProxyRequest)
+		// 闭环② 回填：只读列出已就绪代理，供剪辑页挂载时恢复 ready 态（不依赖瞬时 WS）
+		api.GET("/proxy", h.handleProxyList)
 	}
 
 	// WebSocket：向前端推送任务状态

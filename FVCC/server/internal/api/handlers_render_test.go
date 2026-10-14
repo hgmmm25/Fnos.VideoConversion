@@ -107,6 +107,36 @@ func mustSubmitRender(t *testing.T, r *gin.Engine, projectID, body string) rende
 
 // ===== 1. 提交契约与计算字段 =====
 
+// TestB04RenderRootUnmappedDispatchesLikeProxy 步骤8 e2e #8 返工（跨端对齐）：
+// 未配置 smbSharePath（rootMapped=false）时 sourceRoot 为本地绝对写法。此前误加闸门 4b
+// 直接 400——但那与代理/转码矛盾：调度侧 toSMBUNC→BuildSMBURL 依 smbUser 把绝对根映射为
+// 实际共享 UNC，FVCS 渲染落地不消费 sourceRoot（srcBase=挂载点）。故渲染应与代理一样照常入队，
+// 不得在提交侧早失败。
+func TestB04RenderRootUnmappedDispatchesLikeProxy(t *testing.T) {
+	r, s, _, _ := newRenderTestEnv(t)
+	cfg := s.GetSettings()
+	cfg.SMBSharePath = "" // 无共享根 → rootMapped=false，sourceRoot 回落本地绝对路径
+	s.SaveSettings(cfg)
+
+	p := mustCreateRenderProject(t, s, "unmapped_root", renderTestTimeline(), renderTestClips())
+	resp := mustSubmitRender(t, r, p.ID, `{"presetKey":"copy_same_source","outputName":"unmapped_root"}`)
+
+	if resp.TaskID == "" || resp.Status != "QUEUE" {
+		t.Fatalf("未映射绝对根应与代理一致照常入队，实际 taskId=%q status=%q", resp.TaskID, resp.Status)
+	}
+	if len(s.GetTasks()) != 1 {
+		t.Fatalf("应入队 1 个任务，实际 %d", len(s.GetTasks()))
+	}
+	var payload RenderTaskPayload
+	if err := json.Unmarshal([]byte(s.GetTasks()[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("载荷应可解析: %v", err)
+	}
+	// 载荷保留本地绝对根写法（供调度侧 BuildSMBURL 解析实际共享），不再被提交侧拒绝。
+	if payload.SourceRoot == "" {
+		t.Errorf("sourceRoot 应保留本地素材根写法供映射，实际为空")
+	}
+}
+
 func TestB04RenderSubmitContract(t *testing.T) {
 	r, s, _, destDir := newRenderTestEnv(t)
 	p := mustCreateRenderProject(t, s, "demo_粗剪", renderTestTimeline(), renderTestClips())
@@ -535,5 +565,121 @@ func TestB04RenderServerIDPinned(t *testing.T) {
 	task, ok := s.GetTask(resp.TaskID)
 	if !ok || task.ServerID != "s_on" || task.ServerName != "节点A" {
 		t.Errorf("任务应记录指定节点: %+v", task)
+	}
+}
+
+// ===== 5. 有界单根渲染取根（#8 收尾） =====
+
+// newClipRootTestEnv 布置两个授权根：
+//   - videoRoot：缺省素材根（回落口径），仅含 demo/holder.mp4；
+//   - extraRoot：写入 accessiblePaths 的非默认授权根，素材 projx/clip_a.mp4 仅存在于此。
+//
+// 用于证明渲染按「片段所属授权根」取根（与代理同机制），修复旧实现一律回落 videoRoot
+// 使非默认根素材报 E_ASSET_MISSING 的缺陷。pv 为 nil → precheckAssets 走轻量 fileExists 分支。
+func newClipRootTestEnv(t *testing.T) (r *gin.Engine, s *Store, videoRoot, extraRoot string) {
+	t.Helper()
+	base := t.TempDir()
+	videoRoot = filepath.Join(base, "videos")
+	extraRoot = filepath.Join(base, "other")
+	writeRenderTestFile(t, filepath.Join(videoRoot, "demo", "holder.mp4"), 8)
+	writeRenderTestFile(t, filepath.Join(extraRoot, "projx", "clip_a.mp4"), 64)
+	if err := os.MkdirAll(filepath.Join(extraRoot, "_exports"), 0o755); err != nil {
+		t.Fatalf("创建 extraRoot/_exports 失败: %v", err)
+	}
+	stateDir := filepath.Join(base, "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatalf("创建状态目录失败: %v", err)
+	}
+
+	r, s = newEDLTestRouter(t, stateDir)
+	cfg := s.GetSettings()
+	cfg.VideoRoot = videoRoot
+	cfg.ExportRoot = filepath.Join(videoRoot, "_exports")
+	cfg.AccessiblePaths = []string{extraRoot}
+	s.SaveSettings(cfg)
+	return r, s, videoRoot, extraRoot
+}
+
+// clipWithRoot 构造带指定素材根的单片段。
+func clipWithRoot(root, rel string) []EDLClip {
+	return []EDLClip{{
+		ClipID: "c_00000001", AssetID: "a_0000000a", File: rel, SourceRoot: root,
+		InMs: 0, OutMs: 5000, Speed: 1.0, SourceDurationMs: 600000,
+	}}
+}
+
+// 片段所属非默认授权根 → 提交成功、按该根预检、payload.sourceRoot 取该根（修复①核心）。
+func TestB04RenderResolvesClipSourceRoot(t *testing.T) {
+	r, s, _, extraRoot := newClipRootTestEnv(t)
+	// 素材仅存在于 extraRoot，videoRoot 下无此文件；若按旧口径回落 videoRoot 会 404。
+	p := mustCreateRenderProject(t, s, "cliproot_ok", renderTestTimeline(),
+		clipWithRoot(extraRoot, "projx/clip_a.mp4"))
+
+	resp := mustSubmitRender(t, r, p.ID, `{"presetKey":"libx264_medium","outputName":"from_extra"}`)
+	if resp.Status != "QUEUE" {
+		t.Fatalf("非默认授权根片段应照常入队: %+v", resp)
+	}
+	var payload RenderTaskPayload
+	if err := json.Unmarshal([]byte(s.GetTasks()[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("载荷不可解析: %v", err)
+	}
+	if want := toPOSIXRoot(extraRoot); payload.SourceRoot != want {
+		t.Errorf("payload.sourceRoot 应为片段所属授权根 POSIX 写法: want %q got %q", want, payload.SourceRoot)
+	}
+	// 成品根取该根下 _exports
+	if want := toPOSIXRoot(filepath.Join(extraRoot, "_exports")); payload.DestRoot != want {
+		t.Errorf("payload.destRoot 应为素材根的 _exports: want %q got %q", want, payload.DestRoot)
+	}
+}
+
+// 旧项目片段无根 → 回落 videoRoot 既有口径（向后兼容）；该素材不在 videoRoot 下 → 404 E_ASSET_MISSING。
+func TestB04RenderLegacyNoClipRootFallsBackToVideoRoot(t *testing.T) {
+	r, s, _, _ := newClipRootTestEnv(t)
+	clips := clipWithRoot("", "projx/clip_a.mp4") // 无 sourceRoot
+	p := mustCreateRenderProject(t, s, "legacy_fallback", renderTestTimeline(), clips)
+
+	w := doEDLRequest(t, r, http.MethodPost, "/api/edl/projects/"+p.ID+"/render",
+		`{"presetKey":"libx264_medium","outputName":"legacy"}`)
+	if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), errCodeAssetMissing) {
+		t.Fatalf("旧项目无片段根应回落 videoRoot 并按其预检（此处素材缺失）404 E_ASSET_MISSING: %d %s",
+			w.Code, w.Body.String())
+	}
+}
+
+// 片段跨多个授权根 → 明确拒绝 400 E_EDL_INVALID（真正混合多根属跨端 #9），且不入队。
+func TestB04RenderMixedClipRootsRejected(t *testing.T) {
+	r, s, videoRoot, extraRoot := newClipRootTestEnv(t)
+	clips := []EDLClip{
+		{ClipID: "c_00000001", AssetID: "a_0000000a", File: "demo/holder.mp4",
+			SourceRoot: videoRoot, InMs: 0, OutMs: 3000, Speed: 1.0, SourceDurationMs: 600000},
+		{ClipID: "c_00000002", AssetID: "a_0000000b", File: "projx/clip_a.mp4",
+			SourceRoot: extraRoot, InMs: 0, OutMs: 3000, Speed: 1.0, SourceDurationMs: 600000},
+	}
+	p := mustCreateRenderProject(t, s, "mixed_roots", renderTestTimeline(), clips)
+
+	w := doEDLRequest(t, r, http.MethodPost, "/api/edl/projects/"+p.ID+"/render",
+		`{"presetKey":"libx264_medium","outputName":"mixed"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), errCodeEDLInvalid) {
+		t.Fatalf("跨多授权根混合素材应 400 E_EDL_INVALID: %d %s", w.Code, w.Body.String())
+	}
+	if n := len(s.GetTasks()); n != 0 {
+		t.Errorf("混合根拒绝不应入队任务，实际 %d", n)
+	}
+}
+
+// 片段根不在授权目录内 → 400 E_ROOT_UNKNOWN（越权早失败，先于预检）。
+func TestB04RenderUnknownClipRootRejected(t *testing.T) {
+	r, s, _, _ := newClipRootTestEnv(t)
+	stray := t.TempDir() // 既非 videoRoot 也非 accessiblePaths
+	p := mustCreateRenderProject(t, s, "unknown_root", renderTestTimeline(),
+		clipWithRoot(stray, "projx/clip_a.mp4"))
+
+	w := doEDLRequest(t, r, http.MethodPost, "/api/edl/projects/"+p.ID+"/render",
+		`{"presetKey":"libx264_medium","outputName":"stray"}`)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), errCodeRootUnknown) {
+		t.Fatalf("未授权素材根应 400 E_ROOT_UNKNOWN: %d %s", w.Code, w.Body.String())
+	}
+	if n := len(s.GetTasks()); n != 0 {
+		t.Errorf("未授权根拒绝不应入队任务，实际 %d", n)
 	}
 }

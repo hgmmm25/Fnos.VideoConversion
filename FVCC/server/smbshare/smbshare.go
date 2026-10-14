@@ -13,6 +13,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+
+	"fvcc/internal/pathutil"
 )
 
 const sambaConfigPath = "/etc/samba/users/%s.share.conf"
@@ -95,6 +97,12 @@ func parseShares(content string) []Share {
 	return shares
 }
 
+// withinOrEqual 判断 abs 是否等于 root 或位于 root 之下（带分隔符边界）。
+// 委托 pathutil.WithinRoot（含 Windows 盘符根边界特判）；保留本包名以稳定既有调用点。
+func withinOrEqual(abs, root string) bool {
+	return pathutil.WithinRoot(root, abs)
+}
+
 // IsPathShared 校验本地路径是否可通过 SMB 协议访问。
 // 满足以下任一条件即可：
 //   - 路径在共享目录内（共享是路径的父目录或同一目录）
@@ -112,11 +120,11 @@ func IsPathShared(username, localPath string) (bool, error) {
 
 	for _, s := range shares {
 		// 路径在共享目录内
-		if abs == s.Path || strings.HasPrefix(abs, s.Path+string(filepath.Separator)) {
+		if withinOrEqual(abs, s.Path) {
 			return true, nil
 		}
 		// 共享目录在路径内（授权目录是共享目录的子路径）
-		if s.Path == abs || strings.HasPrefix(s.Path, abs+string(filepath.Separator)) {
+		if withinOrEqual(s.Path, abs) {
 			return true, nil
 		}
 	}
@@ -138,7 +146,7 @@ func FindShareForPath(username, localPath string) (*Share, error) {
 
 	for i := range shares {
 		s := &shares[i]
-		if abs == s.Path || strings.HasPrefix(abs, s.Path+string(filepath.Separator)) {
+		if withinOrEqual(abs, s.Path) {
 			return s, nil
 		}
 	}

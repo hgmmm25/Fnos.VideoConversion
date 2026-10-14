@@ -2,7 +2,7 @@
 // 顶栏 | 中部：素材库(320px 可折叠) + 预览器(自适应) | 底部：工具条(紧贴时间线) + 时间线(160px 可拖拽 96~320px)
 // 尺寸比例持久化到 localStorage，键名 wve.layout.v1；P1-5：支持布局预设一键切换
 // （默认 / 紧凑时间线 / 大预览，切换即持久化；手动拖拽后降级为自定义）
-import { el, svgIcon } from '../../ui'
+import { el, svgIcon, selectField } from '../../ui'
 
 export interface EditorLayout {
   root: HTMLElement
@@ -112,10 +112,10 @@ export function buildEditorLayout(opts: LayoutOptions): EditorLayout {
   const topRight = el('div', { class: 'flex items-center gap-2' })
 
   // P1-5：工作区布局预设切换（默认 / 紧凑时间线 / 大预览；切换即持久化到 wve.layout.v1）
-  const presetSel = el('select', {
-    class: 'input text-xs h-7 w-28 shrink-0 hidden sm:block',
+  const presetSel = selectField({
+    class: 'text-xs h-7 w-28 shrink-0 hidden sm:block',
     title: '工作区布局预设（素材/预览/时间线比例）',
-  }) as HTMLSelectElement
+  })
   presetSel.append(
     el('option', { value: 'default' }, ['默认布局']),
     el('option', { value: 'compact' }, ['紧凑时间线']),
@@ -154,9 +154,8 @@ export function buildEditorLayout(opts: LayoutOptions): EditorLayout {
     class: 'w-1 shrink-0 cursor-col-resize hover:bg-primary',
     title: '拖拽调整素材库宽度',
   })
-  const preview = el('div', { class: 'flex-1 min-w-0 flex flex-col overflow-hidden' })
-  // P0-1：预览区底色收敛为主题令牌（--c-preview-bg，亮/暗主题下恒定为深色）
-  preview.style.backgroundColor = 'rgb(var(--c-preview-bg))'
+  // P0-1：预览区底色收敛为主题令牌（--c-preview-bg，亮/暗主题下恒定为深色；V1.6-④ V8 收编为 bg-preview-bg 工具类）
+  const preview = el('div', { class: 'flex-1 min-w-0 flex flex-col overflow-hidden bg-preview-bg' })
 
   const mid = el('div', { class: 'flex-1 flex min-h-0' })
   mid.append(assets, assetsResizer, preview)
@@ -176,19 +175,12 @@ export function buildEditorLayout(opts: LayoutOptions): EditorLayout {
 
   // ===== 尺寸应用 =====
   function applyAssets() {
-    if (persist.assetsCollapsed) {
-      assets.style.width = '0px'
-      assets.style.borderRightWidth = '0px'
-      assets.style.display = 'none'
-      assetsResizer.style.display = 'none'
-    } else {
-      assets.style.display = ''
-      assets.style.borderRightWidth = ''
-      assets.style.width = persist.assetsWidth + 'px'
-      assetsResizer.style.display = ''
-    }
-    assetsBtn.classList.toggle('bg-primary', !persist.assetsCollapsed)
-    assetsBtn.classList.toggle('text-white', !persist.assetsCollapsed)
+    // V1.6-④ V8：折叠显隐收编 hidden 工具类（宽度为持久化动态值，保留内联）
+    assets.classList.toggle('hidden', persist.assetsCollapsed)
+    assetsResizer.classList.toggle('hidden', persist.assetsCollapsed)
+    assets.style.width = persist.assetsWidth + 'px'
+    // V1.6-⑤ V9：选中态底色收编 chip-active（暗色下自动换用达 AA 的深蓝底）
+    assetsBtn.classList.toggle('chip-active', !persist.assetsCollapsed)
   }
   function applyTimeline() {
     timeline.style.height = persist.timelineHeight + 'px'

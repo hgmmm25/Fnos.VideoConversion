@@ -1,6 +1,6 @@
 import { store } from '../store'
 import { api } from '../api'
-import { el, toast, formatSize, formatDuration, emptyState, svgIcon, skeletonRows, setupDialogAccessibility, showBatchResult } from '../ui'
+import { el, toast, formatSize, formatDuration, emptyState, svgIcon, skeletonRows, setupDialogAccessibility, showBatchResult, selectField } from '../ui'
 import { type VideoInfo, type StreamInfo } from '../types'
 import { useListPage } from '../lib/useListPage'
 
@@ -99,6 +99,9 @@ export function renderScanner(container: HTMLElement) {
   browseBtn.append(svgIcon('folder-open', 16) as unknown as Node, el('span', {}, ['浏览目录']))
   const taskBtn = el('button', { class: 'btn btn-primary flex items-center gap-1.5', disabled: 'true' }, [])
   taskBtn.append(svgIcon('plus', 16) as unknown as Node, el('span', {}, ['创建转码任务']))
+  // 闭环④ #10：删除此前仅存于右键菜单，可发现性差；补工具栏批量删除按钮（随选中态启用）
+  const deleteBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5 text-danger', disabled: 'true' }, [])
+  deleteBtn.append(svgIcon('trash', 16) as unknown as Node, el('span', {}, ['删除']))
   const trashBtn = el('button', { class: 'btn btn-sm flex items-center gap-1.5' }, [])
   trashBtn.append(svgIcon('trash', 16) as unknown as Node, el('span', {}, ['回收站']))
   trashBtn.onclick = () => openTrashManager()
@@ -125,7 +128,7 @@ export function renderScanner(container: HTMLElement) {
   colDropdown.appendChild(colLabel)
   const colKeys = Object.keys(colLabels) as ColKey[]
   for (const key of colKeys) {
-    const cb = el('input', { type: 'checkbox', class: 'rounded mr-1.5' }) as HTMLInputElement
+    const cb = el('input', { type: 'checkbox', class: 'checkbox mr-1.5' }) as HTMLInputElement
     cb.checked = visibleCols.has(key)
     cb.onchange = () => {
       if (cb.checked) visibleCols.add(key)
@@ -146,7 +149,7 @@ export function renderScanner(container: HTMLElement) {
   })
 
   const leftGroup = el('div', { class: 'flex items-center gap-2' }, [browseBtn, pathDisplay, refreshBtn])
-  const rightGroup = el('div', { class: 'flex items-center gap-2' }, [searchInput, trashBtn, taskBtn, colWrap])
+  const rightGroup = el('div', { class: 'flex items-center gap-2' }, [searchInput, trashBtn, deleteBtn, taskBtn, colWrap])
   toolbar.append(leftGroup, rightGroup)
 
   // 列表
@@ -194,7 +197,7 @@ export function renderScanner(container: HTMLElement) {
   const detailToggle = el('button', { 
     class: 'text-xs text-primary hover:text-primary-hover flex items-center gap-1 transition-colors',
     title: '展开文件详情'
-  }, [el('span', {}, ['文件详情']), el('span', {}, ['▼'])])
+  }, [el('span', {}, ['文件详情']), svgIcon('chevron-down', 12)])
   
   statBar.append(
     el('div', { class: 'flex items-center gap-4' }, [statTotal, statSelected]),
@@ -449,10 +452,9 @@ export function renderScanner(container: HTMLElement) {
   
   const toggleDetail = () => {
     detailExpanded = !detailExpanded
-    detailToggle.innerHTML = ''
-    detailToggle.append(
-      el('span', {}, ['文件详情']), 
-      el('span', {}, [detailExpanded ? '▲' : '▼'])
+    detailToggle.replaceChildren(
+      el('span', {}, ['文件详情']),
+      svgIcon(detailExpanded ? 'chevron-up' : 'chevron-down', 12)
     )
     if (detailExpanded) {
       detailPanel.classList.remove('hidden')
@@ -736,6 +738,12 @@ export function renderScanner(container: HTMLElement) {
   }
 
   taskBtn.onclick = () => openCreateTaskModal(scanRoot)
+  // 闭环④ #10：工具栏批量删除——handleDelete 在 selectedVideos 非空时按选中集删除，video 参数仅单行时取 path
+  deleteBtn.onclick = () => {
+    if (selectedVideos.size === 0) return
+    const rep = scannedVideos.find((v) => selectedVideos.has(v.path))
+    if (rep) handleDelete(rep)
+  }
   browseBtn.onclick = () => openDirBrowser(async (selected) => {
     scanRoot = selected
     lastScanRoot = selected
@@ -753,6 +761,7 @@ export function renderScanner(container: HTMLElement) {
   const updateStats = () => {
     statSelected.textContent = `已选 ${selectedVideos.size} 个`
     taskBtn.disabled = selectedVideos.size === 0
+    deleteBtn.disabled = selectedVideos.size === 0
   }
   // C-阶段（7.3 scanner 行）：格式/大小占比条渲染（基于扫描全量，不随搜索词变化）
   const updateDist = () => {
@@ -906,7 +915,7 @@ export function renderScanner(container: HTMLElement) {
   const cols = (Object.keys(colLabels) as ColKey[]).filter(k => visibleCols.has(k))
 
   // 全选复选框
-  const allCb = el('input', { type: 'checkbox', class: 'rounded' }) as HTMLInputElement
+  const allCb = el('input', { type: 'checkbox', class: 'checkbox' }) as HTMLInputElement
   allCb.checked = sorted.length > 0 && sorted.every((v) => selectedVideos.has(v.path))
   allCb.indeterminate = !allCb.checked && sorted.some((v) => selectedVideos.has(v.path))
   allCb.onchange = () => {
@@ -943,13 +952,13 @@ export function renderScanner(container: HTMLElement) {
         el('span', {}, [colLabels[col]]),
       ])
       if (isActive) {
-        wrap.appendChild(el('span', { class: 'text-xs' }, [sortDir === 'asc' ? '▲' : '▼']))
+        wrap.appendChild(svgIcon(sortDir === 'asc' ? 'chevron-up' : 'chevron-down', 12))
       }
       th.appendChild(wrap)
     } else {
       const children: Node[] = [el('span', {}, [colLabels[col]])]
       if (isActive) {
-        children.push(el('span', { class: 'text-xs ml-1' }, [sortDir === 'asc' ? '▲' : '▼']))
+        children.push(svgIcon(sortDir === 'asc' ? 'chevron-up' : 'chevron-down', 12))
       }
       th.append(...children)
     }
@@ -964,7 +973,7 @@ export function renderScanner(container: HTMLElement) {
     const selected = selectedVideos.has(v.path)
     if (selected) tr.classList.add('bg-primary/5')
 
-    const cb = el('input', { type: 'checkbox', class: 'rounded' }) as HTMLInputElement
+    const cb = el('input', { type: 'checkbox', class: 'checkbox' }) as HTMLInputElement
     cb.checked = selected
     cb.dataset.path = v.path
     cb.onchange = () => {
@@ -1249,7 +1258,7 @@ function openCreateTaskModal(scanRoot: string) {
   const modal = el('div', { class: 'card w-full max-w-md p-5' })
   const title = el('h3', { class: 'font-semibold text-base mb-3' }, [`创建转码任务（${selectedVideos.size} 个文件）`])
   const serverLabel = el('label', { class: 'block text-sm mb-1' }, ['转码服务器 *'])
-  const serverSel = el('select', { class: 'input mb-3' }) as HTMLSelectElement
+  const serverSel = selectField({ class: 'mb-3 w-full' })
   
   const localServer = store.servers.find(s => s.isLocal)
   if (localServer) {
@@ -1266,7 +1275,7 @@ function openCreateTaskModal(scanRoot: string) {
   }
 
   const profileLabel = el('label', { class: 'block text-sm mb-1' }, ['转码方案 *'])
-  const profileSel = el('select', { class: 'input mb-3' }) as HTMLSelectElement
+  const profileSel = selectField({ class: 'mb-3 w-full' })
   for (const p of store.profiles) {
     profileSel.appendChild(el('option', { value: p.id }, [p.name]))
   }

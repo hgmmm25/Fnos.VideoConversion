@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -31,6 +30,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"fvcc/internal/pathutil"
 	"fvcc/internal/store/model"
 )
 
@@ -155,10 +155,10 @@ func validateRelPathDecoded(rel string, allowExt map[string]bool) *edlValidation
 	return validateRelPath(decoded, allowExt)
 }
 
-// edlWithinRoot 前缀校验必须带分隔符边界（防 /media/videos2 被误判为 /media/videos 子路径）。
+// edlWithinRoot 前缀校验委托 pathutil.WithinRoot（带分隔符边界 + Windows 盘符根特判），
+// 保留本包名以稳定既有调用点与测试。
 func edlWithinRoot(root, abs string) bool {
-	r := filepath.Clean(root)
-	return abs == r || strings.HasPrefix(abs, r+string(os.PathSeparator))
+	return pathutil.WithinRoot(root, abs)
 }
 
 // edlResolveRelPath 把相对路径解析为根下的绝对物理路径，并完成 L4 校验（07 §3.2）。
@@ -240,14 +240,19 @@ func validateOutputNameStrict(name string) *edlValidationError {
 }
 
 // validateRootRelPath 根路径（sourceRoot / destRoot / proxyRoot）校验（07 §3.2）：
-// 空值放行（表示沿用服务端默认根），非空按同一套 L1~L3 规则校验、不做扩展名要求。
+// 渲染根为「下发专用写法」——素材根由挂载点、成品根由 SMBOutputPath 决定落地（与 GEN_PROXY 同机制），
+// 故此校验仅做纵深防御：允许空（沿用服务端默认根）、允许相对写法、允许 FVCC 未映射时的本地绝对写法
+// （交调度侧 BuildSMBPath 解析实际共享），只拒绝含 .. 的穿越段。与 FVCS protocol.ValidateRootPath
+// 严格同规则（#8 跨端对齐：共用 edl_vectors.json，两端裁决必须一致）。
 func validateRootRelPath(root, field string) *edlValidationError {
+	root = strings.TrimSpace(root)
 	if root == "" {
 		return nil
 	}
-	if e := validateRelPath(root, nil); e != nil {
-		e.Field = field
-		return e
+	for _, seg := range strings.Split(strings.ReplaceAll(root, "\\", "/"), "/") {
+		if seg == ".." {
+			return newEDLValidationErr(errCodeAssetNotInRoot, field, "渲染根不得包含 .. 穿越段", -1)
+		}
 	}
 	return nil
 }

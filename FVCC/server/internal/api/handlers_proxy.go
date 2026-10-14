@@ -186,6 +186,27 @@ func (h *Handlers) handleProxyRequest(c *gin.Context) {
 	})
 }
 
+// handleProxyList GET /api/proxy（闭环② 缺陷修复：代理就绪态回填）。
+//
+// 前端此前仅依赖瞬时 WS proxy_ready 事件落地 ready 态，页面重启/切回后丢失，
+// 用户被提示"重新生成"。本端点返回已登记 state=ready 的代理映射（asset_proxies），
+// 供剪辑页挂载时回填 proxyByFile，令"就绪"态可从服务端恢复。
+// 只读、对全体用户开放（与 /edl/projects GET 一致）；多根同名相对路径的区分归 #9。
+func (h *Handlers) handleProxyList(c *gin.Context) {
+	ready := make([]gin.H, 0)
+	for _, p := range h.store.GetAssetProxies() {
+		if p.State != ProxyStateReady {
+			continue
+		}
+		ready = append(ready, gin.H{
+			"file":      p.AssetKey,
+			"proxyFile": p.ProxyRel,
+			"durationMs": p.ProxyDurationMs,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"items": ready})
+}
+
 // sameProxyTaskSrcRoot 判定既有代理任务与本次请求是否使用同一素材根（修复①）：
 // 多根场景下不同授权目录可能出现相同的相对路径，不能仅凭 SrcFile 去重。
 func (h *Handlers) sameProxyTaskSrcRoot(t Task, srcLocal string) bool {

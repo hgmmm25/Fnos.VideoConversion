@@ -336,6 +336,8 @@ export interface PreviewAsset {
 export interface AssetRef {
   assetId: string // 'a_<8hex>'
   file: string // 相对 sourceRoot 的 POSIX 路径，如 'demo/a_01.mp4'
+  /** 素材所属授权根的绝对本地路径（#5：代理提交据此带上 root，避免非默认根报"素材不存在"） */
+  sourceRoot?: string
   durationMs: number // ffprobe 时长（打点基准）
   width: number
   height: number
@@ -373,6 +375,8 @@ export interface EDLClip {
   clipId: string // 'c_<8hex>'
   assetId: string // 关联素材
   file: string // 冗余存源相对路径（渲染期免二次查表，改名后仍可报错定位）
+  /** 素材所属授权根的本地绝对路径（有界单根：渲染提交据此取根，与代理同机制；旧项目省略则回落 videoRoot） */
+  sourceRoot?: string
   inMs: number // 入点（源素材时间轴，整数毫秒）
   outMs: number // 出点（源素材时间轴，整数毫秒，开区间：不含 outMs 帧）
   speed: number // P0 恒为 1.0
@@ -498,8 +502,43 @@ export interface ProxyRequestResult {
   deduplicated?: boolean
 }
 
+/** GET /proxy 列表项（闭环② 回填）：已就绪代理，供剪辑页挂载时恢复 ready 态 */
+export interface ProxyListItem {
+  /** 相对素材根的 POSIX 路径（AssetRef.file） */
+  file: string
+  proxyFile: string
+  durationMs: number
+}
+
 /** 编辑器保存状态（01 §5.1 / 02 §5.3） */
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error'
+
+// ===== P3-5 尾部：store 备份与快照回滚（server internal/store/backup.go / restore.go）=====
+
+/** 备份来源（server backup.go BackupKind*）：manual 不参与轮转，其余共用系统生成池 */
+export type StoreBackupKind = 'auto' | 'manual' | 'prewrite' | 'premigration' | 'prerestore'
+
+/** GET /store/backups 列表项（server BackupResult） */
+export interface StoreBackup {
+  id: string
+  kind: StoreBackupKind
+  file: string
+  size: number
+  /** 备份生成时刻（RFC3339，UTC） */
+  createdAt: string
+}
+
+/** POST /store/restore 结果（server RestoreResult） */
+export interface StoreRestoreResult {
+  backupId: string
+  kind: StoreBackupKind
+  snapshotAt: string
+  restoredAt: string
+  /** 回滚前自动生成的兜底备份 ID（回滚的回滚点） */
+  preRestoreId: string
+  /** 恢复后各集合条数 */
+  counts: Record<string, number>
+}
 
 // ===== WS 事件（FVCC → 浏览器，03 §6）=====
 

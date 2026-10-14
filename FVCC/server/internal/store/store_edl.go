@@ -58,9 +58,12 @@ func CooldownBackoffSec(attempt int) int {
 	return sec
 }
 
-// ===== tasks 严格加载与列迁移 =====
+// ===== tasks 严格加载 =====
 
-// loadTasksLocked 读取 tasks.json 并执行幂等列迁移（06 §2.2）。
+// loadTasksLocked 读取 tasks.json（JSON 回退路径）。解析失败或版本过高直接拒绝启动，
+// 禁止静默降级为"空任务列表"而丢失用户任务（06 §2.2）。
+// P3-5 阶段 B：列迁移与版本回写已收口到 dataMigrations 迁移链（migrate.go），
+// 此处只做严格读取，不再改写文件。
 // 调用方必须已持有 s.mu。任一环节失败都返回错误，由 Load 上抛至 main 拒绝启动。
 func (s *Store) loadTasksLocked() error {
 	path := s.path("tasks.json")
@@ -80,20 +83,7 @@ func (s *Store) loadTasksLocked() error {
 	if f.Version > StoreSchemaVersion {
 		return fmt.Errorf("%s 结构版本为 %d，高于本程序支持的 %d，请升级 FVCC 后再启动", path, f.Version, StoreSchemaVersion)
 	}
-
-	migrated := f.Version != StoreSchemaVersion
-	for i := range f.Tasks {
-		if migrateTaskColumns(&f.Tasks[i]) {
-			migrated = true
-		}
-	}
-	f.Version = StoreSchemaVersion
 	s.tasks = f.Tasks
-
-	if migrated {
-		logger.Info("store", "tasks.json 列迁移完成：version→%d，共 %d 条任务", StoreSchemaVersion, len(s.tasks))
-		saveJSON(path, model.TasksFile{Version: StoreSchemaVersion, Tasks: s.tasks})
-	}
 	return nil
 }
 

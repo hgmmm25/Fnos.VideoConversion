@@ -2,8 +2,8 @@
 //
 // 语义对齐 JSON 路径（store.go Load）：
 //   - tasks 严格加载：data 损坏 / 读取失败 → 上抛错误拒绝启动（与 loadTasksLocked 一致，
-//     避免静默丢弃任务）；旧版结构由 migrateTaskColumns 幂等补列（SQLite 无 Version 字段，
-//     schema 结构由 schema_version 管，实体列迁移收敛为幂等补齐）。
+//     避免静默丢弃任务）。旧版结构的缺列补齐已收口到 dataMigrations 迁移链（阶段 B），
+//     本文件只读不迁移。
 //   - 其余集合宽松加载：读取/解析失败仅告警并按空集合处理（与 loadJSON 默认值语义一致）。
 //   - servers/settings 落盘为密文（security.Encrypt*ForDisk 结果），读回后走
 //     DecryptServersOnLoad / DecryptSettingsOnLoad 解密，与 JSON 路径同一解密入口。
@@ -112,22 +112,14 @@ func mustReadSeq[T any](sq *storeSQLite, table string) []T {
 }
 
 // loadTasksFromSQLiteLocked 严格加载 tasks（对齐 loadTasksLocked：失败拒绝启动）。
-// 调用方必须已持有 s.mu。旧版结构（缺 TaskType/SegIndex 等列）由 migrateTaskColumns 幂等补齐。
+// 调用方必须已持有 s.mu。P3-5 阶段 B：缺列补齐收口到 dataMigrations 迁移链（migrate.go），
+// 此处只读不迁移。
 func (s *Store) loadTasksFromSQLiteLocked(sq *storeSQLite) error {
 	list, err := readKeyedAll[model.Task](sq, "tasks")
 	if err != nil {
 		return fmt.Errorf("从 SQLite 读取任务失败，拒绝启动以免静默丢弃任务: %w", err)
 	}
-	migrated := false
-	for i := range list {
-		if migrateTaskColumns(&list[i]) {
-			migrated = true
-		}
-	}
 	s.tasks = list
-	if migrated {
-		logger.Info("store", "SQLite tasks 列迁移完成（幂等补齐新列），共 %d 条任务", len(s.tasks))
-	}
 	return nil
 }
 

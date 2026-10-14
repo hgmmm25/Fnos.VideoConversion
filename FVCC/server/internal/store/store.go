@@ -16,8 +16,8 @@ import (
 )
 
 // Store 内存缓存 + 原子持久化的配置存储。
-// MVP 实现：读多写少场景，内存缓存优先，变更时异步落地。
-// TODO(P1): 定时备份、配置迁移、快照回滚。
+// 读多写少场景，内存缓存优先，变更时批量落地；P3-5 已补齐
+// 定时/写前/迁移前备份、版本化数据迁移链与快照整包回滚（backup/migrate/restore.go）。
 type Store struct {
 	mu         sync.RWMutex
 	dataDir    string
@@ -55,6 +55,8 @@ type Store struct {
 	// 在 scheduler 派发路径成本过高（每任务 4~5 次全量重写），改为 Flush 批量落盘；
 	// 崩溃丢失锁仅导致重新调度，无数据损坏语义。
 	dirtyLocks atomic.Bool
+	// P3-5 阶段 A：关键写前备份去抖时戳（prewriteMinInterval 窗口内共享同一份快照）。
+	lastPrewriteBackup time.Time
 	// P0-2 提交 3：SQLite 主载体门闩。Load 成功走 SQLite 读回后置 true，
 	// persist 才写 SQLite；JSON 回退模式（SQLite 不可用/导入失败）下 persist 写 JSON，
 	// 杜绝「SQLite 有新数据 + JSON 有旧数据」的两源分裂。
@@ -72,8 +74,17 @@ func NewStore(dataDir string) *Store {
 	return &Store{dataDir: dataDir}
 }
 
-// Load 从磁盘加载全部配置到内存。
+// Load 从磁盘加载全部配置到内存，随后执行版本化数据迁移链（P3-5 阶段 B）。
+// 迁移链必须在 loadAll 的写锁释放后执行（Backup / AppendAudit 内部自行取锁）。
 func (s *Store) Load() error {
+	if err := s.loadAll(); err != nil {
+		return err
+	}
+	return s.applyDataMigrations()
+}
+
+// loadAll 纯加载：读盘 → 内存态填充 → postLoadLocked 收尾（全程持写锁）。
+func (s *Store) loadAll() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -139,12 +150,11 @@ func (s *Store) Load() error {
 
 // postLoadLocked 加载完成后的公共收尾：project 派生字段重算、崩溃恢复（运行中任务重置
 // QUEUE）、内存索引重建与加载统计。JSON 回退路径与 SQLite 主路径共用（需持 s.mu）。
+// P3-5 阶段 B：schema_ver 0→1 补齐已收口到 dataMigrations 迁移链（migrate.go），
+// 此处只做派生字段重算。
 func (s *Store) postLoadLocked() {
-	// 派生字段不落盘（03 §2.2）：加载后统一重算，并补齐 schema_ver 缺省（03 §7）。
+	// 派生字段不落盘（03 §2.2）：加载后统一重算。
 	for i := range s.projects {
-		if s.projects[i].SchemaVer == 0 {
-			s.projects[i].SchemaVer = 1
-		}
 		normalizeProject(&s.projects[i])
 	}
 	// 启动崩溃恢复：非终态的中断任务重置为 QUEUE
@@ -508,6 +518,8 @@ func (s *Store) GetServer(id string) (model.Server, bool) {
 }
 
 func (s *Store) UpsertServer(sv model.Server) {
+	// P3-5 阶段 A：节点/凭据属关键写，改动内存态前先做一次写前备份（去抖，失败不阻断）。
+	s.preCriticalBackup()
 	s.mu.Lock()
 	for i, ex := range s.servers {
 		if ex.ID == sv.ID {
@@ -577,6 +589,8 @@ func (s *Store) GetProfile(id string) (model.Profile, bool) {
 }
 
 func (s *Store) UpsertProfile(p model.Profile) {
+	// P3-5 阶段 A：方案配置变更属关键写，改动内存态前先做一次写前备份（去抖，失败不阻断）。
+	s.preCriticalBackup()
 	s.mu.Lock()
 	for i, ex := range s.profiles {
 		if ex.ID == p.ID {
@@ -865,6 +879,8 @@ func (s *Store) GetSettings() model.Settings {
 }
 
 func (s *Store) SaveSettings(v model.Settings) {
+	// P3-5 阶段 A：全局设置/凭据变更属关键写，改动内存态前先做一次写前备份（去抖，失败不阻断）。
+	s.preCriticalBackup()
 	s.mu.Lock()
 	s.settings = v
 	s.mu.Unlock()

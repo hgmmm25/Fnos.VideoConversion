@@ -158,6 +158,8 @@ class Store {
         status: msg.status,
         progress: msg.progress ?? this.tasks[idx].progress,
         errorMsg: msg.message ?? this.tasks[idx].errorMsg,
+        // v1.6.2-C1：WS 完整报文（TaskUpdateFullMsg）带 speed 时合并，实现倍速实时
+        speed: msg.speed ?? this.tasks[idx].speed,
       }
       // 完成态或错误态延迟移入历史
       if (msg.status === 'COMPLETED' || msg.status === 'CANCELLED' || msg.status === 'ERROR') {

@@ -1,7 +1,16 @@
 # FVCC CI — 混乱报告 P2-3：建立流水线（go vet/test + 覆盖率门槛 + 前端类型检查/设计门禁/构建）
 #
 # 触发：FVCC 相关路径的 push / PR；仓库根共用，故限定 paths 避免无关提交空跑。
-# 基线目标：go test ./... 与前端 check:design 全绿后合入，覆盖率 >=55%（当前基线 56.7%，2026-09-21 修复脚本口径后实测；后续补测试后上调至 60%，由 check-coverage.ps1 强制）。
+# 基线目标：go test ./... 与前端 check:design 全绿后合入，覆盖率 >=60%（P3-7 上调：2026-10-12 补 logger/smbshare/media helper 测试后实测 60.7%；历史基线 55%，56.7%→59.0% 见混乱报告）。
+#
+# action 版本基线（2026-10-14 由 checkout v4 / setup-go v5 / setup-node v4 统一升至 v7）：
+#   - 三者运行时均已换到 Node 24，要求 runner >= v2.327.1（ubuntu-latest 远高于此）。
+#   - setup-go v6+ 会显式设 `GOTOOLCHAIN=local`（不再自动下载 go.mod 声明的更新工具链）。
+#     本仓库 `go-version: '1.27.x'` 解析出的补丁版本 >= go.mod 的 `go 1.27.1` 下限，故无影响；
+#     若将来把 go.mod 的 go 指令抬到比 runner 上可用的最新补丁还高，CI 会直接报
+#     `go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)`——那是提升 go 指令时要同步改 go-version 的信号。
+#     本机 Windows 仍按 build-env.ps1 的 `GOTOOLCHAIN=auto`（PATH Go 与 go.mod 下限不同源），两端口径不同是有意为之。
+#   - checkout v7 只拦截 pull_request_target / workflow_run 里的 fork PR 检出，本工作流用 pull_request，不受影响。
 
 name: FVCC CI
 
@@ -30,10 +39,10 @@ jobs:
         working-directory: FVCC/server
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: '1.27.x'
           cache-dependency-path: FVCC/server/go.sum
@@ -44,8 +53,8 @@ jobs:
       - name: go test
         run: go test -race ./...
 
-      - name: Coverage gate (>= 55%)
-        run: pwsh ../../scripts/check-coverage.ps1 -Race
+      - name: Coverage gate (>= 60%)
+        run: pwsh ../../scripts/check-coverage.ps1 -Race -Threshold 60
 
   frontend:
     name: Frontend (tsc + design gate + build)
@@ -55,12 +64,12 @@ jobs:
         working-directory: FVCC/ui-src
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
           cache-dependency-path: FVCC/ui-src/package-lock.json
 

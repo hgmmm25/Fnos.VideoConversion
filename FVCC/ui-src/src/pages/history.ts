@@ -1,6 +1,6 @@
 import { store } from '../store'
 import { api } from '../api'
-import { el, toast, formatTime, emptyState, svgIcon } from '../ui'
+import { el, toast, formatTime, emptyState, svgIcon, selectField } from '../ui'
 import { type Task, type TaskStatus, STATUS_LABEL, STATUS_CLASS } from '../types'
 import { crudActions } from '../lib/crudActions'
 import { useListPage } from '../lib/useListPage'
@@ -24,7 +24,7 @@ export function renderHistory(container: HTMLElement) {
   const refresh = el('button', { class: 'btn btn-sm flex items-center gap-1.5' }, [])
   refresh.append(svgIcon('refresh', 14) as unknown as Node, el('span', {}, ['刷新']))
   refresh.onclick = () => { currentPage = 1; loadHistoryPage() }
-  const filterSel = el('select', { class: 'input w-28 sm:w-32 text-sm' }) as HTMLSelectElement
+  const filterSel = selectField({ class: 'w-28 sm:w-32' })
   for (const [v, l] of [['all', '全部'], ['completed', '完成'], ['error', '错误'], ['cancelled', '取消']]) {
     filterSel.appendChild(el('option', { value: v }, [l]))
   }
@@ -117,7 +117,7 @@ export function renderHistory(container: HTMLElement) {
       }
       th.appendChild(el('span', {}, [col.label]))
       if (isSortable && isActive) {
-        th.appendChild(el('span', { class: 'text-xs ml-1' }, [sortDir === 'asc' ? '▲' : '▼']))
+        th.appendChild(svgIcon(sortDir === 'asc' ? 'chevron-up' : 'chevron-down', 12) as unknown as Node)
       }
       hr.appendChild(th)
     }
@@ -134,7 +134,7 @@ export function renderHistory(container: HTMLElement) {
       tr.appendChild(el('td', { class: 'px-4 py-2 whitespace-nowrap text-xs' }, [formatTime(t.createdAt)]))
       tr.appendChild(el('td', { class: 'px-4 py-2 whitespace-nowrap text-xs' }, [formatTime(t.updatedAt)]))
       tr.appendChild(el('td', { class: 'px-4 py-2 truncate max-w-xs text-xs text-danger' }, [t.errorMsg || '-']))
-      const del = el('button', { class: 'btn btn-sm btn-danger' }, ['删除'])
+      const del = el('button', { class: 'btn btn-sm btn-danger-ghost' }, ['删除'])
       del.onclick = () => {
         historyActions.remove(t.id)
       }
@@ -258,12 +258,14 @@ function makeTrendCard() {
   let disposed = false
 
   const legend = el('span', { class: 'flex items-center gap-3 text-xs text-ink-muted' }, [])
-  const rangeSel = el('select', { class: 'input text-sm h-9', 'aria-label': '趋势时间范围' }) as HTMLSelectElement
+  const rangeSel = selectField({ class: 'text-sm h-9', ariaLabel: '趋势时间范围' })
   for (const [v, l] of [[7, '近7天'], [30, '近30天'], [90, '近90天'], [0, '全部']] as const) {
     rangeSel.appendChild(el('option', { value: String(v) }, [l]))
   }
   rangeSel.value = '30'
-  const foldBtn = el('button', { class: 'btn btn-sm w-11 h-11 flex items-center justify-center shrink-0', 'aria-label': '折叠/展开趋势图' }, [el('span', { class: 'text-xs' }, ['▲'])]) as HTMLButtonElement
+  const foldBtn = el('button', { class: 'btn btn-sm w-11 h-11 flex items-center justify-center shrink-0', 'aria-label': '折叠/展开趋势图' }) as HTMLButtonElement
+  const renderFoldIcon = () => foldBtn.replaceChildren(svgIcon(collapsed ? 'chevron-down' : 'chevron-up', 14))
+  renderFoldIcon()
   const body = el('div', { class: 'h-[220px] px-3 sm:px-4 pb-3' })
 
   const header = el('div', { class: 'flex flex-wrap items-center gap-2 px-3 sm:px-4 py-1.5 border-b border-line-subtle bg-surface' }, [
@@ -312,9 +314,11 @@ function makeTrendCard() {
         height: h,
         layout: { background: { type: lwc.ColorType.Solid, color: 'transparent' }, textColor: tokenColor('ink-muted'), fontSize: 11 },
         grid: { vertLines: { color: tokenColor('line-subtle') }, horzLines: { color: tokenColor('line-subtle') } },
-        rightPriceScale: { borderColor: tokenColor('line-subtle') },
-        leftPriceScale: { borderColor: tokenColor('line-subtle') },
-        timeScale: { borderColor: tokenColor('line-subtle'), timeVisible: false, rightOffset: 2 },
+        // V1.6-④ V1 修复：成功率改挂隐藏自定义轴（百分比图例已给出），左轴整体撤销，
+        // 消除左轴刻度异常大字标签压零线/被裁切的问题；右轴预留最小宽度
+        rightPriceScale: { borderColor: tokenColor('line-subtle'), minimumWidth: 44 },
+        leftPriceScale: { visible: false },
+        timeScale: { borderColor: tokenColor('line-subtle'), timeVisible: false, rightOffset: 3 },
         crosshair: { mode: 0 },
       })
       chart = inst as unknown as TrendChartHandle
@@ -334,12 +338,32 @@ function makeTrendCard() {
       const rateSeries = inst.addSeries(lwc.LineSeries, {
         color: tokenColor('signal'),
         lineWidth: 2,
-        priceScaleId: 'left',
+        priceScaleId: 'rate',
         lineStyle: lwc.LineStyle.Dashed,
+        // V1.6-④ V1 修复：成功率线不画悬空末端标签与轴上末值标签；rate 轴固定 0-100 且隐藏刻度
+        priceLineVisible: false,
+        lastValueVisible: false,
         autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
       })
       rateSeries.setData(days.map((d, i) => ({ time: times[i], value: d.done + d.err > 0 ? Math.round((d.done / (d.done + d.err)) * 1000) / 10 : 0 })))
-      inst.timeScale().fitContent()
+      // v5 自定义轴在首个系列绑定后才存在，此时再隐藏 rate 轴刻度
+      inst.priceScale('rate').applyOptions({ visible: false, borderVisible: false })
+      // V1.6-④ V1 修复：空日压缩——数据跨度远小于所选范围时，视窗收缩到数据首尾 ±3 天（最少 7 天），
+      // 并在右缘保留 2 个逻辑位，柱体不再贴边被截断
+      const firstIdx = days.findIndex((d) => d.done > 0 || d.err > 0)
+      let lastIdx = -1
+      for (let i = days.length - 1; i >= 0; i--) {
+        if (days[i].done > 0 || days[i].err > 0) { lastIdx = i; break }
+      }
+      if (firstIdx >= 0) {
+        let from = Math.min(firstIdx, days.length - 7) - 3
+        let to = Math.max(lastIdx + 1, 7) + 2
+        if (to - from < 7) to = from + 7
+        from = Math.max(from, -1)
+        inst.timeScale().setVisibleLogicalRange({ from, to })
+      } else {
+        inst.timeScale().fitContent()
+      }
     } catch (e) {
       body.appendChild(el('div', { class: 'flex items-center justify-center h-full text-sm text-danger py-10' }, [`趋势图加载失败：${(e as Error).message}`]))
     }
@@ -348,7 +372,7 @@ function makeTrendCard() {
   foldBtn.onclick = () => {
     collapsed = !collapsed
     body.style.display = collapsed ? 'none' : ''
-    foldBtn.firstChild!.textContent = collapsed ? '▼' : '▲'
+    renderFoldIcon()
     if (!collapsed) scheduleDraw()
   }
   rangeSel.onchange = () => { range = Number(rangeSel.value) as TrendRange; scheduleDraw() }
