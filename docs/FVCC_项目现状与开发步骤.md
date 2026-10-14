@@ -10,7 +10,7 @@
 
 FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 Web 客户端：浏览本地素材、把转码/代理/渲染任务下发给 FVCS 渲染端、通过 WebSocket 实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript 零框架原生 DOM，产物以 fpk 形式打包供 fnOS 安装。
 
-**当前基线（2026-10-14）**：**FVCC v1.6.9 / FVCS v1.3.1**——三真源一致（`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION`），`scripts/check-versions.ps1` 绿（v1.6.5 起校验为「漂移即红」）。v1.6.9 为**低风险收尾批次（第三十七轮）**：store 备份/恢复前端入口 + P3-6 勾选 + `.commandcode/` 收编；已 bump 未出包、未提交。
+**当前基线（2026-10-14）**：**FVCC v1.6.9 / FVCS v1.3.1**——三真源一致（`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION`），`scripts/check-versions.ps1` 绿（v1.6.5 起校验为「漂移即红」）。v1.6.9 为**低风险收尾批次（第三十七轮）**：store 备份/恢复前端入口 + P3-6 勾选 + `.commandcode/` 收编；已出 fpk（11,014,297 B）、已提交（主体 `dedd124` + 后记笔打注解 tag `v1.6.9`）并推送 `fork/baseline-snapshot`，NAS 真机安装由用户验证。
 
 ### 1.0 版本线摘要（git 核验）
 
@@ -25,7 +25,7 @@ FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 W
 | v1.6.6 | `v1.6.6`→1dcb774 | 第三十轮低风险依赖刷新 + 配套 FVCS 1.3.1 |
 | v1.6.7 | `v1.6.7`→4154d31 | `modernc.org/sqlite` v1.14.0→**v1.60.1** 跨 46 minor 专项（真实 fvcc.db 迁移验证，14 包全绿）+ Node 运行时 v25.9.0→**v26.11.1**（第三十三轮；`engines.node>=26`、CI 22→26、`@types/node` ^26，asset 哈希逐项不变） |
 | v1.6.8 | `v1.6.8` | `tailwindcss` 3.4.19→**4.3.3** 大版本专项（CSS-first、`tailwind.config.js` 删除、token 入 `src/style.css` `@theme inline`、`npm audit`/`npm outdated` 双清零、gzip 10.00→9.78 kB、fpk 11,013,500 B）；产品裁决：接受 v4 移除按钮举手型默认 |
-| v1.6.9 | （待打 tag） | 低风险收尾批次（第三十七轮）：**store 备份/恢复前端入口**（设置页新面板接 `/api/store/*`，dev 真实后端 + 浏览器全链路实测）+ P3-6 台账正式勾选 + `.commandcode/` 入 .gitignore；纯前端 + 治理，后端零改动 |
+| v1.6.9 | `v1.6.9`（后记笔，主体 `dedd124`） | 低风险收尾批次（第三十七轮）：**store 备份/恢复前端入口**（设置页新面板接 `/api/store/*`，dev 真实后端 + 浏览器全链路实测）+ P3-6 台账正式勾选 + `.commandcode/` 入 .gitignore；纯前端 + 治理，后端零改动；fpk 11,014,297 B（出包改由 `pwsh` 7 执行，见 IMPROVEMENT_LOG §28.9） |
 
 **易错点**：`1.6.1`/`1.6.2`/`1.6.3` 只是批次开发过程中的本地中间 bump，**从未进入 git 历史、未出包、未打 tag**；方案文件名里的 "v1.6.1" 是**方案稿编号**、不是交付版本号——不可写成"1.6.1~1.6.4 版本线"，应写"**1.6.4**（方案稿 v1.6.1 的落地批次）"。
 
@@ -315,7 +315,7 @@ D:\Fnos.VideoConversion\build.ps1 -Target FVCC   # 全量打包回归，产出�
 ## 附：调查证据索引
 
 - 代码规模：Go 110 文件 / 26,380 行（非测试 58 / 17,197 + 测试 52 / 9,183，本轮零后端改动）；TS 33 文件 / 11,622 行（2026-10-14 第三十七轮实测，v1.6.9 后 +148）
-- 版本核验：三真源一致 = **1.6.9**（2026-10-14 第三十七轮 bump 后实测，`check-versions.ps1` 绿；`ui-src/package-lock.json` 根 version 已同步；FVCS `pkg/version/VERSION` = 1.3.1）；**v1.6.9 尚未提交、未出 fpk、未打 tag**（等用户确认）；1.6.x 已打注解 tag（v1.6.0→b1a0d93、v1.6.4→b007a3d、v1.6.5→5166cbe、v1.6.6→1dcb774、v1.6.7→4154d31、v1.6.8→e1ed35c 批次后记笔）；推送目标 `fork` = hgmmm25/Fnos.VideoConversion，分支 `baseline-snapshot`（另有 `origin` = zdongno01 非推送目标）
+- 版本核验：三真源一致 = **1.6.9**（2026-10-14 第三十七轮 bump 后实测，`check-versions.ps1` 绿；`ui-src/package-lock.json` 根 version 已同步；FVCS `pkg/version/VERSION` = 1.3.1）；**v1.6.9 已提交（主体 `dedd124` + 本后记笔）、已出 fpk（11,014,297 B）、注解 tag 打在后记笔**；1.6.x 已打注解 tag（v1.6.0→b1a0d93、v1.6.4→b007a3d、v1.6.5→5166cbe、v1.6.6→1dcb774、v1.6.7→4154d31、v1.6.8→65c79e4 即 `e1ed35c` 批次的后记笔）；推送目标 `fork` = hgmmm25/Fnos.VideoConversion，分支 `baseline-snapshot`（另有 `origin` = zdongno01 非推送目标）
 - 覆盖率：60.7%（第二十六轮实测，门禁 60%）
 - TODO 扫描：`server/`、`ui-src/src/`、`cmd/` 全量关键词扫描；1.6.x 遗留项均为刻意未做或待裁决，非新增代码级 TODO
 - 关键文件：`server/main.go`、`server/internal/api/router.go`、`server/internal/scheduler/scheduler.go`、`server/internal/store/store.go`、`ui-src/src/main.ts`、`ui-src/src/store.ts`、`ui-src/src/api.ts`、`ui-src/src/pages/editor/*.ts`

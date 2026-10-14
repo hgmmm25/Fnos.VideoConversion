@@ -1,6 +1,6 @@
 # FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-14 更新至 v1.6.9）
 
-> **现状快照（2026-10-14 第三十七轮，低风险收尾批次）**：当前版本 **FVCC v1.6.9 / FVCS v1.3.1**（FVCS 零改动）。三项收尾一次做完：① **P3-5 尾部还清——store 备份/恢复前端入口**（设置页新增「数据备份与恢复」面板：备份列表 + 立即备份 + 整包恢复，接 v1.5.8 已交付但一直无人接的 `/api/store/*` 三端点）；② **P3-6 台账正式勾选关闭**（NAS `/info` `ffprobe:true` 实测已闭，本轮收口口径）；③ `FVCC/.commandcode/`（AI 工具产物）按用户裁决**入 .gitignore 不入库**。本轮为纯前端 + 治理（后端 Go 零改动），交付前用 **dev 模式真实后端 + 浏览器**把备份/恢复全链路跑通（含 `prerestore` 兜底备份与 >20 份列表展开），过程中顺手补了备份 kind 标签缺口。新登记一处真实缺口：**手动备份永久保留但无删除入口**（后端亦无 `DELETE /api/store/backups`），待裁决。详见 §二十八。
+> **现状快照（2026-10-14 第三十七轮，低风险收尾批次）**：当前版本 **FVCC v1.6.9 / FVCS v1.3.1**（FVCS 零改动）。三项收尾一次做完：① **P3-5 尾部还清——store 备份/恢复前端入口**（设置页新增「数据备份与恢复」面板：备份列表 + 立即备份 + 整包恢复，接 v1.5.8 已交付但一直无人接的 `/api/store/*` 三端点）；② **P3-6 台账正式勾选关闭**（NAS `/info` `ffprobe:true` 实测已闭，本轮收口口径）；③ `FVCC/.commandcode/`（AI 工具产物）按用户裁决**入 .gitignore 不入库**。本轮为纯前端 + 治理（后端 Go 零改动），交付前用 **dev 模式真实后端 + 浏览器**把备份/恢复全链路跑通（含 `prerestore` 兜底备份与 >20 份列表展开），过程中顺手补了备份 kind 标签缺口。新登记一处真实缺口：**手动备份永久保留但无删除入口**（后端亦无 `DELETE /api/store/backups`），待裁决。按出包纪律 bump **1.6.8 → 1.6.9** 并重打 fpk（**11,014,297 B**；出包时本机 Windows PowerShell 5.1 在 AMSI 扫描环节崩于 `build.ps1` 编译，改由 `pwsh` 7.7.0-preview.5 跑同一条命令通过，脚本零改动）。已提交（主体 `dedd124` + 本后记笔，**注解 tag `v1.6.9` 打在后记笔**）并推送 `fork/baseline-snapshot`；NAS 真机安装验证由用户执行。详见 §二十八（发布后记 §28.9）。
 > **现状快照（2026-10-14 第三十四轮，Tailwind CSS 4 大版本专项）**：**当时版本 FVCC v1.6.8 / FVCS v1.3.1**（现已被 v1.6.9 取代，见上段快照；FVCS 零改动）。本轮还清第三十二~三十三轮点名的**依赖刷新主题唯一余项**——`tailwindcss` **3.4.19 → 4.3.3**：`tailwind.config.js` 整文件删除，token 映射迁入 `ui-src/src/style.css` 的 `@theme inline`；38 个 `--c-*` 令牌（明暗两套共 76 条定义）由裸 RGB 通道改为完整 `rgb()` 颜色（v4 不替换 `<alpha-value>`，`/NN` 透明度改编译期 `color-mix(in oklab, …)`）；暗色改 `@custom-variant dark`；PostCSS 插件换 `@tailwindcss/postcss` 并删 `autoprefixer`（前缀由 v4 内建 Lightning CSS 负责）；改名与语义漂移逐项对齐（`shadow-sm`→`shadow-xs`、`shadow`→`shadow-sm`、`outline-none`→`outline-hidden`）；扫描面 `source(none)` + 显式 `@source` 锁定。收益：`npm audit` 现存 **7 条告警（2 moderate / 5 high）全部清零**、`npm outdated` 归零、CSS gzip 10.00 → **9.78 kB**。**依赖刷新主题至此完整收口，无余项。** 随批产品裁决（用户）：接受 v4 移除 `button { cursor: pointer }` 的新默认。按出包纪律 bump **1.6.7 → 1.6.8** 并重打 fpk（11,013,500 B），NAS 真机视觉对照由用户执行中。详见 §二十五。
 > **现状快照（2026-10-14 第三十二~三十三轮，依赖/工具链专项批次）**：**当时版本 FVCC v1.6.7 / FVCS v1.3.1**（现已被 v1.6.8 取代，见上一段快照）。
 > 第三十二轮还清了第三十一轮点名的唯一实质落后项——`modernc.org/sqlite` **v1.14.0 → v1.60.1**（跨 46 个 minor）：先把 store 层对驱动的接触面量清楚（`sql.Open` 无 DSN 参数、三条 PRAGMA 走 Exec、无驱动 API、SQL 为纯 SQLite 子集），再用**老驱动真实产出的 fvcc.db** 由新驱动经实际 store 路径 Open→migrate→写回→二次 Load 验证（WAL 保持、`schema_version` 不误重置、AUTOINCREMENT 续号、立即落盘可见）；副作用是依赖面收窄（删 cc/ccgo/opt/strutil/token/uint128/x-mod/x-sync/x-tools/shellquote 十项，`go.sum` 净减 109 行），代价是二进制 +565 KB、fpk +2.4%（10,752,127 → 11,011,826 B）。按出包纪律 bump **1.6.6 → 1.6.7** 并重打 fpk，真机复验由用户在 .106 执行。详见 §二十三。
@@ -430,9 +430,9 @@ v4 preflight 不再给 `button` / `[role=button]` 加 `cursor: pointer`，意味
 
 ### 27.7 本批次改动清单与入库状态
 
-- 文档/注释口径（本轮，**未提交**）：`BUILD.md`（FVCC 前置条件 Go 行、FVCS 环境要求 Go 行、注意事项「Go 工具链」新增"auto 的选取语义"条、基线表 Go 工具链行改写 + 新增 npm 行 + 新增 FFmpeg 行）、`build-env.ps1`（工具链选择注释）、`build.ps1`（auto 选取语义注释）、`docs/FVCC_项目现状与开发步骤.md` §6.2 两行、本节台账。
-- 第三十五轮的 CI pin 批次 **`4365e31`**：已提交，**尚未推送**（推送与打 tag 按既定纪律等用户确认；该批次不 bump 版本、不出包）。
-- 未入库项照旧：`FVCC/.commandcode/` 仍是 `??`；`temp/` 下本轮的核验产物（MSI、两份对比二进制、go.dev 元数据 JSON）按 `.gitignore` 不入库。
+- 文档/注释口径（本轮）：`BUILD.md`（FVCC 前置条件 Go 行、FVCS 环境要求 Go 行、注意事项「Go 工具链」新增"auto 的选取语义"条、基线表 Go 工具链行改写 + 新增 npm 行 + 新增 FFmpeg 行）、`build-env.ps1`（工具链选择注释）、`build.ps1`（auto 选取语义注释）、`docs/FVCC_项目现状与开发步骤.md` §6.2 两行、本节台账。**后记**：上述三处与本轮台账同随 `b0ff3d1` 入库。
+- 第三十五轮的 CI pin 批次 **`4365e31`**：已提交（该批次不 bump 版本、不出包），随 v1.6.9 发布批次一并推送 `fork/baseline-snapshot`。
+- 未入库项照旧：`FVCC/.commandcode/` 已随第三十七轮（v1.6.9）按用户裁决入 `.gitignore`（不入库、不删除）；`temp/` 下本轮的核验产物（MSI、两份对比二进制、go.dev 元数据 JSON）按 `.gitignore` 不入库。
 
 ### 27.8 未做与待定
 
@@ -492,7 +492,7 @@ v4 preflight 不再给 `button` / `[role=button]` 加 `cursor: pointer`，意味
 
 - bump **1.6.8 → 1.6.9**：`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION` 三处 + `ui-src/package-lock.json` 根 `version`（`npm install --package-lock-only` 同步，1.6.8 那轮它漂留在 1.6.7）。
 - 校验：`scripts/check-versions.ps1` 退出码 0（三方 1.6.9 一致 + go.mod `go 1.27.1`）；`go test ./internal/version` 本机真跑绿；前端 `check:design --all` 33 文件无违规 → `tsc -b` → `vite build` 48 模块，CSS 49.99 kB（gzip 9.79 kB）/ JS 208.43 kB（gzip 66.13 kB）。
-- **未出 fpk、未提交、未推送、未打 tag**：出包（`build.ps1 -Target FVCC`）与提交/推送/tag 均等用户确认。
+- **已出 fpk**：`./build.ps1 -Target FVCC` → `FVCC/fvcc.fpk` **11,014,297 B**（+797 B vs v1.6.8 的 11,013,500 B，纯前端增量）。解包核验：包内 `manifest` `version = 1.6.9`、`app.tgz` 内 `ui/assets/index-ByMsNQMP.css` 与 `index-SH0C878Z.js` 与本轮构建产物逐名一致、`app/fvcc` ELF 内嵌 VERSION = 1.6.9。提交/推送/tag 见 §28.9。
 - 本轮改动 8 个代码/配置文件（`.gitignore`、manifest、package.json、package-lock.json、VERSION、types.ts、api.ts、settings.ts）+ 4 份根台账回写（本文件、`FVCC_混乱度评价报告_细化版.md`、`FVCC_项目现状与开发步骤.md`、`项目分析与改进方向.md`）+ `README.md` / `BUILD.md` / `FVCC/README.md` 版本表基线。
 
 ### 28.8 挂账变化：本轮还清 2 项
@@ -501,3 +501,19 @@ v4 preflight 不再给 `button` / `[role=button]` 加 `cursor: pointer`，意味
 - **新增**：手动备份删除入口（§28.6）。
 - **不变**：NAS 真机视觉清单回收、Tailwind 4 真机视觉对照（用户实测中）、渲染 Failed/Cancelled 分支、P3-8、e2e B 档 #7/#9、概览 Filter Chips、`?fx=` 动画裁决、其余页面 `listSkeleton` 迁移、`go test -race` 修复批次、go.mod `go` 指令是否抬 1.27.2、npm 12 升级路径、CI 首跑路径。
 - **本轮文档覆盖面（如实登记）**：回写 4 份根台账（本文件 / 混乱报告第十四版 / 项目现状与开发步骤 / 项目分析与改进方向第十一次回写）+ `README.md` / `BUILD.md` / `FVCC/README.md` 版本表 + `FVCC/docs/API_CONTRACT.md`（补 `/api/store/*` 响应字段与 kind 五值口径）。**未回写**：`FVCC/docs/DESIGN.md`、`FVCC/docs/SECURITY.md`（内外两份）、`docs/TASK_REFERENCE.md`、`docs/FVCC_UI设计优化方向.md` 的"复核基线 v1.6.8"行——它们是**带日期的复核声明**而非当前版本声明，按惯例留给专门的文档对齐轮统一回写（与第三十一~三十三轮 `246e905` 的做法一致）。
+
+### 28.9 入库与发布后记（2026-10-14）
+
+用户裁决"1 2 3 逐个执行"，本批三步收口：本地提交 → 出包 → 推送 + 打 tag。
+
+- **`dedd124` `feat(store): store 备份/恢复前端入口接上 /api/store/*，版本 bump v1.6.9`**——16 文件 `+281 / −62`（8 个代码/配置 + 4 份根台账 + README/BUILD/FVCC README + API_CONTRACT）。
+- 本笔 `docs(ledger)` 后记提交（提交状态随入库更新），**注解 tag `v1.6.9` 打在此笔**并推送，与 v1.6.8（`65c79e4`）的发布口径一致。
+- 本次推送共携带 **5 笔**提交到 `fork/baseline-snapshot`：`4365e31`（CI pin v7）、`b0ff3d1`（第三十六轮工具链收口）、`a5768d3`（九份长台账压缩）、`dedd124`（本轮主体）、本后记笔。
+
+**出包环境波折（登记为工具链事实）**：Windows PowerShell 5.1 编译 `build.ps1` 时在 AMSI 扫描环节崩溃——`System.AccessViolationException` at `System.Management.Automation.AmsiUtils.AmsiScanBuffer`，连续两次复现（相对路径与绝对路径入参各一次），崩在脚本编译阶段，一行构建逻辑都没执行。用最小 `.ps1` 探针验证 5.1 本机仍可正常编译运行，故判定为**本机反病毒/AMSI 提供器对这个 13 KB 脚本内容的崩溃**，属环境故障、与仓库和脚本无关。改由 PowerShell 7（`pwsh` 7.7.0-preview.5）跑同一条 `build.ps1 -Target FVCC` 一次通过（17.1s）。构建三步（`npm run build` 里的 vite / `go build` Linux 交叉编译 / `fnpack build`）都是外部进程，产物与 PS 宿主版本无关——本次产出 `index-ByMsNQMP.css` 49.99 kB（gzip 9.79 kB）、`index-SH0C878Z.js` 208.43 kB（gzip 66.13 kB）与 §28.7 提交前 `npm run build` 的哈希逐项一致。**`build.ps1` 本轮未作任何改动**；5.1 侧 AMSI 崩溃留待重启/病毒库更新后由用户复现核查，若持续即改走 `pwsh` 口径（届时同步 BUILD.md）。
+
+**发布产物核验**：`FVCC/fvcc.fpk` = **11,014,297 B**（v1.6.8 为 11,013,500 B，+797 B）；解包只读校验包内 `manifest` `version = 1.6.9`、`app.tgz` 内两个 asset 名与构建一致、`app/fvcc` ELF 内嵌 VERSION = 1.6.9；临时解包目录已删，**未触碰 NAS**。
+
+**未入库项如实登记**：构建产物 `FVCC/app/`、`FVCC/temp/`、`FVCC/fvcc.fpk` 按 `.gitignore` 不入库；`FVCC/.commandcode/` 本轮已按裁决 ignore（不删除，本地仍在）。
+
+**发布后仍待回收**：v1.6.9 fpk 的 NAS 真机安装（重点看设置页「数据备份与恢复」面板在真实数据量下的备份/恢复，以及第三十四轮起未回收的 Tailwind 4 视觉对照清单）、手动备份删除入口裁决（§28.6）、渲染 Failed/Cancelled 分支验证。CI 侧限制不变：推送 `baseline-snapshot` 不触发工作流。
