@@ -1,6 +1,6 @@
 # Fnos.VideoConversion 视频转码系统
 
-一套面向个人与工作室的远程视频转码方案，核心支持 fnNAS 远程调用 Windows 主机 FVCS 算力转码。服务端依托 FFmpeg，自动适配显卡加速、多任务并发与断点传输；Web 客户端 FVCC 可直连 NAS 与多台 Windows 转码机，自定义转码模板远程下发任务，适合家庭 NAS 远程批量处理视频素材。当前版本：FVCC v1.6.8 / FVCS v1.3.1。
+一套面向个人与工作室的远程视频转码方案，核心支持 fnNAS 远程调用 Windows 主机 FVCS 算力转码。服务端依托 FFmpeg，自动适配显卡加速、多任务并发与断点传输；Web 客户端 FVCC 可直连 NAS 与多台 Windows 转码机，自定义转码模板远程下发任务，适合家庭 NAS 远程批量处理视频素材。当前版本：FVCC v1.6.9 / FVCS v1.3.1。
 
 ## 项目组成
 
@@ -145,7 +145,7 @@
 ## 构建与部署
 
 - **构建**：见 [BUILD.md](./BUILD.md)（一键脚本 `.\build.ps1`，含 FVCC fpk 打包与 FVCS 构建全流程、版本同步清单、故障排查）。
-- **版本单一来源**：FVCC 版本三处同步（`manifest` / `ui-src/package.json` / `server/internal/version/VERSION`，当前 v1.6.8），由 `scripts/check-versions.ps1` 自动校验（仓库根由脚本位置推导，可 `-RepoRoot` 覆盖）；`internal/version/version_test.go` 会向上定位仓库根比对 manifest 与 package.json，定位/读取失败一律判红而非跳过，Windows 本机 `go test ./...` 与 Linux CI 同等有效；FVCS 版本见 `FVCS/pkg/version/VERSION`（当前 v1.3.1；注意 `pkg/version/version_test.go` 里还有一份硬编码期望值，bump 时两处同改）。
+- **版本单一来源**：FVCC 版本三处同步（`manifest` / `ui-src/package.json` / `server/internal/version/VERSION`，当前 v1.6.9），由 `scripts/check-versions.ps1` 自动校验（仓库根由脚本位置推导，可 `-RepoRoot` 覆盖）；`internal/version/version_test.go` 会向上定位仓库根比对 manifest 与 package.json，定位/读取失败一律判红而非跳过，Windows 本机 `go test ./...` 与 Linux CI 同等有效；FVCS 版本见 `FVCS/pkg/version/VERSION`（当前 v1.3.1；注意 `pkg/version/version_test.go` 里还有一份硬编码期望值，bump 时两处同改）。
 - **部署**：
   - FVCC：fnOS 应用，构建产物 `FVCC\fvcc.fpk` 上传 NAS 安装；历史版本见 `archive/fpk/`。
   - FVCS：Windows 常驻程序，`FVCS\fvcs-service.exe` 无头服务 + `fvcs-ui.exe`（渲染节点托盘）+ `fvcs-settings.exe`（设置窗口），局域网被 FVCC 调度；GUI 构建：`.\build.ps1 -Target FVCS-UI`。

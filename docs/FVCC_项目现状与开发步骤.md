@@ -10,7 +10,7 @@
 
 FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 Web 客户端：浏览本地素材、把转码/代理/渲染任务下发给 FVCS 渲染端、通过 WebSocket 实时跟踪进度。服务端 Go（gin），前端 Vite + TypeScript 零框架原生 DOM，产物以 fpk 形式打包供 fnOS 安装。
 
-**当前基线（2026-10-14）**：**FVCC v1.6.8 / FVCS v1.3.1**——三真源一致（`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION`），`scripts/check-versions.ps1` 绿（v1.6.5 起校验为「漂移即红」）。
+**当前基线（2026-10-14）**：**FVCC v1.6.9 / FVCS v1.3.1**——三真源一致（`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION`），`scripts/check-versions.ps1` 绿（v1.6.5 起校验为「漂移即红」）。v1.6.9 为**低风险收尾批次（第三十七轮）**：store 备份/恢复前端入口 + P3-6 勾选 + `.commandcode/` 收编；已 bump 未出包、未提交。
 
 ### 1.0 版本线摘要（git 核验）
 
@@ -25,12 +25,13 @@ FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 W
 | v1.6.6 | `v1.6.6`→1dcb774 | 第三十轮低风险依赖刷新 + 配套 FVCS 1.3.1 |
 | v1.6.7 | `v1.6.7`→4154d31 | `modernc.org/sqlite` v1.14.0→**v1.60.1** 跨 46 minor 专项（真实 fvcc.db 迁移验证，14 包全绿）+ Node 运行时 v25.9.0→**v26.11.1**（第三十三轮；`engines.node>=26`、CI 22→26、`@types/node` ^26，asset 哈希逐项不变） |
 | v1.6.8 | `v1.6.8` | `tailwindcss` 3.4.19→**4.3.3** 大版本专项（CSS-first、`tailwind.config.js` 删除、token 入 `src/style.css` `@theme inline`、`npm audit`/`npm outdated` 双清零、gzip 10.00→9.78 kB、fpk 11,013,500 B）；产品裁决：接受 v4 移除按钮举手型默认 |
+| v1.6.9 | （待打 tag） | 低风险收尾批次（第三十七轮）：**store 备份/恢复前端入口**（设置页新面板接 `/api/store/*`，dev 真实后端 + 浏览器全链路实测）+ P3-6 台账正式勾选 + `.commandcode/` 入 .gitignore；纯前端 + 治理，后端零改动 |
 
 **易错点**：`1.6.1`/`1.6.2`/`1.6.3` 只是批次开发过程中的本地中间 bump，**从未进入 git 历史、未出包、未打 tag**；方案文件名里的 "v1.6.1" 是**方案稿编号**、不是交付版本号——不可写成"1.6.1~1.6.4 版本线"，应写"**1.6.4**（方案稿 v1.6.1 的落地批次）"。
 
 **治理进展**：P0-2 SQLite 迁移已落地（2026-09-21，a72b8ff/9e122d5/5dd373e）；P1 组落地（P1-1 事件驱动调度 eab7688）；P2 组（P2-1~P2-8）全部收口（后端 internal 分层、前端组件化、CI 流水线、API 契约统一、回收站化、AIGC 清理、测试命名规范化、破坏性操作审计）。设计文档引用速查见 `FVCC/README.md`，治理台账见 `docs/FVCC_混乱度评价报告_细化版.md`。
 
-**总体判断**：主干功能完整、工程质量较高（分层清晰、测试齐全、契约规范、SQLite 持久化落地），处于"功能已闭环、局部待打磨"阶段。P3 债务仅剩 **P3-6**（ffprobe 生产依赖，**实际已闭**——NAS `/info` `ffprobe:true`，2026-10-11）与 **P3-8**（远期决策门）；P3-7/P3-9 已于第二十六轮关闭。
+**总体判断**：主干功能完整、工程质量较高（分层清晰、测试齐全、契约规范、SQLite 持久化落地），处于"功能已闭环、局部待打磨"阶段。P3 组自 v1.6.9 起**仅剩 P3-8**（远期决策门，随多轨立项评审触发）；P3-6 已于第三十七轮正式勾选关闭（NAS `/info` `ffprobe:true`，2026-10-11），P3-7/P3-9 已于第二十六轮关闭，P3-5 的前端入口亦随 v1.6.9 还清。
 
 **开放项清单（2026-10-14 口径）**：
 
@@ -39,13 +40,12 @@ FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 W
 | 概览 Filter Chips 状态过滤 | ⬜ 待产品拍板 |
 | `?fx=stripes\|breathe` 实验动画 | ⬜ 待真机并发裁决转正/弃用 |
 | 其余页面骨架迁移 `listSkeleton()` | ⬜ 目前仅 tasks 页切换 |
-| store 备份/恢复前端入口 | ⬜ P3-5 只交付后端 API |
+| 手动备份删除入口（v1.6.9 新登记） | ⬜ 待裁决：轮转池跳过 manual，后端无 `DELETE /api/store/backups/:id`，面板只增不减 |
 | e2e #7 `judgeVisibility` 忽略分辨率 | ⬜ 需用户给阈值 |
 | e2e #9 跨多授权根混合素材时间线 | ⬜ 当前明确拒绝 `E_EDL_INVALID`，需跨端 payload 改造 + 真机验证 |
 | 渲染 Failed/Cancelled 终态分支 | ⬜ 无自然复现，遇真实失败顺带验证 |
 | 结构性立项：多轨 `{videoTracks,audioTracks}` + EDL 转场 | ⬜ P1-2 freecut 框架试点绑于此 |
 | NAS 真机视觉对照（Tailwind 4 淡色/悬停/触屏/forced-colors） | ⬜ v1.6.8 后用户实测中 |
-| `FVCC/.commandcode/` 工具产物处置 | ⬜ 待裁决（清理或入 .gitignore） |
 
 ### 1.1 代码规模（实测）
 
@@ -53,12 +53,12 @@ FVCC（Fnos Video Conversion Client）是 fnNAS 生态的视频转码调度端 W
 |---|---|---|---|
 | Go 后端（非测试） | 58 | 17,197 | `server/` 根包 + `internal/` 12 包 + `logger/` + `smbshare/`（2026-10-13 实测，2026-10-14 在新 SQLite 驱动 + Node 26 下复测逐项一致） |
 | Go 测试 | 52 | 9,183 | 含 e2e / 并发 / SQLite 迁移 / P3-5 备份-迁移-回滚 / #8 render_poll 回归 |
-| TypeScript 前端 | 33 | 11,474 | `ui-src/src/` 全部页面与逻辑 |
-| **合计** | **143** | **37,854** | 不含 node_modules、构建产物、fpk 包（Go 合计 110 个 `.go`） |
+| TypeScript 前端 | 33 | 11,622 | `ui-src/src/` 全部页面与逻辑（v1.6.9 +148 行：store 备份/恢复面板与类型） |
+| **合计** | **143** | **38,002** | 不含 node_modules、构建产物、fpk 包（Go 合计 110 个 `.go`） |
 
 ### 1.2 构建产物与运行形态
 
-- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.6.8，2026-10-14 实测）。根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
+- 根目录：构建产物与历史 fpk 包已于 2026-09-21 归档至根仓库 `archive/fpk/`（完整收纳 v1.1.0~v1.5.3）；`manifest`（应用清单，version=1.6.9，2026-10-14 实测）。根目录**无** `fvcc.exe` / `fvcs-service.exe` / `fvcc.fpk` 物理堆积。
 - 运行时数据（按禁删原则保留原位）：`config.enc.json`（加密配置）、`master.key` / `secret.key`（凭据密钥）、`credentials.db`（凭据库 SQLite，含 -shm/-wal）、`tasks.json` / `history_tasks.json`（任务存储）、`locks.json`（锁表）。根目录**无** `task.db`（仅 `archive/` 下存 12KB 备份，为 FVCS 侧运行产物）。
 - `config/`：fnOS 应用配置目录（privilege / resource）；`logs/`：运行时日志（按日期 + app_*.log）。
 - `app/`：前端构建产物（vite 输出 + 静态资源），由 fpk 打包；`app/ui/assets` 为 hash 资源目录（以最新构建的 index.html 引用为准核对）。
@@ -106,7 +106,7 @@ D:\Fnos.VideoConversion\FVCC\
 ├── app/                       # 前端构建产物（git 忽略，vite outDir）
 ├── docs/                      # 项目内文档（7 份）：API_CONTRACT / DESIGN / PRODUCT / P2-1 实施记录 / P2-2 细化细则 / SECURITY / STORE_PERSISTENCE_ROADMAP
 ├── logs/ / temp/              # 运行时日志与打包 stage 目录（git 忽略）
-├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.6.8）
+├── manifest                   # fnOS 应用清单（UTF-8 无 BOM，version=1.6.9）
 ├── config.enc.json            # 加密配置（凭据相关）
 ├── credentials.db / -shm / -wal / master.key / secret.key / locks.json / tasks.json / history_tasks.json   # 运行时数据（禁删原则保留原位）
 └── .gitignore
@@ -246,14 +246,14 @@ D:\Fnos.VideoConversion\FVCC\
 | `FVCC/docs/SECURITY.md` | ✅ 已补写（2026-09-21），消除 main.go/models.go/gateway.go 悬空引用 |
 | `FVCC/README.md` 版本表 | 已对齐 v1.5.12（2026-10-12 文档全面对齐轮）；后续版本线以 README 自身为准 |
 | 上层 `docs/IMPROVEMENT_LOG.md` 等 | 与代码现状定期核对，纳入版本发布 checklist |
-| 本份长台账 | 已对齐 v1.6.8（2026-10-14）；同日压缩：历史版本快照段落收拢为 §1.0 版本线表 |
+| 本份长台账 | 已对齐 v1.6.9（2026-10-14 第三十七轮低风险收尾批次回写）；同日压缩：历史版本快照段落收拢为 §1.0 版本线表 |
 
 ### 6.4 清理项（已收口，仅保留待裁决项）
 
 | 项 | 处置 |
 |---|---|
 | 调试重定向残留 / CDP 缓存 / 打包 stage / 调试脚本与二进制 / 历史 fpk | ✅ 2026-09-21 已清理或归档（18 项，约 560.3MB；server/ 根 0 字节文件随 P3-9 归零，2026-10-12） |
-| `FVCC/.commandcode/` 工具产物 | ⏳ 待裁决（清理或入 .gitignore） |
+| `FVCC/.commandcode/` 工具产物 | ✅ 已处置（2026-10-14 v1.6.9 第三十七轮）：用户裁决为 AI 工具遗留，追加 `.gitignore` 条目 `FVCC/.commandcode/`（不入库、不删除），`git check-ignore -v` 核验命中 |
 | `app/ui/assets` 旧 hash | 保持核对（vite `emptyOutDir:true`，以 index.html 引用为准） |
 
 ### 6.5 规划中未触发项（决策门保留）
@@ -291,8 +291,8 @@ D:\Fnos.VideoConversion\FVCC\
 | 1 运行时环境就绪核验 | ✅ 本机已就绪（GOTOOLCHAIN=auto；ffmpeg/ffprobe 9.0.1-essentials）；部署机待核验 |
 | 2 ffprobe 探测真实性 | ✅ 启动自检已存在（main.go `ffprobe=%v`），stub 降级保留；NAS 运行时已满足（`/info` ffprobe:true，2026-10-11） |
 | 3 调度器占位与过时注释清理 | ✅ 2026-09-21（RenderDispatcher 注入、死分支/空占位删除、placeholder 注释更新） |
-| 4 store 备份/迁移/回滚 | ✅ 2026-10-11，v1.5.8（阶段 A 备份 efef4bd → B 迁移链 16f1043 → C 整包回滚 59e4004 → D 收口；`/api/store/*` 挂 requireAdmin + snapshot.restore 审计；方案稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md`） |
-| 5 文档同步 | ✅ 2026-09-21 首轮 + 2026-10-12 v1.5.12 全量对齐 + 2026-10-13 本份回写 v1.6.5 + 2026-10-14 回写 v1.6.8 并压缩 |
+| 4 store 备份/迁移/回滚 | ✅ 2026-10-11，v1.5.8（阶段 A 备份 efef4bd → B 迁移链 16f1043 → C 整包回滚 59e4004 → D 收口；`/api/store/*` 挂 requireAdmin + snapshot.restore 审计；方案稿 `FVCC/docs/STORE_PERSISTENCE_ROADMAP.md`）；**前端入口随 v1.6.9 补齐**（设置页「数据备份与恢复」面板，第三十七轮） |
+| 5 文档同步 | ✅ 2026-09-21 首轮 + 2026-10-12 v1.5.12 全量对齐 + 2026-10-13 本份回写 v1.6.5 + 2026-10-14 回写 v1.6.8 并压缩 + 2026-10-14 第三十七轮回写 v1.6.9（4 份根台账 + README/BUILD 版本表） |
 | 6 清理低风险残留 | ✅ 2026-09-21（18 项约 560.3MB 入回收站；历史 fpk 归档 archive/fpk/ v1.1.0~v1.5.3） |
 | 7 质量门禁与 CI 上调 | ✅ 覆盖率口径修复 56.7%→59.0%→补测 60.7%，门禁 55%→60%（P3-7，第二十六轮）；v1.6.5 校验加固（漂移即红） |
 | 8 端到端验收 | 🟡 已执行（2026-10-11，真实 NAS+Windows）：①转码/④回收站/⑤断联 pass；②代理/③EDL 渲染缺陷经 A 档 #5/#6/#10/#11 + #8 四层收口，2026-10-12 真机复验通过并推送 fork/baseline-snapshot；B 档 #7/#9 延后未完成（见 §1 开放项） |
@@ -314,8 +314,8 @@ D:\Fnos.VideoConversion\build.ps1 -Target FVCC   # 全量打包回归，产出�
 
 ## 附：调查证据索引
 
-- 代码规模：Go 110 文件 / 26,380 行（非测试 58 / 17,197 + 测试 52 / 9,183）；TS 33 文件 / 11,474 行（2026-10-13 实测，2026-10-14 复测一致）
-- 版本核验：三真源一致 = **1.6.8**（2026-10-14 实测，`check-versions.ps1` 绿；FVCS `pkg/version/VERSION` = 1.3.1）；1.6.x 均已打注解 tag（v1.6.0→b1a0d93、v1.6.4→b007a3d、v1.6.5→5166cbe、v1.6.6→1dcb774、v1.6.7→4154d31、v1.6.8→e1ed35c 批次后记笔）；推送目标 `fork` = hgmmm25/Fnos.VideoConversion，分支 `baseline-snapshot`（另有 `origin` = zdongno01 非推送目标）
+- 代码规模：Go 110 文件 / 26,380 行（非测试 58 / 17,197 + 测试 52 / 9,183，本轮零后端改动）；TS 33 文件 / 11,622 行（2026-10-14 第三十七轮实测，v1.6.9 后 +148）
+- 版本核验：三真源一致 = **1.6.9**（2026-10-14 第三十七轮 bump 后实测，`check-versions.ps1` 绿；`ui-src/package-lock.json` 根 version 已同步；FVCS `pkg/version/VERSION` = 1.3.1）；**v1.6.9 尚未提交、未出 fpk、未打 tag**（等用户确认）；1.6.x 已打注解 tag（v1.6.0→b1a0d93、v1.6.4→b007a3d、v1.6.5→5166cbe、v1.6.6→1dcb774、v1.6.7→4154d31、v1.6.8→e1ed35c 批次后记笔）；推送目标 `fork` = hgmmm25/Fnos.VideoConversion，分支 `baseline-snapshot`（另有 `origin` = zdongno01 非推送目标）
 - 覆盖率：60.7%（第二十六轮实测，门禁 60%）
 - TODO 扫描：`server/`、`ui-src/src/`、`cmd/` 全量关键词扫描；1.6.x 遗留项均为刻意未做或待裁决，非新增代码级 TODO
 - 关键文件：`server/main.go`、`server/internal/api/router.go`、`server/internal/scheduler/scheduler.go`、`server/internal/store/store.go`、`ui-src/src/main.ts`、`ui-src/src/store.ts`、`ui-src/src/api.ts`、`ui-src/src/pages/editor/*.ts`

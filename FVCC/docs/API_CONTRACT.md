@@ -1,7 +1,7 @@
 # FVCC API 契约与命名规范（P2-4）
 
 > 生效范围：FVCC（NAS 调度端 Web UI）REST API + SSE/WS 推送。本文件是 `ui-src/src/api.ts` 统一错误契约与 `server/` 响应写法的**唯一权威依据**；新增接口、修改错误响应必须遵循本规范。
-> 版本：1.6.8 ｜ 落实日期：2026-09-18（1.4.4 初版）｜ 最后复核：2026-10-14（第三十四轮：仅版本号随工作区三真源同步至 1.6.8——该轮为 Tailwind CSS 4 样式链专项，零后端改动，接口/路由表无变更；第三十二~三十三轮同步至 1.6.7——该两轮为 sqlite 驱动与 Node 运行时批次，接口/路由表无变更；第三十一轮曾同步至 1.6.6；此前 2026-10-13 第二十八~二十九轮同步至 1.6.5，上次实质复核 2026-10-12：helper 路径与路由表随 P2-1 分层 / P3-5 store API / #8 渲染收口对齐）｜ 关联混乱报告 P2-4「统一 API 契约与命名」
+> 版本：1.6.9 ｜ 落实日期：2026-09-18（1.4.4 初版）｜ 最后复核：2026-10-14（第三十七轮：`/api/store/*` 三端点的响应字段与 `kind` 五值口径补登——该组端点自 v1.5.8 在位，v1.6.9 起由设置页「数据备份与恢复」面板首次消费，后端契约本身零变动；第三十四轮为 Tailwind CSS 4 样式链专项，版本号随三真源同步至 1.6.8，接口/路由表无变更；第三十二~三十三轮同步至 1.6.7——该两轮为 sqlite 驱动与 Node 运行时批次，接口/路由表无变更；第三十一轮曾同步至 1.6.6；此前 2026-10-13 第二十八~二十九轮同步至 1.6.5，上次实质复核 2026-10-12：helper 路径与路由表随 P2-1 分层 / P3-5 store API / #8 渲染收口对齐）｜ 关联混乱报告 P2-4「统一 API 契约与命名」
 
 ---
 
@@ -140,7 +140,7 @@ json.Marshal(gin.H{"type": "error", "error": "..."})
 
 | 段 | 路由 | 契约要点 |
 |---|---|---|
-| store 备份/回滚（P3-5，v1.5.8，仅后端 API） | `POST /api/store/backup`、`GET /api/store/backups`、`POST /api/store/restore`（均 admin） | 请求体 `{backupId}`（camelCase）；响应 `{ok:true, backup|backups|restore}`；失败走统一契约 `protocol.Fail` |
+| store 备份/回滚（P3-5，v1.5.8；**v1.6.9 起由设置页「数据备份与恢复」面板消费**） | `POST /api/store/backup`、`GET /api/store/backups`、`POST /api/store/restore`（均 admin） | 请求体 `{backupId}`（camelCase）；响应 `{ok:true, backup|backups|restore}`；失败走统一契约 `protocol.Fail`。`backups[]` 项 = `{id,kind,file,size,createdAt}`；`restore` = `{backupId,kind,snapshotAt,restoredAt,preRestoreId,counts}`。**`kind` 有 5 值**：`auto`/`manual`/`prewrite`/`premigration`/`prerestore`；轮转池为「非 manual 全池保留最近 12 份」（`rotateBackupPool` 只跳过 manual，注意 `backup.go` 头注释的"auto+prewrite"是窄口径）；`createdAt` 等为 Go `time.Time` → RFC3339 字符串。**暂无删除端点**。 |
 | 代理就绪回填（v1.5.9） | `GET /api/proxy` | 只读列出已就绪代理，字段 camelCase；写侧 `POST /api/proxy` 带素材根 |
 | 渲染提交（03 §4.4） | `POST /api/edl/projects/:id/render` | 载荷为 EDL 对等协议段（EDLClip 含 `sourceRoot`，camelCase）；渲染终态由服务端 `pollRenderTerminal` 收口后经 WS/任务状态推送，不新增线上 snake_case 字段 |
 

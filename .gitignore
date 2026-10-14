@@ -101,3 +101,6 @@ FVCS/wss-key.pem
 FVCC/server/_wve_cache/
 FVCC/server/backup/
 FVCC/server/data_version.json
+
+# ---- AI 工具产物（v1.6.9 收口：commandcode 的 taste 分析缓存，与本项目无关，不入库）----
+FVCC/.commandcode/

@@ -1,6 +1,7 @@
-# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-14 更新至 v1.6.8）
+# FVCC 改进方向落实记录（2026-09-17 起稿 · 2026-10-14 更新至 v1.6.9）
 
-> **现状快照（2026-10-14 第三十四轮，Tailwind CSS 4 大版本专项）**：当前版本 **FVCC v1.6.8 / FVCS v1.3.1**（FVCS 零改动）。本轮还清第三十二~三十三轮点名的**依赖刷新主题唯一余项**——`tailwindcss` **3.4.19 → 4.3.3**：`tailwind.config.js` 整文件删除，token 映射迁入 `ui-src/src/style.css` 的 `@theme inline`；38 个 `--c-*` 令牌（明暗两套共 76 条定义）由裸 RGB 通道改为完整 `rgb()` 颜色（v4 不替换 `<alpha-value>`，`/NN` 透明度改编译期 `color-mix(in oklab, …)`）；暗色改 `@custom-variant dark`；PostCSS 插件换 `@tailwindcss/postcss` 并删 `autoprefixer`（前缀由 v4 内建 Lightning CSS 负责）；改名与语义漂移逐项对齐（`shadow-sm`→`shadow-xs`、`shadow`→`shadow-sm`、`outline-none`→`outline-hidden`）；扫描面 `source(none)` + 显式 `@source` 锁定。收益：`npm audit` 现存 **7 条告警（2 moderate / 5 high）全部清零**、`npm outdated` 归零、CSS gzip 10.00 → **9.78 kB**。**依赖刷新主题至此完整收口，无余项。** 随批产品裁决（用户）：接受 v4 移除 `button { cursor: pointer }` 的新默认。按出包纪律 bump **1.6.7 → 1.6.8** 并重打 fpk（11,013,500 B），NAS 真机视觉对照由用户执行中。详见 §二十五。
+> **现状快照（2026-10-14 第三十七轮，低风险收尾批次）**：当前版本 **FVCC v1.6.9 / FVCS v1.3.1**（FVCS 零改动）。三项收尾一次做完：① **P3-5 尾部还清——store 备份/恢复前端入口**（设置页新增「数据备份与恢复」面板：备份列表 + 立即备份 + 整包恢复，接 v1.5.8 已交付但一直无人接的 `/api/store/*` 三端点）；② **P3-6 台账正式勾选关闭**（NAS `/info` `ffprobe:true` 实测已闭，本轮收口口径）；③ `FVCC/.commandcode/`（AI 工具产物）按用户裁决**入 .gitignore 不入库**。本轮为纯前端 + 治理（后端 Go 零改动），交付前用 **dev 模式真实后端 + 浏览器**把备份/恢复全链路跑通（含 `prerestore` 兜底备份与 >20 份列表展开），过程中顺手补了备份 kind 标签缺口。新登记一处真实缺口：**手动备份永久保留但无删除入口**（后端亦无 `DELETE /api/store/backups`），待裁决。详见 §二十八。
+> **现状快照（2026-10-14 第三十四轮，Tailwind CSS 4 大版本专项）**：**当时版本 FVCC v1.6.8 / FVCS v1.3.1**（现已被 v1.6.9 取代，见上段快照；FVCS 零改动）。本轮还清第三十二~三十三轮点名的**依赖刷新主题唯一余项**——`tailwindcss` **3.4.19 → 4.3.3**：`tailwind.config.js` 整文件删除，token 映射迁入 `ui-src/src/style.css` 的 `@theme inline`；38 个 `--c-*` 令牌（明暗两套共 76 条定义）由裸 RGB 通道改为完整 `rgb()` 颜色（v4 不替换 `<alpha-value>`，`/NN` 透明度改编译期 `color-mix(in oklab, …)`）；暗色改 `@custom-variant dark`；PostCSS 插件换 `@tailwindcss/postcss` 并删 `autoprefixer`（前缀由 v4 内建 Lightning CSS 负责）；改名与语义漂移逐项对齐（`shadow-sm`→`shadow-xs`、`shadow`→`shadow-sm`、`outline-none`→`outline-hidden`）；扫描面 `source(none)` + 显式 `@source` 锁定。收益：`npm audit` 现存 **7 条告警（2 moderate / 5 high）全部清零**、`npm outdated` 归零、CSS gzip 10.00 → **9.78 kB**。**依赖刷新主题至此完整收口，无余项。** 随批产品裁决（用户）：接受 v4 移除 `button { cursor: pointer }` 的新默认。按出包纪律 bump **1.6.7 → 1.6.8** 并重打 fpk（11,013,500 B），NAS 真机视觉对照由用户执行中。详见 §二十五。
 > **现状快照（2026-10-14 第三十二~三十三轮，依赖/工具链专项批次）**：**当时版本 FVCC v1.6.7 / FVCS v1.3.1**（现已被 v1.6.8 取代，见上一段快照）。
 > 第三十二轮还清了第三十一轮点名的唯一实质落后项——`modernc.org/sqlite` **v1.14.0 → v1.60.1**（跨 46 个 minor）：先把 store 层对驱动的接触面量清楚（`sql.Open` 无 DSN 参数、三条 PRAGMA 走 Exec、无驱动 API、SQL 为纯 SQLite 子集），再用**老驱动真实产出的 fvcc.db** 由新驱动经实际 store 路径 Open→migrate→写回→二次 Load 验证（WAL 保持、`schema_version` 不误重置、AUTOINCREMENT 续号、立即落盘可见）；副作用是依赖面收窄（删 cc/ccgo/opt/strutil/token/uint128/x-mod/x-sync/x-tools/shellquote 十项，`go.sum` 净减 109 行），代价是二进制 +565 KB、fpk +2.4%（10,752,127 → 11,011,826 B）。按出包纪律 bump **1.6.6 → 1.6.7** 并重打 fpk，真机复验由用户在 .106 执行。详见 §二十三。
 > 第三十三轮把 Node 运行时从**已 EOL 的奇数 Current 线 v25.9.0** 升到 **v26.11.1**（系统级 MSI，SHA256 与官方逐字符核对，另存 v25.9.0 回滚包）；装前查进程确认全机唯一 node 是 Qoder 自身辅助进程、无项目任务在跑。升级点四处一起对齐：本机运行时、`package.json` 新增 `engines.node >=26.0.0`、CI `setup-node` `22`→`26`、`@types/node` `^22`→`^26`（解析 26.6.5）。`npm ci` + `npm run build` 绿且 **asset 内容哈希逐项不变**，故判定无需重打包、不再 bump。详见 §二十四。
@@ -49,10 +50,10 @@
 
 ## 四、关键验证结果（最新基线）
 
-1. `cd FVCC\server && go build ./...` / `go vet ./...` / `go test ./...` —— ✅ 通过（**最新基线 1.6.8 全量复绿**，2026-10-14 第三十四轮 Tailwind 4 专项复跑——该轮零后端改动，`go build`/`go vet` 干净、`go test ./... -count=1` 14 包全绿；历史口径：1.6.7 sqlite 专项后于 2026-10-14 复绿、1.6.6/1.6.5 第二十八~三十轮、1.5.12 全量复绿（第二十四轮）、1.5.3 批次 go vet / go test 11 包全绿）
+1. `cd FVCC\server && go build ./...` / `go vet ./...` / `go test ./...` —— ✅ 通过（**最新基线 1.6.9：本轮零后端代码改动**，仅 `internal/version/VERSION` 随 bump 变更，`go test ./internal/version` 真跑绿；历史口径：**1.6.8 全量复绿**（2026-10-14 第三十四轮 Tailwind 4 专项复跑——该轮零后端改动，`go build`/`go vet` 干净、`go test ./... -count=1` 14 包全绿）、1.6.7 sqlite 专项后于 2026-10-14 复绿、1.6.6/1.6.5 第二十八~三十轮、1.5.12 全量复绿（第二十四轮）、1.5.3 批次 go vet / go test 11 包全绿）
 2. 覆盖率门禁：全包口径 56.7% → 59.0% → **60.7%**（check-coverage.ps1 口径修复 `'.'`→`'./...'` 后实测；阈值演进 55%→**60%**，2026-10-12 第二十六轮 P3-7 关闭，60.7% ≥ 60% PASS。**第二十八/二十九两轮未重跑覆盖率**，引用值均为第二十六轮实测）
-3. 前端：`tsc --noEmit` / `npm run build`（tsc + check:design + vite）—— ✅ 通过（**最新基线 1.6.8**，2026-10-14 第三十四轮 Tailwind 4 迁移后复跑：`check:design` 33 文件无违规 → `tsc -b` → `vite build` 48 模块 / 908 ms，产物 `../app/ui/assets/index-By6Fdeqj.css` 49.95 kB（gzip 9.78 kB）；配套 `npm audit` **found 0 vulnerabilities**、`npm outdated` 空输出。历史：1.6.5 及以前 CSS 为 42.78 kB / gzip 10.00 kB）
-4. 版本校验：`scripts\check-versions.ps1` —— ✅ 退出码 0（manifest / package.json / VERSION 三处一致 = **1.6.8**，2026-10-14 第三十四轮 bump 后实测；另注意 `ui-src/package-lock.json` 的根 `version` 不随手工 bump 跟进、也不在校验范围内，需 `npm install --package-lock-only` 同步，已写入 BUILD.md 版本同步清单注释。配套 FVCS v1.3.1，其两处真源（`pkg/version/VERSION` + `version_test.go` 断言字面量）已由 `go test ./pkg/version` 校绿。脚本仓库根由 `$PSScriptRoot` 推导、支持 `-RepoRoot` 覆盖；`internal/version/version_test.go` 在 Windows 本机真跑，反例改坏 manifest 即判红。历史：1.6.7 / 1.6.5 / 1.5.12 / FVCS v1.2.6 口径见第二十四~三十三轮）
+3. 前端：`tsc --noEmit` / `npm run build`（tsc + check:design + vite）—— ✅ 通过（**最新基线 1.6.9**，2026-10-14 第三十七轮 store 备份/恢复前端入口后复跑：`check:design --all` 33 文件无违规 → `tsc -b` 干净 → `vite build` 48 模块 / 1.2 s，产物 `../app/ui/assets/index-ByMsNQMP.css` 49.99 kB（gzip 9.79 kB）+ `index-SH0C878Z.js` 208.43 kB（gzip 66.13 kB）；历史口径：1.6.8 为 Tailwind 4 迁移后 CSS 49.95 kB / gzip 9.78 kB，1.6.5 及以前 CSS 42.78 kB / gzip 10.00 kB。本轮依赖零变动，1.6.8 的 `npm audit` **found 0 vulnerabilities** / `npm outdated` 空输出口径继续有效）
+4. 版本校验：`scripts\check-versions.ps1` —— ✅ 退出码 0（manifest / package.json / VERSION 三处一致 = **1.6.9**，2026-10-14 第三十七轮 bump 后实测，`ui-src/package-lock.json` 根 `version` 亦已 `npm install --package-lock-only` 同步至 1.6.9；历史：1.6.8 第三十四轮实测时 lock 漂留在 1.6.7——另注意 `ui-src/package-lock.json` 的根 `version` 不随手工 bump 跟进、也不在校验范围内，需 `npm install --package-lock-only` 同步，已写入 BUILD.md 版本同步清单注释。配套 FVCS v1.3.1，其两处真源（`pkg/version/VERSION` + `version_test.go` 断言字面量）已由 `go test ./pkg/version` 校绿。脚本仓库根由 `$PSScriptRoot` 推导、支持 `-RepoRoot` 覆盖；`internal/version/version_test.go` 在 Windows 本机真跑，反例改坏 manifest 即判红。历史：1.6.7 / 1.6.5 / 1.5.12 / FVCS v1.2.6 口径见第二十四~三十三轮）
 5. 早期轮次专项验证（WSS 双端单测、trace ID 注入、回收站/审计单测、并发/fuzz）见 §五 对应轮次摘要
 
 ## 五、历史轮次摘要（第一~二十九轮压缩；原 §七~§二十一 已并入本表）
@@ -95,8 +96,8 @@
 | P0-2 | JSON 文件存储 → SQLite | P0 | 消除手写持久化 | M1/M2/M3 | ✅ 已落地（2026-09-21，见 §五 第十八轮） |
 | P1-1 | ticker → 事件驱动调度 | P1 | 纯事件驱动 + 超时兜底 | M1/M2/M3 | ✅ 已落地（2026-09-21，见 §五 第十八轮） |
 | P1-2 | 前端收敛 freecut | P1 | 单前端单入口 | M1/M2/M3 | ✅ 已定案关闭（2026-10-11 第二十一轮，方案 A 维持零框架，见 §五） |
-| P3-5 | store 持久化健壮性（定时备份/配置迁移/快照回滚） | P3 | 原子写 + 备份轮转 | 下一迭代 | ✅ 已落地（2026-10-11 v1.5.8，阶段 A~D：efef4bd / 16f1043 / 59e4004 / 24cbbc5，见 §五 第二十轮） |
-| P3-6 | ffprobe 运行时环境依赖评估 | P3 | 生产缺探测能力兜底 | 下一迭代 | 🟡 实际已满足（2026-10-11 真机 `/info` ffprobe:true，fnOS mediasrv 提供，无 stub；仅剩可选 probe-vs-ffprobe 差异核对） |
+| P3-5 | store 持久化健壮性（定时备份/配置迁移/快照回滚） | P3 | 原子写 + 备份轮转 | 下一迭代 | ✅ 已落地（2026-10-11 v1.5.8，阶段 A~D：efef4bd / 16f1043 / 59e4004 / 24cbbc5，见 §五 第二十轮）；**前端入口已补（2026-10-14 v1.6.9 第三十七轮）**——设置页「数据备份与恢复」面板接上 `/api/store/*`；残余缺口：手动备份无删除入口（见 §二十八.6） |
+| P3-6 | ffprobe 运行时环境依赖评估 | P3 | 生产缺探测能力兜底 | 下一迭代 | ✅ **已关闭**（2026-10-14 第三十七轮台账勾选：2026-10-11 真机 `/info` `ffprobe:true`，fnOS mediasrv 提供、无 stub 降级路径触发；启动自检 `main.go` 已打印 `ffprobe=%v`。遗留的"probe-vs-ffprobe 差异核对"为可选项，不再占用 P3 编号） |
 | P3-7 | 覆盖率门槛 55% → 60% | P3 | CI 稳定后上调 | 后续 | ✅ 已关闭（2026-10-12 第二十六轮：补 logger/smbshare/media helper 测试，实测 60.7%，check-coverage.ps1 默认阈值与 CI `-Threshold 60` 同步上调） |
 
 ### 6.2 推进约定
@@ -439,4 +440,64 @@ v4 preflight 不再给 `button` / `[role=button]` 加 `cursor: pointer`，意味
 - **是否抬 go.mod 的 `go` 指令到 1.27.2**：本轮按"下限不是 pin"未抬；若希望交付产物吃到补丁，需与 CI `go-version` 同批处理（27.3）。
 - **npm 12 的两条升级路径选哪条**：等用户裁决（27.5）。
 - **CI 首跑路径**（PR 到 `fork/main` vs 临时加 push 分支）仍未定，`4365e31` 也因此停在本地。
-- 与本批次无关的既有挂账不变：`FVCC/.commandcode/` 处置、NAS 真机视觉清单回收、渲染 Failed/Cancelled 分支、P3-6/P3-8、e2e B 档 #7/#9。
+- 与本批次无关的既有挂账不变：`FVCC/.commandcode/` 处置、NAS 真机视觉清单回收、渲染 Failed/Cancelled 分支、P3-6/P3-8、e2e B 档 #7/#9。**（后记：同日第三十七轮还清其中两项——`.commandcode/` 入 .gitignore、P3-6 正式勾选关闭；store 备份/恢复前端入口亦随 v1.6.9 交付，见 §二十八。）**
+
+---
+
+## 二十八、第三十七轮（2026-10-14）：低风险收尾批次——store 备份/恢复前端入口 + P3-6 勾选 + `.commandcode` 收编（v1.6.9）
+
+### 28.1 批次构成
+
+用户在「下一步改进方向」三档里选了**①低风险收尾**，一次做完三项：① P3-5 尾部——store 备份/恢复**前端入口**；② **P3-6 台账正式勾选关闭**；③ `FVCC/.commandcode/` 按裁决**入 .gitignore**。纯前端 + 治理，后端 Go **零代码改动**。
+
+### 28.2 动手前的后端事实核对（不猜契约）
+
+- 三端点在位：`server/internal/api/router.go:42-44` → `POST /api/store/backup`、`GET /api/store/backups`、`POST /api/store/restore`，**全部挂 `security.RequireAdmin()`**；处理函数 `internal/api/backup_handlers.go`。
+- 响应形状：`store.BackupResult`（`backup.go:59-65`，5 字段）与 `store.RestoreResult`（`restore.go:52-60`，6 字段含 `preRestoreId` 与 `counts`）；Go `time.Time` 序列化为 RFC3339，前端按字符串收。
+- **备份 kind 实际有 5 种**（`backup.go:35-41`：auto / manual / prewrite / premigration / prerestore），不是头注释说的"auto+prewrite"两种。轮转面也需按代码读：`rotateBackupPool`（`backup.go:277-309`）只跳过 `manual`，其余**全池按时间保留最近 12 份**——面板说明文字据此写，未沿用注释的窄口径。
+
+### 28.3 前端实现（三文件）
+
+| 文件 | 内容 |
+|---|---|
+| `ui-src/src/types.ts` | `StoreBackupKind`（5 kind 全列）+ `StoreBackup` + `StoreRestoreResult` |
+| `ui-src/src/api.ts` | `createStoreBackup` / `listStoreBackups` / `restoreStoreBackup`（沿用统一 `request` 错误契约） |
+| `ui-src/src/pages/settings.ts` | 「数据备份与恢复」面板（插在视频缓存之后、播放之前）：备份列表（本地化时间 / kind 中文标签 / 体积 / 恢复按钮）+ 立即备份 + 刷新 + 空态文案 + 超过 20 份时「显示其余 N 份」按需展开 |
+
+恢复流程：`confirmDialog(danger)` → `POST /store/restore` → toast 带回滚兜底备份 ID → `store.loadAll()` + `load()` **整表重载**。重载是必须的而非礼貌性刷新：备份内容包含 `settings` 本身，恢复后表单若仍持旧内存态就是脏数据。破坏性把关依赖后端已有的三重（RequireAdmin + 回滚前自动 prerestore + `snapshot.restore` 审计），前端只做一次二次确认，不自造"输入备份 ID"这类摩擦。
+
+### 28.4 交付前实测：真实后端 + 浏览器走全链路（不是只看构建绿）
+
+用 `FVCC_DEV=1` 起本机 `fvcc-dev.exe`（临时 `FVCC_DATADIR=temp/devdata`）+ vite dev（5180，代理到 8088），逐项走查：
+
+1. 空态「暂无备份（数据写入时会自动产生）」；
+2. 立即备份 → 后端落 `backup-20261014062441-manual.zip`（3,072 B），列表刷新出该行；
+3. 行渲染正确（`2026/10/14 14:24:41｜手动｜3.0 KB｜恢复`）；
+4. 点恢复 → 弹出危险确认（文案含"当前全部业务数据会被覆盖；恢复前系统自动生成一份兜底备份"）；
+5. 确认 → toast「恢复完成，兜底备份：20261014062503-prerestore」，列表变 2 行且新 kind 出现在数据里；
+6. 灌到 **23 份**验证分页器：首屏 20 行 + 「显示其余 3 份」，点开后 23 行、按钮隐藏。
+
+**实测抓到一个漏项**：`prerestore` 最初不在标签映射里，列表直接把英文原文显示给用户。补齐 5 个 kind 的中文标签（定时/手动/写前/迁移前/回滚兜底），并把标签列宽 `w-12`→`w-16`（4 字标签会挤）。验证产物（`FVCC/temp/dev/`、`FVCC/temp/devdata/`）本轮结束即删，**未触碰 NAS**。
+
+### 28.5 治理两项
+
+- `FVCC/.commandcode/`（AI 工具遗留，内含 `taste/**/taste.md`）：按用户裁决**忽略不入库、不删除**，`.gitignore` 追加 `FVCC/.commandcode/`；`git check-ignore -v` 核验命中，工作树除本轮改动外归零。
+- **P3-6 正式勾选关闭**：真机证据 2026-10-11 NAS `/info` 返回 `ffprobe:true`（fnOS mediasrv 提供，FVCC 无 stub 降级路径被触发，启动自检 `main.go` 打印 `ffprobe=%v`）。遗留的"probe-vs-ffprobe 差异核对"是可选项，不再占 P3 编号。
+
+### 28.6 新登记缺口：手动备份没有删除入口
+
+`rotateBackupPool` 明确跳过 `manual`（永久保留），而后端只有 backup/backups/restore 三端点，**不存在 `DELETE /api/store/backups/:id`**。结论：面板上的手动备份**只增不减**，目前回收磁盘只能进 shell 手删。本轮按"不扩范围"原则**未擅自加删除端点**（那是新的破坏性 API + 审计 + 单测一整套），登记为待裁决项。
+
+### 28.7 版本 bump 与入库状态
+
+- bump **1.6.8 → 1.6.9**：`FVCC/manifest`、`FVCC/ui-src/package.json`、`FVCC/server/internal/version/VERSION` 三处 + `ui-src/package-lock.json` 根 `version`（`npm install --package-lock-only` 同步，1.6.8 那轮它漂留在 1.6.7）。
+- 校验：`scripts/check-versions.ps1` 退出码 0（三方 1.6.9 一致 + go.mod `go 1.27.1`）；`go test ./internal/version` 本机真跑绿；前端 `check:design --all` 33 文件无违规 → `tsc -b` → `vite build` 48 模块，CSS 49.99 kB（gzip 9.79 kB）/ JS 208.43 kB（gzip 66.13 kB）。
+- **未出 fpk、未提交、未推送、未打 tag**：出包（`build.ps1 -Target FVCC`）与提交/推送/tag 均等用户确认。
+- 本轮改动 8 个代码/配置文件（`.gitignore`、manifest、package.json、package-lock.json、VERSION、types.ts、api.ts、settings.ts）+ 4 份根台账回写（本文件、`FVCC_混乱度评价报告_细化版.md`、`FVCC_项目现状与开发步骤.md`、`项目分析与改进方向.md`）+ `README.md` / `BUILD.md` / `FVCC/README.md` 版本表基线。
+
+### 28.8 挂账变化：本轮还清 2 项
+
+- **还清**：store 备份/恢复前端入口（v1.6.9）、`FVCC/.commandcode/` 处置（入 .gitignore）。
+- **新增**：手动备份删除入口（§28.6）。
+- **不变**：NAS 真机视觉清单回收、Tailwind 4 真机视觉对照（用户实测中）、渲染 Failed/Cancelled 分支、P3-8、e2e B 档 #7/#9、概览 Filter Chips、`?fx=` 动画裁决、其余页面 `listSkeleton` 迁移、`go test -race` 修复批次、go.mod `go` 指令是否抬 1.27.2、npm 12 升级路径、CI 首跑路径。
+- **本轮文档覆盖面（如实登记）**：回写 4 份根台账（本文件 / 混乱报告第十四版 / 项目现状与开发步骤 / 项目分析与改进方向第十一次回写）+ `README.md` / `BUILD.md` / `FVCC/README.md` 版本表 + `FVCC/docs/API_CONTRACT.md`（补 `/api/store/*` 响应字段与 kind 五值口径）。**未回写**：`FVCC/docs/DESIGN.md`、`FVCC/docs/SECURITY.md`（内外两份）、`docs/TASK_REFERENCE.md`、`docs/FVCC_UI设计优化方向.md` 的"复核基线 v1.6.8"行——它们是**带日期的复核声明**而非当前版本声明，按惯例留给专门的文档对齐轮统一回写（与第三十一~三十三轮 `246e905` 的做法一致）。

@@ -78,14 +78,14 @@ cd D:\Fnos.VideoConversion
 
 | 文件 | 当前值 |
 |------|--------|
-| `FVCC\manifest`（`version` 字段） | 1.6.8 |
-| `FVCC\ui-src\package.json`（`version` 字段） | 1.6.8 |
-| `FVCC\server\internal\version\VERSION` | 1.6.8 |
+| `FVCC\manifest`（`version` 字段） | 1.6.9 |
+| `FVCC\ui-src\package.json`（`version` 字段） | 1.6.9 |
+| `FVCC\server\internal\version\VERSION` | 1.6.9 |
 
 > 版本号不一致会导致 fpk 内 manifest 声明与实际产品版本不符，部署后难以排查。
 > **三处缺一不可**：`VERSION` 是 `go:embed` 进二进制的真源，决定 `/api/info` 与「设置」页显示值；历史缺陷 v1.6.4 只改了 manifest + package.json，导致已推送包显示 1.6.0。
 > 收口必跑 `scripts\check-versions.ps1`（仓库根按脚本位置推导，可用 `-RepoRoot` 覆盖）；在 `FVCC\server` 下 `go test ./internal/version` 现已在 Windows 本机真跑并在漂移时判红（不再静默 SKIP）。
-> 另：`ui-src\package-lock.json` 的根 `version` 字段随 `package.json` 手工 bump 时**不会自动跟进**（校验脚本也不覆盖它，v1.6.8 实测漂留在 1.6.7），改完 `package.json` 版本后跑一次 `npm install --package-lock-only`（只刷锁文件元数据，不动 `node_modules`）即可同步。
+> 另：`ui-src\package-lock.json` 的根 `version` 字段随 `package.json` 手工 bump 时**不会自动跟进**（校验脚本也不覆盖它，v1.6.8 实测漂留在 1.6.7），改完 `package.json` 版本后跑一次 `npm install --package-lock-only`（只刷锁文件元数据，不动 `node_modules`）即可同步（**v1.6.9 已按此执行，lock 根 version = 1.6.9**）。
 
 ### FVCS 版本号同步清单（两处，第二处最容易漏）
 
@@ -236,7 +236,7 @@ FVCS 的 CGO 构建依赖 MSYS2 MinGW-w64 的 gcc。确保 `C:\msys64\mingw64\bi
 ### fnOS 部署
 
 - FVCC 的 `fnpack` 需要 `app/fvcc`（Linux ELF）和 `app/ui/` 目录同时存在。
-- 当前版本 `1.6.8`（配套渲染节点 FVCS `1.3.1`），在 manifest、package.json、server/internal/version/VERSION 中均已同步（升级版本必须三处同步，见上表）。
+- 当前版本 `1.6.9`（配套渲染节点 FVCS `1.3.1`），在 manifest、package.json、server/internal/version/VERSION 中均已同步（升级版本必须三处同步，见上表；`ui-src/package-lock.json` 根 version 亦已随 1.6.9 同步）。
 - fnpack 工具：`D:\Fnos.VideoConversion\fnpack-1.2.3-windows-amd64.exe`（1.2.3 可无缝替换 1.2.1，用法一致；旧版已归档至 `archive\tools\fnpack-1.2.1.exe` 仅留存）。
 - 版本一致性校验：发布前运行 `.\scripts\check-versions.ps1`（P0-1 新增），校验 manifest / package.json / server/VERSION 三方对齐及 go.mod 工具链声明。
 - 打包必须在干净 stage 目录 `FVCC\temp\fpk_stage` 内执行（build.ps1 自动完成），避免 fnpack 递归扫描真实目录导致耗时 ~14s。

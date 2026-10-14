@@ -21,6 +21,8 @@ import type {
   ProxyRequestResult,
   ProxyListItem,
   MediaRoot,
+  StoreBackup,
+  StoreRestoreResult,
 } from './types'
 
 const BASE = '/app/fvcc/api'
@@ -198,6 +200,16 @@ export const api = {
   clearLog: () => request<{ ok: boolean }>('/log', { method: 'DELETE' }),
   getVideoCacheInfo: () => request<{ count: number; size: number }>('/video-cache'),
   clearVideoCache: () => request<{ ok: boolean }>('/video-cache', { method: 'DELETE' }),
+
+  // ===== P3-5 尾部：store 备份 / 快照回滚（v1.5.8 后端已交付，admin）=====
+  createStoreBackup: () =>
+    request<{ ok: boolean; backup: StoreBackup }>('/store/backup', { method: 'POST' }),
+  listStoreBackups: () => request<{ ok: boolean; backups: StoreBackup[] }>('/store/backups'),
+  restoreStoreBackup: (backupId: string) =>
+    request<{ ok: boolean; restore: StoreRestoreResult }>('/store/restore', {
+      method: 'POST',
+      body: JSON.stringify({ backupId }),
+    }),
 
   // ===== C-01：EDL 项目（03 §4）=====
   // 列表响应同时含 items（服务端 03 §4.2 契约）与 projects/total 别名，任取其一

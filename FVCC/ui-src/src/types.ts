@@ -513,6 +513,33 @@ export interface ProxyListItem {
 /** 编辑器保存状态（01 §5.1 / 02 §5.3） */
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict' | 'error'
 
+// ===== P3-5 尾部：store 备份与快照回滚（server internal/store/backup.go / restore.go）=====
+
+/** 备份来源（server backup.go BackupKind*）：manual 不参与轮转，其余共用系统生成池 */
+export type StoreBackupKind = 'auto' | 'manual' | 'prewrite' | 'premigration' | 'prerestore'
+
+/** GET /store/backups 列表项（server BackupResult） */
+export interface StoreBackup {
+  id: string
+  kind: StoreBackupKind
+  file: string
+  size: number
+  /** 备份生成时刻（RFC3339，UTC） */
+  createdAt: string
+}
+
+/** POST /store/restore 结果（server RestoreResult） */
+export interface StoreRestoreResult {
+  backupId: string
+  kind: StoreBackupKind
+  snapshotAt: string
+  restoredAt: string
+  /** 回滚前自动生成的兜底备份 ID（回滚的回滚点） */
+  preRestoreId: string
+  /** 恢复后各集合条数 */
+  counts: Record<string, number>
+}
+
 // ===== WS 事件（FVCC → 浏览器，03 §6）=====
 
 /** 任务摘要（03 §6 task_created 载荷，字段取自 FVCC Task 的列表视图） */
